@@ -1,19 +1,22 @@
 # Agent System
 
-This harness ships an orchestrator + 7 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + 10 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
-| Agent          | Role                                          | Tools                                              | my-setup persona |
-|----------------|-----------------------------------------------|----------------------------------------------------|------------------|
-| `orchestrator` | Decomposes tasks, delegates in parallel, synthesizes | inherit (all)                              | sisyphus         |
-| `explorer`     | Read-only research, code search, doc reading  | Read, Grep, Glob, WebFetch, WebSearch, Bash        | librarian        |
-| `planner`      | Designs strategy, returns step-by-step plans  | Read, Grep, Glob, WebFetch, Bash                   | prometheus       |
-| `implementer`  | Writes/edits code per a plan                  | Read, Edit, Write, Grep, Glob, Bash, NotebookEdit  | hephaestus       |
-| `reviewer`     | Reviews local diffs for quality and security  | Read, Grep, Glob, Bash                             | oracle           |
-| `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | —                |
-| `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | —                |
-| `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | atlas            |
+| Agent          | Role                                          | Tools                                              | Model   | my-setup persona |
+|----------------|-----------------------------------------------|----------------------------------------------------|---------|------------------|
+| `orchestrator` | Decomposes tasks, delegates in parallel, synthesizes | inherit (all)                              | inherit | sisyphus         |
+| `explorer`     | Read-only research, code search, doc reading  | Read, Grep, Glob, WebFetch, WebSearch, Bash        | inherit | librarian        |
+| `planner`      | Designs strategy, returns step-by-step plans  | Read, Grep, Glob, WebFetch, Bash                   | inherit | prometheus       |
+| `implementer`  | Writes/edits code per a plan                  | Read, Edit, Write, Grep, Glob, Bash, NotebookEdit  | inherit | hephaestus       |
+| `reviewer`     | Reviews local diffs for quality and security  | Read, Grep, Glob, Bash                             | inherit | oracle           |
+| `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | inherit | —                |
+| `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | inherit | —                |
+| `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | inherit | atlas            |
+| `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
+| `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | inherit | — (caveman)      |
+| `cavecrew-reviewer`     | Single-line, severity-tagged findings              | Read, Grep, Bash                       | haiku   | — (caveman)      |
 
 Inspiration credit: [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — a non-Claude (OpenCode + Oh My OpenAgent) configuration that uses Greek-mythology personas for specialized agents. We adopted the *idea*, not the implementation; this harness uses Claude Code's official subagents mechanism.
 
@@ -38,7 +41,7 @@ Subagents inherit the parent session's permission mode. You don't need to config
 | Accept-edits      | implementer and tester edit without prompts. Full pipeline runs cleanly. |
 | Default           | Subagents prompt for permission per tool, like the parent.          |
 
-Read-only enforcement on `explorer`/`planner`/`reviewer`/`pr-reviewer`/`pr-author` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt — that's the safety contract behind their "dry-run by default" posture.
+Read-only enforcement on `explorer`/`planner`/`reviewer`/`pr-reviewer`/`pr-author`/`cavecrew-investigator`/`cavecrew-reviewer` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt — that's the safety contract behind their "dry-run by default" posture.
 
 ## Troubleshooting
 

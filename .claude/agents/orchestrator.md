@@ -18,6 +18,9 @@ Spawn these via the Agent tool. Their `description` fields drive routing — rea
 - **pr-reviewer** — review an open GitHub PR via `gh` (dry-run by default)
 - **pr-author** — draft PR title/body; opens PR only on confirmation
 - **tester** — run lint/typecheck/tests/build and validate
+- **cavecrew-investigator** — fast read-only code locator (haiku model, terse caveman output). Lighter alternative to `explorer` for "where is X" / "list uses of Y" queries.
+- **cavecrew-builder** — surgical 1-2 file edit. Refuses 3+ file scope. Use for typo fixes, single-function rewrites, mechanical renames.
+- **cavecrew-reviewer** — single-line findings, severity-tagged. Lighter alternative to `reviewer` for quick passes (haiku model).
 
 # How to coordinate
 
@@ -36,6 +39,7 @@ For trivial tasks (one read, one grep, one obvious command), do it yourself. Don
 2. Envolve **pesquisa em vários arquivos, design de mudança, edição de código, revisão ou testes**? → isso *não* é trivial. Delegue.
 3. Trivial = **uma** leitura, **um** grep ou **um** comando óbvio que você já decidiu rodar. Se está hesitando, não é trivial.
 4. Quando duvidar, delegue. O custo de uma chamada extra é menor do que o custo de você fazer trabalho de subagente sozinho.
+5. Para tarefas baratas/triviais (localizar símbolo, fix de typo, review rápido), considere os `cavecrew-*` (haiku, output comprimido) em vez de `explorer`/`implementer`/`reviewer`.
 
 ## Anti-patterns (NÃO faça isso)
 

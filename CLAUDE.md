@@ -39,6 +39,30 @@ Full details: [`docs/agent-system.md`](docs/agent-system.md).
 
 `node scripts/install.mjs` — see [`docs/installation.md`](docs/installation.md). Supports `--dry-run`, `--uninstall`, `--force-agent`. macOS-only.
 
+## Token-saving conventions
+
+When invoking shell commands, prefer compact flags that produce structured, parseable output. This captures the bulk of what dedicated tools (e.g. RTK) try to do via post-hoc filtering, without the round-trip cost of re-reading truncated output.
+
+| Command family | Verbose default | Prefer |
+|---|---|---|
+| `git status` | full porcelain v1 | `git status --porcelain` (or `--short`) |
+| `git log` | full body | `git log --oneline` (add `-n N` to cap) |
+| `git diff` | full hunks | `git diff --stat` for overview; full diff only when reviewing |
+| `git branch` | full | `git branch --list --format='%(refname:short)'` |
+| `pytest` | full traceback | `pytest --tb=short -q` (use `--tb=line` for one-liners) |
+| `cargo build` | progress bars | `cargo build --quiet` (or pipe through `2>&1 \| tail -50`) |
+| `npm test` / `pnpm test` | full | run with `--silent` if available |
+| `ls` | full `ls -l` | `ls -1` (one per line) or `ls -1A` |
+| Long outputs (anything) | full | pipe through `head -N`, `tail -N`, `grep -E pattern`, or `wc -l` first |
+
+Hard rules:
+
+- Never grep through `node_modules`, `.git`, build artifacts, or vendored deps. Use `--exclude-dir` / `-not -path` filters.
+- For file reads, prefer reading the specific lines/symbols you need (`Read` tool with `offset`/`limit`) over `cat`-ing the whole file.
+- For repo-wide searches, prefer `Grep`/`Glob` (claude-code native, structured) over piped shell commands.
+
+These conventions are enforced by the agents (`tester`, `implementer`, `cavecrew-*`) — but documenting them here means any new agent or one-off prompt inherits them.
+
 ## Commit Rules
 
 - Never include Claude Code as co-author in commits.

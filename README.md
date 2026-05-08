@@ -14,6 +14,9 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `tester`       | Lint / typecheck / test / build               |
 | `pr-author`    | Drafts PRs from the current branch            |
 | `pr-reviewer`  | Reviews open GitHub PRs                       |
+| `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
+| `cavecrew-builder`      | Surgical 1-2 file edit                        |
+| `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 
 Plus two hooks that reinforce delegation behavior across prompts and through context compaction.
 
@@ -63,9 +66,13 @@ docs/
 
 Claude Code's default behavior is fine for one-off prompts but rough on multi-step work. The orchestrator + specialists pattern enforces parallel decomposition and keeps each agent focused. Installing globally means every Claude Code session in any directory benefits from this.
 
-Inspired by [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — same idea, built on Claude Code's official subagents mechanism.
+## Credits
+
+- Inspired by [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — same idea, built on Claude Code's official subagents mechanism.
+- `cavecrew-*` subagents adapted from [`juliusbrussee/caveman`](https://github.com/JuliusBrussee/caveman) (MIT).
 
 ## Notes
 
 - macOS-only. Windows users: PRs welcome.
 - Re-running the installer creates `~/.claude/settings.json.backup-<ts>` snapshots; clean up with `rm ~/.claude/*.backup-*` once you're confident.
+- EcoTokens (optional Rust output filter): see [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md).
