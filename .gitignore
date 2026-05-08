@@ -1,0 +1,5 @@
+# Per-developer Claude Code overrides — never committed.
+.claude/settings.local.json
+
+# Installer backups created when re-installing the harness over an existing entry.
+.claude/*.backup-*
