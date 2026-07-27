@@ -39,6 +39,8 @@ const DEFAULT_MODEL = process.env.SHIM_MODEL || 'claude-haiku-4-5';
 const TIMEOUT_MS = Number(process.env.SHIM_TIMEOUT_MS || 120000);
 const DEBUG = !!process.env.SHIM_DEBUG;
 
+const EXIT_LISTEN_FAILED = 1;
+
 function log(...a) {
   if (DEBUG) console.error('[shim]', ...a);
 }
@@ -155,7 +157,7 @@ function readBody(req) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   const url = req.url || '';
   if (req.method === 'GET' && (url === '/healthz' || url === '/')) {
     send(res, 200, { ok: true, backend: CLAUDE_BIN, model: DEFAULT_MODEL });
@@ -205,6 +207,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   oaiError(res, 404, `no route for ${req.method} ${url}`);
+}
+
+// An unhandled rejection in the request handler would take the whole process
+// down, and launchd would silently restart it — answer the request instead.
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((e) => {
+    log('unhandled', e);
+    if (res.headersSent) res.destroy();
+    else oaiError(res, 500, `shim internal error: ${e.message}`);
+  });
+});
+
+// KeepAlive=true in the LaunchAgent turns an uncaught listen error into a
+// restart loop whose only trace is a stack in shim.err.log.
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(
+      `claude-openai-shim: ${HOST}:${PORT} is already in use — another shim ` +
+        'is running (launchctl list | grep claude-openai-shim), or set SHIM_PORT.',
+    );
+  } else {
+    console.error(`claude-openai-shim: cannot listen on ${HOST}:${PORT}: ${e.message}`);
+  }
+  process.exit(EXIT_LISTEN_FAILED);
 });
 
 server.listen(PORT, HOST, () => {
