@@ -1,4 +1,4 @@
-// gh.mjs — how the wave scripts talk to the `gh` CLI, and the exit-code table
+// gh.mjs — how the two PR readers talk to the `gh` CLI, and the exit-code table
 // they both honour, so a caller of either script reads one contract.
 //
 // It runs `gh`, classifies a failed invocation, and reads the repo slug off a
@@ -6,6 +6,12 @@
 // means lives in pr-state.mjs — and none about review — what a feedback thread
 // means lives in fetch-pr-threads.mjs. Neither may be imported from here; the
 // dependency runs one way, from the scripts to this module.
+//
+// tickets-github.mjs also talks to `gh` and is deliberately not a caller: it
+// reads issues rather than pull requests, and carries its own exit-code table
+// where 4 is "unreachable or rate limited", 5 "not authenticated" and 6 "repo
+// not found". Those meanings collide with the ones below, so the two tables
+// must never be read as one.
 //
 // Exit codes:
 //   0  the query succeeded
@@ -33,8 +39,8 @@ const GH_TIMEOUT_MS = 60000;
 
 /**
  * Turn a failed `gh` invocation into an exit code plus a message that says
- * which failure it was. Reporting PASS because the query broke is the one
- * outcome this whole script exists to prevent.
+ * which failure it was. Reading a broken query as a successful one is the one
+ * outcome this module exists to prevent.
  */
 export function classifyGhFailure(result) {
   if (result.missing) {

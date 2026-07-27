@@ -27,8 +27,7 @@
 //   node scripts/waves/fetch-pr-threads.mjs <number|url|branch> [--repo owner/name]
 //                                           [--out threads.json] [--compact]
 //
-// Exit codes are the shared wave table from gh.mjs (0 ok, 2 usage, 3 gh
-// missing, 4 unauthenticated, 5 no such PR, 6 rate limited, 1 anything else).
+// Exit codes are the shared wave table from gh.mjs.
 //
 // Zero deps, Node stdlib only (repo convention). Read-only: it never posts,
 // resolves or replies to anything.
