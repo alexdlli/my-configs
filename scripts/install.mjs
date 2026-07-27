@@ -163,6 +163,23 @@ function userHasHookForScript(userEntries, scriptName) {
   });
 }
 
+// Appends the harness entries missing from merged.permissions[listName],
+// returning only the ones this run introduced.
+function appendPermissionEntries(merged, listName, harnessEntries) {
+  if (!Array.isArray(harnessEntries) || harnessEntries.length === 0) return [];
+  if (!isPlainObject(merged.permissions)) merged.permissions = {};
+  if (!Array.isArray(merged.permissions[listName])) merged.permissions[listName] = [];
+  const existing = new Set(merged.permissions[listName]);
+  const appended = [];
+  for (const entry of harnessEntries) {
+    if (existing.has(entry)) continue;
+    merged.permissions[listName].push(entry);
+    existing.add(entry);
+    appended.push(entry);
+  }
+  return appended;
+}
+
 // Returns { merged, added }. `merged` is the full settings to write; `added`
 // records only what this run introduced (so uninstall can revert exactly that,
 // nothing else). `addedLinks` is filled in by the caller.
@@ -194,19 +211,16 @@ function buildMergedSettings(userSettings, harnessSettings, opts) {
     }
   }
 
-  const harnessAllow = harnessSettings?.permissions?.allow;
-  if (Array.isArray(harnessAllow) && harnessAllow.length > 0) {
-    if (!isPlainObject(merged.permissions)) merged.permissions = {};
-    if (!Array.isArray(merged.permissions.allow)) merged.permissions.allow = [];
-    const existing = new Set(merged.permissions.allow);
-    for (const entry of harnessAllow) {
-      if (!existing.has(entry)) {
-        merged.permissions.allow.push(entry);
-        existing.add(entry);
-        added.addedAllowEntries.push(entry);
-      }
-    }
-  }
+  added.addedAllowEntries = appendPermissionEntries(
+    merged,
+    'allow',
+    harnessSettings?.permissions?.allow,
+  );
+  added.addedDenyEntries = appendPermissionEntries(
+    merged,
+    'deny',
+    harnessSettings?.permissions?.deny,
+  );
 
   const harnessHooks = harnessSettings?.hooks;
   if (isPlainObject(harnessHooks)) {
@@ -417,6 +431,8 @@ async function runInstall(opts) {
   if (added.addedKeys.length > 0) addedSummary.push(added.addedKeys.join(', '));
   if (added.addedAllowEntries.length > 0)
     addedSummary.push(`${added.addedAllowEntries.length} permissions.allow entries`);
+  if (added.addedDenyEntries.length > 0)
+    addedSummary.push(`${added.addedDenyEntries.length} permissions.deny entries`);
   if (added.addedHooks.length > 0)
     addedSummary.push(`${added.addedHooks.length} hook(s)`);
   if (addedSummary.length > 0) summaryParts.push(`added ${addedSummary.join(', ')}`);
@@ -471,22 +487,25 @@ async function removeManagedLink(dest, expectedTarget, dryRun) {
   console.log(`✓ removed symlink ${dest}`);
 }
 
+function dropPermissionEntries(reverted, listName, entries) {
+  if (entries.length === 0) return;
+  if (!Array.isArray(reverted?.permissions?.[listName])) return;
+  const drop = new Set(entries);
+  reverted.permissions[listName] = reverted.permissions[listName].filter((e) => !drop.has(e));
+  if (reverted.permissions[listName].length === 0) delete reverted.permissions[listName];
+}
+
 function revertSettings(userSettings, metadata) {
   const reverted = cloneJson(userSettings);
-  for (const key of metadata.addedKeys ?? []) {
+  for (const key of metadata.addedKeys) {
     delete reverted[key];
   }
-  if (Array.isArray(metadata.addedAllowEntries) && metadata.addedAllowEntries.length > 0) {
-    if (Array.isArray(reverted?.permissions?.allow)) {
-      const drop = new Set(metadata.addedAllowEntries);
-      reverted.permissions.allow = reverted.permissions.allow.filter((e) => !drop.has(e));
-      if (reverted.permissions.allow.length === 0) delete reverted.permissions.allow;
-      if (isPlainObject(reverted.permissions) && Object.keys(reverted.permissions).length === 0) {
-        delete reverted.permissions;
-      }
-    }
+  dropPermissionEntries(reverted, 'allow', metadata.addedAllowEntries);
+  dropPermissionEntries(reverted, 'deny', metadata.addedDenyEntries);
+  if (isPlainObject(reverted.permissions) && Object.keys(reverted.permissions).length === 0) {
+    delete reverted.permissions;
   }
-  if (Array.isArray(metadata.addedHooks) && metadata.addedHooks.length > 0) {
+  if (metadata.addedHooks.length > 0) {
     const byEvent = new Map();
     for (const { event, command } of metadata.addedHooks) {
       if (!byEvent.has(event)) byEvent.set(event, new Set());

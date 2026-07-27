@@ -17,6 +17,11 @@
       "Bash(git rev-parse *)",
       "Bash(git status)",
       "Bash(git branch *)"
+    ],
+    "deny": [
+      "Bash(gh pr merge *)",
+      "Bash(git push --force *)",
+      "Bash(git commit --no-verify *)"
     ]
   },
   "hooks": {
