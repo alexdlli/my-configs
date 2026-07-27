@@ -17,7 +17,7 @@ docs/
   installation.md      # install, flags, conflicts, troubleshooting
   contributing.md      # this file
   waves.md             # ticket contract, dependency graph, wave plan
-  integrations/        # orca.md, ecotokens.md, ai-memory.md
+  integrations/        # orca.md, maestri.md, ecotokens.md, ai-memory.md
 scripts/
   install.mjs          # symlink + merge installer
   waves/               # wave pipeline: tickets-linear, tickets-github, graph, pr-state, fetch-pr-threads
