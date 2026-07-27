@@ -63,7 +63,7 @@ The installer is idempotent: running again refreshes the symlinks (no-op if alre
 - Every failure path exits 0 — the hook never blocks a session.
 - It never runs the installer. When the pulled diff touches `.claude/skills/` or `.claude/settings.json`, it prints a one-line reminder to run `node scripts/install.mjs` yourself.
 
-Force a check now (bypasses only the 6h throttle): `/sync-harness`, or `node .claude/hooks/auto-update.mjs --force`.
+Force a check now (bypasses only the 6h throttle): `/sync-harness`, or `node ~/.claude/hooks/auto-update.mjs --force`.
 
 Opt out per-machine: `export CLAUDE_SETUP_SKIP_AUTOUPDATE=1`. It also self-skips when `CI` is set.
 
