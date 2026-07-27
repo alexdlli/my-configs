@@ -23,7 +23,7 @@ const LATE_AT = '2024-03-01T11:00:00Z';
 const ANCHOR_PATH = 'scripts/waves/graph.mjs';
 const ANCHOR_LINE = 12;
 const ANCHOR_START_LINE = 10;
-const ANCHOR_ORIGINAL_LINE = 9;
+const ANCHOR_ORIGINAL_LINE = 11;
 const ANCHOR_SIDE = 'RIGHT';
 const ANCHOR_DIFF_HUNK = '@@ -10,3 +10,4 @@';
 
@@ -236,6 +236,19 @@ test('an inline thread carries the file position under camelCase names', () => {
   });
 });
 
+test('a single-line inline comment keeps startLine null instead of borrowing another line', () => {
+  const threads = buildThreads({ inlineComments: [ghInlineComment(2, { start_line: null })] });
+  assert.equal(threads.length, 1);
+  assert.deepEqual(threads[0].anchor, {
+    path: ANCHOR_PATH,
+    line: ANCHOR_LINE,
+    startLine: null,
+    originalLine: ANCHOR_ORIGINAL_LINE,
+    side: ANCHOR_SIDE,
+    diffHunk: ANCHOR_DIFF_HUNK,
+  });
+});
+
 test('without GraphQL resolution an inline thread says unknown, not resolved', () => {
   const threads = buildThreads({ inlineComments: [ghInlineComment(1)] });
   assert.equal(threads.length, 1);
@@ -260,7 +273,7 @@ test('a GraphQL resolution reaches the inline thread whose root it names', () =>
   assert.equal(threads[0].resolutionAvailable, true);
 });
 
-test('a thread GraphQL answered about but never mentioned stays unknown', () => {
+test('a thread the GraphQL answer never mentioned stays unknown', () => {
   const threads = buildThreads({
     inlineComments: [ghInlineComment(1)],
     resolutionByCommentId: new Map(),
