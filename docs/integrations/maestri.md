@@ -38,8 +38,8 @@ Parte do persona vale nos dois ambientes (Maestri e Claude Code puro) e está se
 
 | Regra do persona | Estado |
 |---|---|
-| Freio da revisão adversarial: reportar só o que afeta correção ou o requisito declarado | issue #1 |
-| Proibição de `git stash` em worktree (o stash é um ref único compartilhado) | issue #1 |
+| Freio da revisão adversarial: reportar só o que afeta correção ou o requisito declarado | na skill `adversarial-review`, seção "Freio de escopo: o que não entra no laudo" |
+| Proibição de `git stash` em worktree (o stash é um ref único compartilhado) | na skill `wave-orchestration`, item 6 das "Regras invioláveis" (fonte), na seção `git stash` do prompt do worker e no item 3 de "As quatro decisões que custaram caro" em `docs/waves.md` |
 | Tabela de tipo de loop (exploratório / goal / time-based / proativo) | nomeada, não especificada |
 | "Verificação é skill, não opinião" | nomeada, não especificada |
 | "Melhore o sistema, não só o caso" | nomeada, não especificada |
