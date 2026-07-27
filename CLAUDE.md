@@ -6,7 +6,6 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 Personal Claude Code harness: an orchestrator agent + specialists, installed globally to `~/.claude/` via symlinks. Centralizes the agent definitions, hooks, and settings I want available in every Claude Code session.
 
-<!-- BEGIN merge from handoff CLAUDE.md (2026-06-22): added required-reading + memory protocol -->
 ## Before writing or modifying any code (required)
 
 Always read these first, every session, without me having to ask:
@@ -25,7 +24,6 @@ If any of these is missing or out of date, tell me before proceeding.
 **During:** if I correct you on a pattern, treat it as a rule, not a one-off fix for this session.
 
 **At the end (or when something durable appears):** record in memory ONLY what matters for the future — a decision with consequences, a reproducible gotcha, a procedure that repeats, an explicit preference of mine, or an important project pattern. Do NOT record: a test command, a transient error, an environment-of-the-day failure, or the whole session narrative. Golden rule: **bad memory is worse than no memory.** (This is why `[auto_improve] require_approval = true` — nothing enters the wiki without my approval.)
-<!-- END merge from handoff CLAUDE.md -->
 
 ## What Goes Here
 
@@ -100,7 +98,6 @@ These conventions are enforced by the agents (`tester`, `implementer`, `cavecrew
 - Scripts and hooks default to Node.js stdlib (`.mjs`, no deps) for portability.
 - Test before committing: `node --check scripts/<name>.mjs`, then a dry run (`node scripts/install.mjs --dry-run` against a fake `$HOME`).
 
-<!-- BEGIN merge from handoff CLAUDE.md (2026-06-22): added quality standards + guardrails -->
 ## Code quality standards (always apply)
 
 These complement the **Commit Rules** and **Token-saving conventions** above; they do not replace them.
@@ -121,7 +118,6 @@ This repo's concrete conventions are already documented above and in `docs/` —
 
 - Don't rewrite from scratch to fit an imagined "ideal" structure (no over-engineering). Make it work, then make it right, then make it fast — in that order.
 - Don't introduce an abstraction that has no real usage yet to justify it.
-<!-- END merge from handoff CLAUDE.md -->
 
 <!-- ai-memory:start -->
 ## Long-term memory (ai-memory)
