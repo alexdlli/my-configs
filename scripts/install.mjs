@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Install (or uninstall) the personal Claude Code harness into ~/.claude/.
 //
-// Symlinks ~/.claude/{agents,hooks,commands} into the harness checkout, and deep-merges
-// a managed slice of ~/.claude/settings.json (agent, permissions.allow, and
-// every hook event the harness declares) without disturbing keys the user owns
+// Symlinks ~/.claude/{harness,agents,hooks,commands} into the harness checkout,
+// links skills one entry at a time, and deep-merges a managed slice of
+// ~/.claude/settings.json (agent, permissions.allow, permissions.deny, and every
+// hook event the harness declares) without disturbing keys the user owns
 // (theme, enabledPlugins, extraKnownMarketplaces, ...).
 //
 // Usage:
@@ -32,6 +33,11 @@ const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
 const SYMLINK_ITEMS = ['agents', 'hooks', 'commands'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
+const METADATA_VERSION = 2;
+
+// Stable, machine-independent entry point to the checkout. Skills and hooks
+// reference scripts/** through it instead of hardcoding a clone path.
+const SELF_REFERENCE_LINK = path.join(TARGET_DIR, 'harness');
 
 // ~/.claude/skills is shared ground: it holds skills from plugins and other
 // toolkits. Linking the directory itself would hide every one of them, so the
@@ -45,7 +51,6 @@ const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
 const EXTERNAL_SKILL_LINKS = {
   'orca-cli': path.join(HOME, '.agents', 'skills', 'orca-cli'),
 };
-const METADATA_VERSION = 2;
 
 // v1 metadata predates addedLinks. That installer only ever created these two
 // symlinks, so they are exactly what an uninstall of a v1 install must remove.
@@ -69,6 +74,8 @@ Options:
   -h, --help       Show this help
 
 What gets installed:
+  ~/.claude/harness  → symlink to the harness checkout root, so skills and hooks
+                     can reach scripts/** without hardcoding a clone path
   ~/.claude/agents   → symlink to <harness>/.claude/agents
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
   ~/.claude/commands → symlink to <harness>/.claude/commands
@@ -400,6 +407,13 @@ async function ensureLink(dest, target, dryRun, onConflict) {
 
 async function linkHarnessDirs(dryRun) {
   const links = [];
+  const selfLink = await ensureLink(
+    SELF_REFERENCE_LINK,
+    HARNESS_ROOT,
+    dryRun,
+    CONFLICT_BACKUP,
+  );
+  if (selfLink) links.push(selfLink);
   for (const name of SYMLINK_ITEMS) {
     const link = await ensureLink(
       path.join(TARGET_DIR, name),
