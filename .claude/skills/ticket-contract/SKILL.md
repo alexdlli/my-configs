@@ -6,8 +6,9 @@ description: >-
   ticket existente já serve como prompt de agente sem contexto implícito. Dispara
   em "criar tickets", "quebrar esse escopo", "esse ticket tá bom?", "montar o
   projeto", "transformar essa spec em tickets", "revisar o backlog antes de soltar
-  os agentes". Tracker pessoal: Linear via CLI `orca linear`. Tracker de trabalho:
-  Jira via agente `atlassian` (somente leitura).
+  os agentes". Trackers pessoais: Linear via CLI `orca linear` e GitHub Issues via
+  CLI `gh`, com leitura e escrita. Tracker de trabalho: Jira via agente `atlassian`
+  (somente leitura).
 ---
 
 # Contrato de ticket
@@ -190,7 +191,9 @@ tracker:
 - `body` — o corpo com os 12 campos.
 
 Detecte o tracker com `node ~/.claude/hooks/session-context.mjs --json` e leia
-`tracker` / `trackerSource`. Nunca assuma pelo nome do repo.
+`tracker` / `trackerSource`. Nunca assuma pelo nome do repo. A detecção só responde
+`linear`, `jira` ou `null` — GitHub Issues é resposta legítima da pergunta que você faz ao
+usuário quando vem `null`, não um valor que o hook devolve.
 
 **Linear (pessoal) — leitura e escrita.** Use a CLI `orca linear`. Carregue o guia
 casado com o binário antes de rodar qualquer comando: `orca skills get orca-linear`
@@ -202,8 +205,38 @@ com acesso ao MCP da Atlassian. No trabalho os tickets chegam prontos: o papel a
 ler, normalizar e **auditar contra este contrato**, apontando ao usuário quais campos
 faltam. Não crie nem edite ticket no Jira por conta própria.
 
-A assimetria é deliberada. Não trate "criar ticket" como capacidade disponível quando
-o tracker é Jira.
+**GitHub Issues (pessoal) — leitura e escrita.** A leitura é o mesmo script que alimenta o
+plano de ondas:
+
+```bash
+node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>] [--json]
+```
+
+- **Recorte.** No GitHub não existe "projeto". O recorte é `--milestone` ou `--label`
+  (repetível). Escolha um **antes** de criar o primeiro ticket e aplique em todos: sem
+  recorte o escopo é o repo inteiro em todos os estados, e o leitor grita isso em caixa alta
+  no stderr.
+- **`blockedBy` sai da união de duas fontes**, deduplicadas: a dependência nativa da issue
+  (a "blocked by" da barra lateral, escrita com `gh issue edit --add-blocked-by`) e o
+  marcador ancorado no corpo. Criando em lote, os números só existem depois da criação:
+  publique em ordem de dependência, bloqueadores primeiro, colete os números e declare a
+  aresta nos dependentes. O marcador aceita `#12` (assume o repo alvo) e `owner/repo#12`, e
+  vários marcadores no mesmo corpo são unidos. Antes de escrever qualquer um, leia "Campo 9
+  no GitHub" acima — as duas armadilhas de lá custam o plano de ondas inteiro.
+- **Estimativa é a label `est:<n>`** — `est:3`, `est: 0.5`, `EST:2`, decimal vale. Sem label,
+  `estimate` fica `null`. Duas labels `est:` com valores diferentes é dado ruim reportado,
+  nunca escolha silenciosa. A label precisa existir no repo antes (`gh label create`).
+- **Escrita é `gh issue create` com `--body-file`**, nunca `--body` inline: um corpo de doze
+  seções de markdown não sobrevive à citação do shell.
+- **Verifique com o leitor antes de dizer que terminou.** Rode-o sobre o recorte que você
+  criou: saída 0 e as arestas na tabela. Código 8 significa "as issues existem, mas o que
+  escrevi nelas está malformado" — corrija o corpo, não recrie as issues.
+
+A sintaxe é do parser, não sua: `scripts/waves/tickets-github.mjs:116-121` (referência,
+separador, marcador, label) e `docs/waves.md:198-232`. Não invente variação.
+
+A assimetria é deliberada: Linear e GitHub têm escrita, Jira não. Não trate "criar ticket"
+como capacidade disponível quando o tracker é Jira, sob nenhuma formulação do pedido.
 
 ## Autoria
 
