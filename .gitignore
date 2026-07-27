@@ -6,3 +6,9 @@
 
 # Timestamped backups left by the ai-memory setup (e.g. CLAUDE.md.bak-1782178186).
 *.bak-*
+
+# Wave working directory: the implementer/tester interface contract
+# (.wave/<ticket>/contract.md) and the PR triage input (.wave/pr/threads.json).
+# Working state of a run, never a versioned artifact. Any repo where the harness
+# drives waves needs this same entry.
+.wave/
