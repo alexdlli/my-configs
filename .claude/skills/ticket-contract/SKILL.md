@@ -59,7 +59,8 @@ específico. Todo o resto de `to-tickets` continua valendo.
 
 Todo ticket carrega os 12. Campo que não se aplica é declarado como "não se aplica" —
 nunca omitido em silêncio, porque a omissão não distingue "irrelevante" de
-"esquecido".
+"esquecido". Os campos 10, 11 e 12 têm uma saída de escala quando o projeto inteiro os
+dispensa: veja "Declaração de perfil do projeto", logo abaixo da tabela.
 
 | # | Campo | O que precisa estar lá |
 |---|---|---|
@@ -75,6 +76,42 @@ nunca omitido em silêncio, porque a omissão não distingue "irrelevante" de
 | 10 | Rollout e kill switch | Quando há risco: flag, plano de rollback, quem/como desliga. Ticket sem risco declara "sem rollout especial". |
 | 11 | Eventos e métricas | Como se sabe, em produção, que a feature funciona — evento emitido, métrica, log estruturado. |
 | 12 | i18n, LGPD e factories | Chaves de tradução, dado pessoal tocado (base legal, retenção, anonimização) e factories/fixtures a criar ou estender. |
+
+## Declaração de perfil do projeto
+
+Os campos 10, 11 e 12 pressupõem um produto com runtime, telemetria e dado de usuário. Num
+repo que é só markdown e script stdlib, os três saem "não se aplica" em **todo** ticket: no
+primeiro projeto real deste harness foram 6 de 6, cada um gastando ~15% do corpo para não
+dizer nada. Pior que o desperdício: "não se aplica" repetido tantas vezes deixa de ser lido
+exatamente onde importaria.
+
+A saída não é omitir. É declarar uma vez, no nível do projeto.
+
+**Onde a declaração mora:** no arquivo canônico de instrução do repo — `CLAUDE.md` na raiz,
+ou `AGENTS.md` quando é ele o canônico — numa seção `## Perfil de risco do projeto`. Esse
+arquivo entra sozinho no contexto de toda sessão de agente, então o que está lá **está no
+prompt**: a premissa "o ticket é o prompt" continua de pé. É por isso que memória de sessão,
+thread de conversa ou combinação verbal não servem como declaração — nada disso chega ao
+agente que vai executar.
+
+Uma declaração deste repo, por exemplo:
+
+> Este harness não tem runtime em produção, não emite telemetria e não toca dado pessoal.
+> Os artefatos são markdown e scripts Node stdlib instalados por symlink, e o rollback
+> padrão de qualquer mudança é `git revert` do PR.
+
+Com a declaração escrita:
+
+- Cada campo coberto vira **uma linha** no ticket, citando a declaração. O campo não some e
+  não vira parágrafo. O formato exato está em "Como renderizar os 12 campos".
+- **A exceção volta ao normal, por ticket.** Ticket que faz o que a declaração não cobre —
+  passa a tocar dado pessoal, adiciona texto de interface, muda algo cujo rollback não é
+  `git revert` — preenche o campo por extenso e diz qual premissa da declaração ele quebra.
+  A declaração cobre o repo, não absolve o ticket.
+
+Sem declaração escrita, os três campos são obrigatórios em todo ticket, como sempre foram. E
+declaração é afirmação verificável: se ninguém consegue confirmá-la olhando o repo, ela não
+existe — pergunte ao usuário em vez de escrever uma por conta própria.
 
 ## Bom vs ruim nos quatro campos mais errados
 
@@ -158,7 +195,7 @@ aresta e por quê — o "por quê" é obrigatório, veja a checagem de prontidã
 Rode item a item. Qualquer `não` reprova o ticket — corrija antes de publicar ou de
 soltar o agente.
 
-- [ ] Os 12 campos estão presentes (ou marcados como "não se aplica").
+- [ ] Os 12 campos estão presentes: preenchidos, marcados como "não se aplica", ou — só os campos 10, 11 e 12 — resolvidos na linha única que cita a declaração de perfil do projeto.
 - [ ] O título, sozinho, diz o que muda no produto.
 - [ ] Existe pelo menos um item explícito FORA do escopo.
 - [ ] Todo termo de domínio usado aparece definido no ticket ou é vocabulário do codebase.
