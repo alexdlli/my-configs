@@ -7,6 +7,7 @@ import {
   RULE_GIT_PUSH_FORCE,
   classifyCommand,
   denialReason,
+  isWorkerOnlyRule,
 } from './destructive.mjs';
 
 function assertBlocked(command, rule) {
@@ -117,11 +118,21 @@ test('a non-string command is not a command', () => {
   assertAllowed(42);
 });
 
+// The policy is ask-then-merge: only the merge rule bends to the session
+// context, and force-push / --no-verify stay denied everywhere. A rule joining
+// or leaving this list is a policy change, so it breaks a test.
+test('merge is the only rule scoped to the worker context', () => {
+  assert.equal(isWorkerOnlyRule(RULE_GH_PR_MERGE), true);
+  assert.equal(isWorkerOnlyRule(RULE_GIT_PUSH_FORCE), false);
+  assert.equal(isWorkerOnlyRule(RULE_GIT_COMMIT_NO_VERIFY), false);
+});
+
 test('the denial reason names the rule and what to do instead', () => {
   const direct = denialReason(classifyCommand('gh pr merge 3'));
   assert.match(direct, /gh pr merge/);
   assert.match(direct, /Alex/);
   assert.match(direct, /called directly/);
+  assert.match(direct, /wave worker never merges/);
 
   const wrapped = denialReason(classifyCommand(`bash -c 'git push --force'`));
   assert.match(wrapped, /git push --force/);
@@ -131,9 +142,20 @@ test('the denial reason names the rule and what to do instead', () => {
   assert.match(noVerify, /git commit --no-verify/);
 });
 
+test('a denial for not knowing says so instead of calling the session a worker', () => {
+  const undetermined = denialReason(classifyCommand('gh pr merge 3'), { undetermined: true });
+  assert.match(undetermined, /gh pr merge/);
+  assert.match(undetermined, /could not tell/);
+  assert.doesNotMatch(undetermined, /wave worker never merges/);
+});
+
 test('the denial reason never leaks the opt-out switch to the agent', () => {
   for (const command of ['gh pr merge 3', 'git push -f', 'git commit -n']) {
     assert.doesNotMatch(denialReason(classifyCommand(command)), /CLAUDE_SETUP_SKIP/);
+    assert.doesNotMatch(
+      denialReason(classifyCommand(command), { undetermined: true }),
+      /CLAUDE_SETUP_SKIP/,
+    );
   }
 });
 

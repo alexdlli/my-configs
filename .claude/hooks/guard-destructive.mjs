@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// PreToolUse hook (Bash matcher): deny the three commands the harness reserves
-// for the human — `gh pr merge`, `git push --force`, `git commit --no-verify`
-// — including when they are wrapped in `bash -c` or piped into a shell.
+// PreToolUse hook (Bash matcher): deny `git push --force` and
+// `git commit --no-verify` everywhere, and deny `gh pr merge` in a wave worker
+// — including when any of them is wrapped in `bash -c` or piped into a shell.
 //
 // Why: `permissions.deny` was measured to survive
 // `--dangerously-skip-permissions`, but it matches strings, so it only ever
@@ -9,6 +9,13 @@
 // either. Wave workers run with the bypass on by default, so the wrapped form
 // was a real hole in the dispatch flow. A PreToolUse hook returning
 // `permissionDecision: "deny"` is evaluated under bypass and closes it.
+//
+// ASK-THEN-MERGE. `Bash(gh pr merge *)` is no longer in `permissions.deny`, so
+// this hook is the only thing standing between an agent and a merge, and it is
+// the only thing that can tell a worker from the coordinator. Staying silent for
+// a non-worker is what lets the command reach the permission prompt where Alex
+// approves it — that is the feature, not a gap. Force-push and `--no-verify` are
+// untouched by this and stay denied in every context.
 //
 // What: emits JSON on stdout in the shape Claude Code expects for PreToolUse
 // hooks, and nothing at all when the command is allowed:
@@ -25,12 +32,19 @@
 //
 // Fails open, always: a guard that denies on its own bug turns a typo into a
 // dead Bash tool. Every failure path exits 0 having printed no decision, so
-// the command falls back to the permission layer.
+// the command falls back to the permission layer. The one deliberate exception
+// is the worker question itself — `detectWorkerContext` answers `indeterminate`
+// rather than throwing, and `indeterminate` denies. Its own header carries why.
 //
 // Requires Node.js 24+.
 
 import process from 'node:process';
-import { classifyCommand, denialReason } from './lib/destructive.mjs';
+import { classifyCommand, denialReason, isWorkerOnlyRule } from './lib/destructive.mjs';
+import {
+  CONTEXT_INDETERMINATE,
+  CONTEXT_OTHER,
+  detectWorkerContext,
+} from './lib/worker-context.mjs';
 
 const GUARDED_TOOL = 'Bash';
 
@@ -54,11 +68,18 @@ async function main() {
   const finding = classifyCommand(payload?.tool_input?.command);
   if (!finding.blocked) return;
 
+  let undetermined = false;
+  if (isWorkerOnlyRule(finding.rule)) {
+    const context = detectWorkerContext(process.env, payload?.cwd);
+    if (context === CONTEXT_OTHER) return;
+    undetermined = context === CONTEXT_INDETERMINATE;
+  }
+
   const output = {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: denialReason(finding),
+      permissionDecisionReason: denialReason(finding, { undetermined }),
     },
   };
   process.stdout.write(`${JSON.stringify(output)}\n`);

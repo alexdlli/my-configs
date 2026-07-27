@@ -1,5 +1,13 @@
-// Classification of the Bash commands the harness reserves for the human:
-// merging a PR, force-pushing, and committing with the hooks skipped.
+// Classification of the Bash commands the harness holds back: merging a PR,
+// force-pushing, and committing with the hooks skipped.
+//
+// The three are not held back equally. Force-push and `--no-verify` are denied
+// in every context, no exception. Merge is scoped by context — `ask-then-merge`:
+// a wave worker never merges, and anywhere else the command falls through to
+// Claude Code's own permission prompt so Alex can approve it. That scoping is
+// not decided here: `classifyCommand` only reports which rule a command line
+// matches, and `isWorkerOnlyRule` says which rules the caller must weigh against
+// the session context (see lib/worker-context.mjs).
 //
 // Why this exists as code and not only as `permissions.deny`: the deny list is
 // string matching against the command as typed. It survives
@@ -42,12 +50,20 @@ const RULE_LABELS = {
 
 const RULE_GUIDANCE = {
   [RULE_GH_PR_MERGE]:
-    'Merging is the human decision this harness reserves for Alex. Open the PR, report it in your summary, and stop there.',
+    "A wave worker never merges, whatever else is available to it: the merge is Alex's. Open the PR, report it in your summary, and stop there.",
   [RULE_GIT_PUSH_FORCE]:
     'Force-pushing rewrites history someone else may already have. Push a normal commit; if the branch really needs a rewrite, ask Alex.',
   [RULE_GIT_COMMIT_NO_VERIFY]:
     'The commit hooks are the check, not an obstacle. Fix what they report; if the bypass is genuinely required, ask Alex.',
 };
+
+const UNDETERMINED_GUIDANCE =
+  'The guard could not tell whether this session is a wave worker, and it denies the merge when it cannot tell. Report it and let Alex merge.';
+
+// Rules whose denial depends on the session context. Only merge is on this list;
+// putting a second rule here means deciding that the same command is acceptable
+// from the coordinator, which is a policy change, not a refactor.
+const WORKER_ONLY_RULES = new Set([RULE_GH_PR_MERGE]);
 
 const ALLOWED = { blocked: false };
 
@@ -308,10 +324,21 @@ export function classifyCommand(command) {
 }
 
 /**
+ * @param {string} rule One of the exported `RULE_*` constants.
+ * @returns {boolean} True when the denial depends on the session being a worker.
+ */
+export function isWorkerOnlyRule(rule) {
+  return WORKER_ONLY_RULES.has(rule);
+}
+
+/**
  * @param {{rule: string, wrapped: boolean}} finding Verdict from `classifyCommand`.
+ * @param {{undetermined?: boolean}} [context] Set `undetermined` when the denial
+ *   comes from not being able to tell whether this session is a worker.
  * @returns {string} Reason shown to the agent, naming the rule and the way out.
  */
-export function denialReason(finding) {
+export function denialReason(finding, { undetermined = false } = {}) {
   const origin = finding.wrapped ? 'wrapped in a shell' : 'called directly';
-  return `guard-destructive: blocked "${RULE_LABELS[finding.rule]}" (${origin}). ${RULE_GUIDANCE[finding.rule]}`;
+  const guidance = undetermined ? UNDETERMINED_GUIDANCE : RULE_GUIDANCE[finding.rule];
+  return `guard-destructive: blocked "${RULE_LABELS[finding.rule]}" (${origin}). ${guidance}`;
 }
