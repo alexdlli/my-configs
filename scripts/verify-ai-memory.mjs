@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-// verify-ai-memory.mjs — non-destructive end-to-end check for the local-Ollama
-// ai-memory setup. Mirrors the verification checklist in the runbook.
+// verify-ai-memory.mjs — non-destructive end-to-end check for the ai-memory
+// setup. Mirrors the verification checklist in the runbook.
+//
+// The LLM backend is *detected*, never assumed: the container's own
+// AI_MEMORY_LLM_* environment is what the server actually runs with, so a
+// claude-sub install is checked against the local `claude -p` shim and a
+// `--provider local` install against Ollama.
 //
 // Usage:
 //   node scripts/verify-ai-memory.mjs                 # run all checks
@@ -10,13 +15,31 @@
 // the wiki, never mutates Docker/LaunchAgent state. `ai-memory bootstrap` is run
 // with --dry-run, which the upstream docs document as collect-and-estimate only.
 //
-// Tunables (override via env if your setup differs):
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const MODEL = process.env.AI_MEMORY_MODEL || 'qwen3:8b';
+// Tunables (export these only when the container is not the source of truth,
+// e.g. a remote or native deploy):
+//   AI_MEMORY_CONTAINER     container name          (default: ai-memory)
+//   AI_MEMORY_REPO          repo for bootstrap      (default: cwd)
+//   AI_MEMORY_LLM_PROVIDER  provider override       (default: from container)
+//   AI_MEMORY_LLM_BASE_URL  openai-compat base URL  (default: from container)
+//   AI_MEMORY_LLM_MODEL     expected model          (default: from container)
+
+import { spawnSync } from 'node:child_process';
+
 const CONTAINER = process.env.AI_MEMORY_CONTAINER || 'ai-memory';
 const REPO = process.env.AI_MEMORY_REPO || process.cwd();
 
-import { spawnSync } from 'node:child_process';
+const LLM_ENV_KEYS = [
+  'AI_MEMORY_LLM_PROVIDER',
+  'AI_MEMORY_LLM_BASE_URL',
+  'AI_MEMORY_LLM_MODEL',
+];
+// Containers reach host services through this alias; from the host itself the
+// same service is on loopback.
+const DOCKER_HOST_ALIAS = 'host.docker.internal';
+const LOOPBACK_HOST = '127.0.0.1';
+const OLLAMA_DEFAULT_PORT = '11434';
+const HTTP_TIMEOUT_MS = 5000;
+const CMD_TIMEOUT_MS = 60000;
 
 const jsonMode = process.argv.includes('--json');
 const results = [];
@@ -31,7 +54,7 @@ function record(name, status, detail) {
 
 // Run a command; return {ok, stdout, stderr, code} without throwing.
 function sh(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 60000, ...opts });
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: CMD_TIMEOUT_MS, ...opts });
   return {
     ok: r.status === 0,
     code: r.status,
@@ -42,28 +65,149 @@ function sh(cmd, args, opts = {}) {
 }
 
 function have(bin) {
-  return !sh('command', ['-v', bin], { shell: false }).missing && sh(bin, ['--version']).code !== null;
+  return sh('command', ['-v', bin]).ok;
 }
 
-// 1. Ollama reachable + model present
-async function checkOllama() {
+// The server's own configuration, read from the container it runs in. Returns
+// null when it cannot be read at all (no docker, no container) — which is not
+// the same as an empty config (a zero-LLM install).
+function containerLlmEnv() {
+  if (!have('docker')) return null;
+  const r = sh('docker', ['inspect', '-f', '{{range .Config.Env}}{{println .}}{{end}}', CONTAINER]);
+  if (!r.ok) return null;
+  const found = {};
+  for (const line of r.stdout.split('\n')) {
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq);
+    if (LLM_ENV_KEYS.includes(key)) found[key] = line.slice(eq + 1);
+  }
+  return found;
+}
+
+// shim | ollama | remote-api | none | unknown
+function classifyBackend(provider, baseUrl) {
+  if (!provider) return 'none';
+  if (provider === 'anthropic' || provider === 'anthropic-oauth') return 'remote-api';
+  if (provider !== 'openai-compat') return 'unknown';
+  const url = parseUrl(baseUrl);
+  if (!url) return 'unknown';
+  return url.port === OLLAMA_DEFAULT_PORT ? 'ollama' : 'shim';
+}
+
+function parseUrl(raw) {
   try {
-    const res = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return record('Ollama API', 'FAIL', `GET /api/tags → HTTP ${res.status}`);
-    const body = await res.json();
-    const names = (body.models || []).map((m) => m.name);
-    record('Ollama API', 'PASS', `${OLLAMA_URL} reachable`);
-    if (names.some((n) => n === MODEL || n.startsWith(MODEL + ':') || n.startsWith(MODEL))) {
-      record('Ollama model', 'PASS', `${MODEL} present`);
-    } else {
-      record('Ollama model', 'FAIL', `${MODEL} not pulled (have: ${names.join(', ') || 'none'}). Run: ollama pull ${MODEL}`);
-    }
-  } catch (e) {
-    record('Ollama API', 'FAIL', `${OLLAMA_URL} unreachable (${e.name}). Is \`ollama serve\` running?`);
+    return new URL(raw);
+  } catch {
+    return null;
   }
 }
 
-// 2. Docker + ai-memory container running
+// Same service, addressed from the host instead of from inside the container.
+function hostFacingUrl(baseUrl) {
+  const url = parseUrl(baseUrl);
+  if (url && url.hostname === DOCKER_HOST_ALIAS) url.hostname = LOOPBACK_HOST;
+  return url;
+}
+
+function detectLlmConfig() {
+  const fromContainer = containerLlmEnv();
+  const config = {
+    provider: process.env.AI_MEMORY_LLM_PROVIDER || fromContainer?.AI_MEMORY_LLM_PROVIDER,
+    baseUrl: process.env.AI_MEMORY_LLM_BASE_URL || fromContainer?.AI_MEMORY_LLM_BASE_URL,
+    model: process.env.AI_MEMORY_LLM_MODEL || fromContainer?.AI_MEMORY_LLM_MODEL,
+  };
+  const determined = fromContainer !== null || config.provider;
+  return {
+    ...config,
+    kind: determined ? classifyBackend(config.provider, config.baseUrl) : 'undetermined',
+  };
+}
+
+async function getJson(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// claude-sub: the openai-compat base URL points at scripts/claude-openai-shim.mjs.
+async function checkShim(config) {
+  const url = hostFacingUrl(config.baseUrl);
+  if (!url) return record('LLM backend', 'FAIL', `unparsable base URL "${config.baseUrl}"`);
+  try {
+    const health = await getJson(`${url.origin}/healthz`);
+    if (!health?.ok) {
+      return record('LLM backend', 'FAIL', `${url.origin}/healthz did not report ok`);
+    }
+    record('LLM backend', 'PASS', `claude -p shim up at ${url.origin} (backend: ${health.backend})`);
+    if (config.model && health.model && health.model !== config.model) {
+      record('LLM model', 'WARN', `server asks for ${config.model}, shim defaults to ${health.model}`);
+    } else {
+      record('LLM model', 'PASS', config.model || health.model || '(shim default)');
+    }
+  } catch (e) {
+    record(
+      'LLM backend',
+      'FAIL',
+      `${url.origin}/healthz unreachable (${e.message}). Check the LaunchAgent: ` +
+        'launchctl list | grep claude-openai-shim',
+    );
+  }
+}
+
+// --provider local: the openai-compat base URL points at Ollama/LM Studio.
+async function checkOllama(config) {
+  const url = hostFacingUrl(config.baseUrl);
+  if (!url) return record('LLM backend', 'FAIL', `unparsable base URL "${config.baseUrl}"`);
+  const modelsUrl = `${url.origin}${url.pathname.replace(/\/$/, '')}/models`;
+  try {
+    const body = await getJson(modelsUrl);
+    const ids = (body.data || []).map((m) => m.id);
+    record('LLM backend', 'PASS', `Ollama reachable at ${url.origin}`);
+    if (!config.model) {
+      return record('LLM model', 'WARN', `no AI_MEMORY_LLM_MODEL configured (have: ${ids.join(', ') || 'none'})`);
+    }
+    if (ids.some((id) => id === config.model || id.startsWith(`${config.model}:`))) {
+      record('LLM model', 'PASS', `${config.model} present`);
+    } else {
+      record('LLM model', 'FAIL', `${config.model} not pulled (have: ${ids.join(', ') || 'none'}). Run: ollama pull ${config.model}`);
+    }
+  } catch (e) {
+    record('LLM backend', 'FAIL', `${modelsUrl} unreachable (${e.message}). Is \`ollama serve\` running?`);
+  }
+}
+
+async function checkLlmBackend(config) {
+  switch (config.kind) {
+    case 'shim':
+      return checkShim(config);
+    case 'ollama':
+      return checkOllama(config);
+    case 'remote-api':
+      return record(
+        'LLM backend',
+        'SKIP',
+        `provider ${config.provider} calls a remote API — no local endpoint to probe; credential health shows up in \`ai-memory status\``,
+      );
+    case 'none':
+      return record('LLM backend', 'SKIP', 'zero-LLM install (no AI_MEMORY_LLM_PROVIDER) — no backend to verify');
+    case 'undetermined':
+      return record(
+        'LLM backend',
+        'SKIP',
+        `could not read AI_MEMORY_LLM_* from container "${CONTAINER}" — backend NOT verified. ` +
+          'Export AI_MEMORY_LLM_PROVIDER/AI_MEMORY_LLM_BASE_URL to check a remote or native deploy',
+      );
+    default:
+      return record(
+        'LLM backend',
+        'WARN',
+        `unrecognised provider "${config.provider}" (base URL: ${config.baseUrl || 'none'}) — not verified`,
+      );
+  }
+}
+
+// Docker + ai-memory container running
 function checkContainer() {
   if (!have('docker')) return record('Docker', 'SKIP', 'docker not found — native/remote deploy?');
   const ps = sh('docker', ['ps', '--filter', `name=${CONTAINER}`, '--format', '{{.Names}} {{.Status}}']);
@@ -75,13 +219,13 @@ function checkContainer() {
   if (psa.stdout.includes(CONTAINER)) {
     record('ai-memory container', 'FAIL', `exists but not running: ${psa.stdout.split('\n')[0]}`);
   } else {
-    record('ai-memory container', 'FAIL', 'no container — run setup-ai-memory.mjs --provider local');
+    record('ai-memory container', 'FAIL', 'no container — run setup-ai-memory.mjs');
   }
   return false;
 }
 
-// 3. ai-memory status + provider health (via wrapper if present, else docker exec)
-function checkStatus() {
+// ai-memory status + provider health (via wrapper if present, else docker exec)
+function checkStatus(config) {
   let r;
   if (have('ai-memory')) r = sh('ai-memory', ['status', '--json']);
   else if (have('docker')) r = sh('docker', ['exec', CONTAINER, 'ai-memory', 'status', '--json']);
@@ -91,19 +235,23 @@ function checkStatus() {
   let parsed;
   try { parsed = JSON.parse(r.stdout); } catch { /* status may not be pure JSON on all versions */ }
   record('ai-memory status', 'PASS', 'server responded');
+
   const blob = (r.stdout || '').toLowerCase();
-  const provider = parsed?.llm?.provider || (blob.includes('openai-compat') ? 'openai-compat' : '(unknown)');
-  if (blob.includes('openai-compat') || provider === 'openai-compat') {
-    record('LLM provider', 'PASS', `openai-compat (Ollama) — model expected: ${MODEL}`);
+  const expected = config.provider;
+  const reported = parsed?.llm?.provider;
+  if (!expected) {
+    record('LLM provider', 'SKIP', `status reports "${reported || '(not in output)'}" — nothing detected to compare against`);
+  } else if (reported === expected || blob.includes(expected.toLowerCase())) {
+    record('LLM provider', 'PASS', `${expected} — as configured on the container`);
   } else {
-    record('LLM provider', 'WARN', `provider reads "${provider}" — expected openai-compat for local Ollama`);
+    record('LLM provider', 'WARN', `status reports "${reported || '(not in output)'}" but the container is configured for "${expected}"`);
   }
   if (blob.includes('unhealthy') || blob.includes('error')) {
     record('Provider health', 'WARN', 'status text mentions unhealthy/error — inspect `ai-memory status`');
   }
 }
 
-// 4. bootstrap --dry-run proves the LLM provider is actually reachable from the server
+// bootstrap --dry-run proves the LLM provider is actually reachable from the server
 function checkBootstrapDryRun() {
   let r;
   if (have('ai-memory')) r = sh('ai-memory', ['bootstrap', '--dry-run'], { cwd: REPO });
@@ -118,7 +266,7 @@ function checkBootstrapDryRun() {
   }
 }
 
-// 5. Wiki is git-versioned (proves capture is being committed)
+// Wiki is git-versioned (proves capture is being committed)
 function checkWikiGit() {
   if (!have('docker')) return record('Wiki git history', 'SKIP', 'docker not available');
   const log = sh('docker', ['exec', CONTAINER, 'git', '-C', '/data/wiki', 'log', '--oneline', '-n', '5']);
@@ -127,10 +275,17 @@ function checkWikiGit() {
 }
 
 async function main() {
-  if (!jsonMode) console.log(`ai-memory verify  (model=${MODEL}, container=${CONTAINER}, repo=${REPO})\n`);
-  await checkOllama();
+  const config = detectLlmConfig();
+  if (!jsonMode) {
+    console.log(
+      `ai-memory verify  (container=${CONTAINER}, backend=${config.kind}, ` +
+        `model=${config.model || 'n/a'}, repo=${REPO})\n`,
+    );
+  }
+
   const up = checkContainer();
-  if (up) { checkStatus(); checkBootstrapDryRun(); checkWikiGit(); }
+  await checkLlmBackend(config);
+  if (up) { checkStatus(config); checkBootstrapDryRun(); checkWikiGit(); }
   else record('Downstream checks', 'SKIP', 'container not running — fix that first');
 
   const fails = results.filter((r) => r.status === 'FAIL').length;
