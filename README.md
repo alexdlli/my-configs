@@ -29,7 +29,7 @@ cd ~/Developer/my-configs
 node scripts/install.mjs
 ```
 
-That symlinks `~/.claude/agents` and `~/.claude/hooks` to this checkout, and deep-merges the harness keys (`agent`, `permissions.allow`, `hooks.SessionStart`, `hooks.UserPromptSubmit`, `hooks.PreCompact`) into your `~/.claude/settings.json`. Existing keys (theme, plugins, etc.) are preserved.
+That symlinks `~/.claude/agents` and `~/.claude/hooks` to this checkout, and deep-merges the harness keys (`agent`, `permissions.allow`, and every hook event declared in `.claude/settings.json`) into your `~/.claude/settings.json`. Existing keys (theme, plugins, etc.) are preserved.
 
 Open a new Claude Code session anywhere and run `/agents` — `orchestrator` should be active.
 

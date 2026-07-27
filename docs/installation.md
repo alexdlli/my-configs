@@ -18,7 +18,7 @@ When you run `node scripts/install.mjs`, it:
 2. Deep-merges harness keys into `~/.claude/settings.json`:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
-   - `hooks.SessionStart`, `hooks.UserPromptSubmit` and `hooks.PreCompact` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd)
+   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd)
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
 
 Other keys in your `~/.claude/settings.json` (`theme`, `enabledPlugins`, `extraKnownMarketplaces`, anything custom) are left untouched.
