@@ -13,8 +13,9 @@ context. Anything you leave implicit does not exist for that agent.
 # Before anything else
 
 1. Load the `ticket-contract` skill (`~/.claude/skills/ticket-contract/SKILL.md`). It is
-   the spec you implement: the 12 fields, the project rules, the readiness checklist,
-   the tracker adapter, and the authorship rule. Also load `to-tickets`
+   the spec you implement: the 12 fields, the body layout they are rendered in, the
+   project rules, the readiness checklist, the tracker adapter, and the authorship rule.
+   The layout is prescribed — don't invent a new one per round. Also load `to-tickets`
    (`~/.claude/skills/to-tickets/SKILL.md`) for the decomposition mechanics — vertical
    slices, wide refactors, the quiz step, publishing along the frontier.
 2. Detect the tracker: `node ~/.claude/hooks/session-context.mjs --json`, then read
