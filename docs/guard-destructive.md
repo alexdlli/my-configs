@@ -200,27 +200,69 @@ Mesmo padrao dos outros hooks do harness (`CLAUDE_SETUP_SKIP_ORCH_REMINDER`,
 ]
 ```
 
-O installer nao precisou de mudanca: ele deriva os eventos de hook do proprio
+Para registrar o hook o installer nunca precisou de mudanca: ele deriva os eventos do proprio
 `.claude/settings.json` do harness e reescreve o comando para caminho absoluto. Rodar
 `node scripts/install.mjs` e o que ativa o guard em `~/.claude/settings.json`.
+
+**Tirar `Bash(gh pr merge *)` do `deny`, porem, exigiu.** O merge de permissoes so sabia
+acrescentar, entao a entrada removida do harness continuava instalada para sempre em qualquer
+maquina com instalacao anterior — e enquanto ela estivesse la o comando morria antes do prompt e
+a politica nao existia na pratica. O installer agora **retrai** as entradas que ele proprio
+registrou em `~/.claude/.my-configs-managed.json` e que o harness nao declara mais. Uma regra que
+o Alex escreveu a mao nunca e tocada, mesmo escrita igualzinha a uma das nossas: o criterio e a
+metadata, nao o texto da entrada.
+
+Depois de qualquer mudanca no `deny`, rode `node scripts/install.mjs` e confira:
+
+```bash
+node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.HOME+"/.claude/settings.json","utf8")).permissions.deny)'
+```
 
 ## Verificacao
 
 Medido em Claude Code 2.1.220, Node 24.15.0, macOS, 2026-07-27, com
-`claude -p --dangerously-skip-permissions --output-format stream-json` num diretorio
-descartavel (sem remote, sem trabalho real). O `tool_result` observado:
+`claude -p --dangerously-skip-permissions --output-format stream-json` num repo descartavel
+criado por `mktemp -d`, **sem remote nenhum** — mais uma worktree de verdade
+(`git worktree add`) para o contexto de worker. O `tool_result` literal observado:
 
-| Comando tentado | Resultado |
+**Contexto de worker** (`.wave/worker.json` presente na raiz da worktree):
+
+| Comando tentado | `tool_result` |
 |---|---|
-| `git push --force origin scratch-guard-test` | `guard-destructive: blocked "git push --force" (called directly). ...` |
-| `bash -c "git push --force origin scratch-guard-test"` | `guard-destructive: blocked "git push --force" (wrapped in a shell). ...` |
-| `bash -c "git commit --no-verify -m guard-test"` | `guard-destructive: blocked "git commit --no-verify" (wrapped in a shell). ...` |
-| `bash -c "gh pr merge 999999"` | `guard-destructive: blocked "gh pr merge" ...` |
-| `git commit -m "docs: explain why --no-verify is banned"` | executou: `1 file changed, 1 insertion(+)` |
-| `echo "gh pr merge ..."` | executou, saida normal |
-| `gh pr merge --help` | negado pela camada `permissions.deny` (`Permission to use Bash ... has been denied`), **nao** pelo guard — o guard nao imprime decisao para essa forma |
+| `gh pr merge 999999` | `guard-destructive: blocked "gh pr merge" (called directly). A wave worker never merges...` |
+| `bash -c "gh pr merge 999999"` | `guard-destructive: blocked "gh pr merge" (wrapped in a shell). A wave worker never merges...` |
+| `git push --force origin main` | `guard-destructive: blocked "git push --force" (called directly). ...` |
+| `bash -c "git push --force origin main"` | `guard-destructive: blocked "git push --force" (wrapped in a shell). ...` |
+| `git commit --no-verify -m x` | `guard-destructive: blocked "git commit --no-verify" (called directly). ...` |
+| `bash -c "git commit --no-verify -m x"` | `guard-destructive: blocked "git commit --no-verify" (wrapped in a shell). ...` |
 
-Nenhum comando destrutivo chegou a rodar: o ponto e que o guard barra antes.
+**Contexto normal** (mesmo repo, sem marcador):
+
+| Comando tentado | `tool_result` |
+|---|---|
+| `gh pr merge 999999` | `Exit code 1 / no git remotes found` — **o `gh` respondeu**, ou seja o guard nao negou e o `deny` tambem nao |
+| `bash -c "gh pr merge 999999"` | `Exit code 1 / no git remotes found` — idem, envelopado |
+| `git push --force origin main` | `guard-destructive: blocked "git push --force" (called directly). ...` |
+| `bash -c "git push --force origin main"` | `guard-destructive: blocked "git push --force" (wrapped in a shell). ...` |
+| `git commit --no-verify -m x` | `guard-destructive: blocked "git commit --no-verify" (called directly). ...` |
+| `bash -c "git commit --no-verify -m x"` | `guard-destructive: blocked "git commit --no-verify" (wrapped in a shell). ...` |
+
+As duas linhas de merge do contexto normal sao o ponto da mudanca: o comando chegou ao `gh`, que
+falhou por conta propria. Sob `-p` nao da para exercitar o prompt de permissao, entao o que se
+prova ali e que **o guard nao emite `permissionDecision: "deny"`** — confirmado tambem alimentando
+o payload direto no hook: stdout vazio, `exit 0`.
+
+**Contexto indeterminado**, com o marcador truncado (`{"ticket":"9",`) e com payload sem ancora
+nenhuma, alimentado direto no hook instalado:
+
+```text
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",
+ "permissionDecisionReason":"guard-destructive: blocked \"gh pr merge\" (called directly).
+ The guard could not tell whether this session is a wave worker, and it denies the merge
+ when it cannot tell. Report it and let Alex merge."}}
+```
+
+Nenhum comando destrutivo chegou a rodar.
 
 ## Testes
 
@@ -231,3 +273,9 @@ node --test '.claude/hooks/lib/*.test.mjs'
 `classifyCommand(command)` recebe a linha de comando e devolve o veredito — puro, sem processo
 e sem disco, exatamente para ser testavel sem sessao. A tabela de "o que nao pega" tem teste
 proprio: quando uma dessas linhas mudar de ideia, o teste que a fixa quebra junto.
+
+`detectWorkerContext(env, cwd)` toca o disco por definicao, entao o teste dela monta arvores
+reais em `mkdtemp`: worktree com marcador, marcador truncado, marcador ilegivel, marcador acima
+da raiz do repo, e o caso do worker que deu `cd` para fora. Os tres vereditos — `worker`,
+`other`, `indeterminate` — tem teste cada um, porque confundir `indeterminate` com `other` e
+exatamente o bug que liberaria um merge.
