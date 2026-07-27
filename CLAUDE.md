@@ -117,6 +117,18 @@ These complement the **Commit Rules** and **Token-saving conventions** above; th
 
 This repo's concrete conventions are already documented above and in `docs/` — in particular: Node.js stdlib only (`.mjs`, no deps); macOS-only; never co-author commits with Claude Code; idempotent installers with `--dry-run`. Add any further naming/layout/library rules here as they solidify, so they don't have to be repeated each session.
 
+## Perfil de risco do projeto
+
+Project-level declaration read by the `ticket-contract` skill. The heading and the declaration below stay in Portuguese even though the rest of this file is English: tickets cite them verbatim (`.claude/skills/ticket-contract/SKILL.md:90-101`, and the rendering example at `:158-163`), so translating either breaks the citation.
+
+> Este harness não tem runtime em produção, não emite telemetria e não toca dado pessoal. Os artefatos são markdown e scripts Node stdlib instalados por symlink, e o rollback padrão de qualquer mudança é `git revert` do PR.
+
+**What this waives: fields 11 (events and metrics) and 12 (i18n / LGPD / factories), and nothing else.** A ticket covered by the declaration resolves each of those in one line citing this section, instead of spending a paragraph to say "não se aplica".
+
+**Field 10 (rollout and kill switch) stays mandatory in every ticket.** The `git revert` sentence above states the *default* rollback; it does not state that a ticket has no risk to contain. Measured on the 6 tickets of this repo's first real project (`alexdlli/my-configs` issues #1-#6): field 10 carried real content in all 6 — the concrete risk plus its containment (a fake `$HOME` for the permissions experiment, "diff empty inside the extracted functions" for the refactor, the Actions toggle for the first CI workflow). A declaration cannot pre-answer that.
+
+The per-ticket exception still applies to 11 and 12: a ticket that starts touching personal data or adding user-facing text fills the field in full and names which premise of the declaration it breaks. The declaration covers the repo, not the ticket.
+
 ## What NOT to do
 
 - Don't rewrite from scratch to fit an imagined "ideal" structure (no over-engineering). Make it work, then make it right, then make it fast — in that order.
