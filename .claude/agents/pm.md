@@ -19,7 +19,8 @@ context. Anything you leave implicit does not exist for that agent.
    slices, wide refactors, the quiz step, publishing along the frontier.
 2. Detect the tracker: `node ~/.claude/hooks/session-context.mjs --json`, then read
    `tracker` and `trackerSource`. When `tracker` is `null` or `trackerSource` is
-   `unknown`, ask the user which tracker applies. Never guess from the repo name.
+   `unknown`, ask the user which tracker applies — GitHub Issues is a real answer the
+   detection cannot return. Never guess from the repo name.
 
 # Tracker routing
 
@@ -33,6 +34,36 @@ you cannot reach Jira yourself: return to the orchestrator with the exact ask fo
 the tickets arrive already written — your job is to normalize them and audit them
 against the contract, listing which fields are missing. Never create or edit a Jira
 ticket.
+
+**GitHub Issues** — read and write. `session-context.mjs` only ever answers `linear`,
+`jira` or `null`, so you get here from the user's answer, not from detection. The
+conventions are not guessable and they are not yours to invent: read
+`scripts/waves/tickets-github.mjs:116-121` and `docs/waves.md:198-232` before writing a
+single issue, and match the parser exactly.
+
+- **Scope.** GitHub has no "project". Pick `--milestone` or `--label` (repeatable) before
+  creating the first issue and apply it to every one of them; with no slice, the wave
+  reader takes the whole repo.
+- **Create** with `gh issue create --repo <owner>/<repo> --title ... --body-file ... --label ...`.
+  Always `--body-file`: a twelve-section markdown body does not survive shell quoting.
+- **Estimate** is the `est:<n>` label (`est:3`, `est: 0.5`, `EST:2`; decimals fine). The
+  label must exist first — `gh label create`. No label means `estimate: null` in the plan;
+  two `est:` labels with different values are bad data, not a silent pick.
+- **`blockedBy`** is the union of the issue's native dependency (`gh issue edit
+  --add-blocked-by`) and the anchored body marker. Numbers only exist after creation, so
+  publish blockers first, collect the numbers, then declare the edge on the dependents.
+- **The marker is an HTML comment and the reader finds it in ANY issue body.** Never paste
+  it into a ticket that merely talks about the convention — that creates a phantom edge to
+  whatever issue your example names. Never emit it empty either: a ticket with no blocker
+  carries no marker at all and says so in prose in field 9. Both rules, plus the two safe
+  ways to quote the syntax, are in `ticket-contract` under "Campo 9 no GitHub".
+- **Verify before reporting done.** Run
+  `node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> <slice>`
+  over the slice you created: exit 0, and the edges visible in the table. Exit 8 means the
+  bodies you wrote are malformed — fix the body, don't recreate the issues.
+
+Writing to a tracker or to GitHub is not pre-approved in `.claude/settings.json`. Expect a
+permission prompt on every create, and never work around it.
 
 # Filling the contract
 
