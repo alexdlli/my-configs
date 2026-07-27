@@ -72,7 +72,7 @@ dispensa: veja "Declaração de perfil do projeto", logo abaixo da tabela.
 | 6 | Módulos, funções e arquivos afetados | Onde mexer, com `path` e símbolo. Marque o que é ponto de partida verificado vs. palpite a confirmar. |
 | 7 | Acceptance criteria | Lista verificável, uma condição por item, cada uma testável sem interpretação. |
 | 8 | Cenários de teste | Os casos que provam o AC: caminho feliz, borda, falha. Diz o que testar, não o arquivo de teste a criar. |
-| 9 | Dependências em `blockedBy` | Só arestas reais, declaradas explicitamente. Nunca inferidas de título, numeração ou ordem de escrita. |
+| 9 | Dependências em `blockedBy` | Só arestas reais, declaradas explicitamente. Nunca inferidas de título, numeração ou ordem de escrita. A **ausência** de aresta também é declarada, com o motivo. |
 | 10 | Rollout e kill switch | Quando há risco: flag, plano de rollback, quem/como desliga. Ticket sem risco declara "sem rollout especial". |
 | 11 | Eventos e métricas | Como se sabe, em produção, que a feature funciona — evento emitido, métrica, log estruturado. |
 | 12 | i18n, LGPD e factories | Chaves de tradução, dado pessoal tocado (base legal, retenção, anonimização) e factories/fixtures a criar ou estender. |
@@ -134,6 +134,8 @@ existe — pergunte ao usuário em vez de escrever uma por conta própria.
 
 - Ruim: `blockedBy: PAY-11` porque PAY-11 tem número menor e "parece vir antes".
 - Bom: `blockedBy: PAY-11 — este ticket consome o campo CardStatus.expired que PAY-11 cria no schema`. Sem uma frase dessas, a aresta não existe.
+- Ruim: campo vazio, ou "nenhuma". Ausência sem motivo não distingue grafo plano de aresta esquecida.
+- Bom (sem aresta): `Nenhuma — pode começar agora. PAY-13 edita o mesmo arquivo, mas os símbolos são disjuntos: lá é o parser, aqui é o formatador de saída.`
 
 ## Campo 9 no GitHub: as duas armadilhas do marcador
 
@@ -216,6 +218,8 @@ soltar o agente.
 - [ ] Existe pelo menos um `path` concreto no campo 6, e ele existe no repo hoje.
 - [ ] Cada `blockedBy` tem uma frase dizendo **o que** este ticket consome do bloqueador.
 - [ ] Nenhum `blockedBy` foi inferido de ordem, numeração ou título.
+- [ ] Ticket **sem** `blockedBy` diz, em uma frase, por que não depende de nada. Ausência sem justificativa é indistinguível de aresta esquecida, e aresta esquecida vira a onda 1 gigante contra a qual a `wave-orchestration` alerta.
+- [ ] Quando dois tickets tocam o mesmo arquivo e nenhum bloqueia o outro, essa frase diz por que as regiões são disjuntas — é onde qualquer revisor desconfia de aresta faltando.
 - [ ] Nada no corpo depende de contexto de conversa ("como discutimos", "o de sempre", "igual ao outro").
 - [ ] A estimativa é ≤ 5 pontos.
 - [ ] A estimativa vem com uma frase dizendo o que a sustenta: quantos arquivos, se há mecanismo novo a construir, que incerteza sobra depois do campo 5. Número sozinho é palpite com dígito.

@@ -43,6 +43,10 @@ ticket.
   happened to write them in. Either read the real relation (`orca linear issue <id>
   --relations --json`) or ask the user. Each edge carries one sentence saying what this
   ticket consumes from the blocker; no sentence, no edge.
+- **The absence of an edge is a claim too.** Every ticket with an empty `blockedBy` says,
+  in one sentence, why it depends on nothing — otherwise a flat graph reads exactly like a
+  forgotten edge. When two tickets touch the same file and neither blocks the other, that
+  sentence says why the regions are disjoint.
 - **When a field can't be filled honestly, ask.** A question to the user costs a turn.
   An invented acceptance criterion costs a wrong implementation and a wasted review.
   Batch your questions into one round instead of drip-feeding them.
