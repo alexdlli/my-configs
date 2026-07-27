@@ -50,6 +50,53 @@ Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-
 
 `pr-triage` goes one step further and has no `Bash` at all. The thread bodies it reads are untrusted input — anyone who can comment on a PR writes text that lands in its context, and review comments routinely contain "run this" or "apply this patch". Denying it every writing and executing tool is what makes prompt injection through a comment a non-event: the worst a malicious comment can achieve is a wrong recommendation, which a human reads before anything happens.
 
+## Skills
+
+Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. Five ship with the harness, under `.claude/skills/`.
+
+| Skill | What it owns |
+|-------|--------------|
+| `ticket-contract` | The 12 fields a ticket needs in order to work as a standalone agent prompt, plus the project-creation rules, the readiness check and the tracker adapter. Source of truth for the `pm` agent. |
+| `orca-linear` | Discovery stub for the `orca linear` CLI — reading, creating and triaging Linear issues. Deliberately thin: the full, version-matched guide comes from the binary via `orca skills get orca-linear`. |
+| `adversarial-review` | Reviewing a diff through two independent lenses. Spawns `reviewer` twice in parallel, each with a distinct lens and fresh context, then confronts the two reports. |
+| `wave-orchestration` | Planning execution in waves from a ticket dependency graph: how to build the graph, how to present the plan, and the wave's non-negotiable rules. |
+| `pr-babysitting` | Driving an open PR to review-ready, tracking CI and feedback as two independent states. Uses `pr-state.mjs` and `fetch-pr-threads.mjs`, and delegates thread classification to `pr-triage`. |
+
+### Two different things are called a "contract"
+
+The names are close enough to merge in a reader's head, so keep them apart:
+
+| | Skill `ticket-contract` | File `.wave/<ticket>/contract.md` |
+|---|---|---|
+| What it governs | Quality of the **ticket** — the 12 fields that make a ticket usable as an agent prompt | The **interface** between `implementer` and `tester` while one ticket is executed: signatures, types, error behavior, scenario list |
+| Who writes it | `pm`, when the project is created | Both agents, in parallel, before either writes code |
+| When it exists | Before the wave starts | Inside the execution of a single ticket |
+| Lifetime | Lives in the tracker | Working state; `.wave/` is gitignored |
+
+Neither replaces the other. The ticket contract decides whether work is ready to start; the wave contract keeps two parallel agents building and testing the same shape.
+
+### How skills are installed
+
+The installer links `.claude/skills` **one entry at a time** into `~/.claude/skills`, and never symlinks the directory itself. That directory is shared ground: plugins and other toolkits (argent, maestri, tentrai, ...) install their skills there too, and linking the directory would hide all of them at once.
+
+A name that already exists in `~/.claude/skills` and is not one of our links is **reported and skipped** — never overwritten, never backed up. The harness only ever owns names it created.
+
+The same mechanism exposes skills that live outside the harness. `EXTERNAL_SKILL_LINKS` in `scripts/install.mjs` maps a skill name to an absolute source path; today it links `orca-cli` from `~/.agents/skills/orca-cli`, since Claude Code only loads what lives under `~/.claude/skills`. If the source is missing, the installer says so and moves on.
+
+## Slash commands
+
+One `.md` per command under `.claude/commands/`, symlinked as a whole directory into `~/.claude/commands/` (unlike skills — that path is not shared with third parties). A new command file is live as soon as it is pulled; it needs no re-install.
+
+| Command | What it does |
+|---------|--------------|
+| `/sync-harness` | Force a harness update now, bypassing only the 6h throttle. All other safety checks still apply. |
+| `/ticket-new` | Turn a discussion, spec or raw scope into tickets that satisfy the ticket contract. Spawns `pm`; approval is required before anything is published to the tracker. |
+| `/review-adversarial` | Adversarial review of the diff against a base (default `main`) via the `adversarial-review` skill. |
+| `/wave-plan` | Read a Linear project, build its dependency graph, and print the wave plan via the `wave-orchestration` skill. |
+| `/pr-babysit` | Drive a PR to review-ready via the `pr-babysitting` skill, with CI and feedback tracked as separate states. |
+
+The wave and PR commands invoke `scripts/waves/*` through the `~/.claude/harness` symlink, so their paths are stable regardless of where the checkout lives. Their read-only invocations are pre-approved in `.claude/settings.json`; the tracker writes they may lead to (`orca linear create`, `status set`, `comment add`, `attach`) are not, and prompt every time.
+
 ## Troubleshooting
 
 **The orchestrator isn't being used**

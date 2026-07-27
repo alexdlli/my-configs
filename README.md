@@ -23,6 +23,8 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 
 Plus four hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, and one that reports the terminal host and account context.
 
+Five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the five slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+
 ## Install
 
 ```bash
@@ -56,19 +58,25 @@ Removes only the links this installer created (matched by recorded target) and r
 ```
 .claude/
 ├── agents/              # orchestrator + specialists
-├── hooks/               # orchestrator reminder + preserve-orchestrator + auto-update
-├── commands/            # slash commands (/sync-harness)
-├── skills/              # skills, linked one by one into ~/.claude/skills
+├── hooks/               # orchestrator reminder, preserve-orchestrator, auto-update, session-context
+│   └── lib/             # shared hook helpers (+ their tests)
+├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan /pr-babysit
+├── skills/              # ticket-contract, orca-linear, adversarial-review,
+│                        # wave-orchestration, pr-babysitting — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
+├── waves/               # ticket graph + wave plan + PR state/threads readers (+ tests)
 ├── setup-ai-memory.mjs  # one-shot ai-memory (long-term memory) setup
 ├── verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
 ├── backup-ai-memory.mjs # ai-memory volume backup, rotation + daily LaunchAgent
 └── claude-openai-shim.mjs  # OpenAI-compat shim over `claude -p` (subscription)
 docs/
-├── agent-system.md      # full agent reference
-└── installation.md      # detailed install + troubleshooting
+├── agent-system.md      # full agent, skill and command reference
+├── installation.md      # detailed install + troubleshooting
+├── contributing.md      # conventions for working on this harness
+├── waves.md             # ticket contract, dependency graph, wave plan
+└── integrations/        # orca, ecotokens, ai-memory
 ```
 
 ## Why
