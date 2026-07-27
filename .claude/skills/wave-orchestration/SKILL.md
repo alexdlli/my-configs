@@ -254,11 +254,11 @@ NEW=$(orca worktree create \
   --json)
 WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
 
-orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
-  --command 'claude --dangerously-skip-permissions' --json
-
-HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
-  | jq -r '.result.terminals[] | select(.title == "w1-issue-3") | .handle')
+TERM=$(orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
+  --command 'claude --dangerously-skip-permissions' --json)
+HANDLE=$(jq -r '.result.terminal.handle // .result.handle // empty' <<<"$TERM")
+[ -n "$HANDLE" ] || HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
+  | jq -r '.result.terminals[] | select(.title | contains("w1-issue-3")) | .handle')
 
 orca terminal wait --terminal "$HANDLE" --for tui-idle --timeout-ms 60000 --json
 orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
@@ -272,15 +272,18 @@ orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --ente
 | `--base-branch origin/main` | O corte. Depende do passo 1 ter rodado |
 | `--issue <n>` / `--linear-issue <id\|url>` | Vincula o worktree ao ticket. GitHub usa `--issue`, Linear usa `--linear-issue` |
 | `--setup` | `inherit` é o default. Passe `--setup run` quando o ticket precisa das deps instaladas para rodar teste |
-| `--title` no `terminal create` | O mesmo nome do worktree. É por ele que você reacha o handle, e é o que distingue o terminal do agente do shell de fallback |
+| `--title` no `terminal create` | O mesmo nome do worktree. É o que distingue o terminal do agente do shell de fallback, e o plano B para reachar o handle |
 
 Três detalhes que fazem esse caminho falhar em silêncio:
 
 - **`wait --for tui-idle` não é opcional.** Texto mandado para um TUI que ainda
   está subindo é perdido, e a perda é silenciosa: o terminal fica lá, vazio,
   parecendo um agente pensando. Sempre com `--timeout-ms`.
-- **Pegue o handle pelo `--title`, não pelo envelope do `terminal create`.** O
-  título é seu e é estável; o envelope varia entre runtimes.
+- **Pegue o handle logo depois do `terminal create`, e case o título por
+  `contains`, nunca por igualdade.** Um agente TUI reescreve o próprio título da
+  aba assim que sobe — um `w1-issue-3` vira algo como `⠐ w1-issue-3` ou o nome
+  que o agente escolher. Comparação exata funciona no primeiro segundo e para de
+  funcionar depois, que é o pior tipo de bug para depurar às cegas.
 - **Sem `--agent`, o create abre um shell de fallback** quando o repo não tem
   terminal default configurado. Mire só no handle do agente, e só feche o outro
   depois que `orca terminal list` confirmar que ele é um shell sem uso.
@@ -345,9 +348,10 @@ Uma linha por ticket, atualizada a cada create:
 - **Worktree id** é o `.result.worktree.id` do create, no formato
   `<repoId>::<path>`. Guarde **inteiro**; o `repoId` sozinho endereça o repo, não
   o worktree.
-- **Terminal handle** no caminho padrão vem do `orca terminal list --worktree
-  "id:<worktreeId>" --json`, filtrado pelo `--title`. No caminho curto
-  (`--agent`) ele sai do envelope do create, em `.result.agentTerminalHandle`;
+- **Terminal handle** no caminho padrão vem do envelope do `terminal create`,
+  com plano B em `orca terminal list --worktree "id:<worktreeId>" --json` casando
+  o título por `contains`. No caminho curto (`--agent`) ele sai do envelope do
+  `worktree create`, em `.result.agentTerminalHandle`;
   runtimes antigos devolvem só `.result.startupTerminal.handle`, então leia os
   dois:
 

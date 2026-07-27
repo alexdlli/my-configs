@@ -381,9 +381,11 @@ orca terminal send --terminal "<handle>" --text "$(cat .wave/3/prompt.md)" --ent
 ```
 
 O `wait` não é opcional — texto mandado a um TUI que ainda está subindo é perdido em silêncio.
-O handle sai de `orca terminal list --worktree "id:<worktreeId>" --json` filtrado pelo
-`--title`, que é estável porque é você que o define. O caminho curto (`--agent` + `--prompt`,
-um comando só) fica para quando o bypass está desligado naquele ticket.
+O handle sai do envelope do `terminal create`, com plano B em `orca terminal list --worktree
+"id:<worktreeId>" --json` casando o `--title` por `contains`: um agente TUI reescreve o próprio
+título da aba assim que sobe, então comparação exata funciona no primeiro segundo e para de
+funcionar depois. O caminho curto (`--agent` + `--prompt`, um comando só) fica para quando o
+bypass está desligado naquele ticket.
 
 ### Acompanhamento
 

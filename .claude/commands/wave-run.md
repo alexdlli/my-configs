@@ -62,8 +62,10 @@ orca terminal send --terminal "<handle>" --text "$(cat .wave/<ticket>/prompt.md)
 São dois passos porque `--agent` não aceita argv extra e o worker roda com
 `--dangerously-skip-permissions` **por padrão** — agente parado num prompt de
 permissão é agente bloqueado que ninguém está olhando. Para desligar num ticket,
-eu peço; é opt-out. O handle sai de `orca terminal list --worktree "id:<worktreeId>" --json`
-filtrado pelo `--title`.
+eu peço; é opt-out. O handle sai do envelope do `terminal create`, com plano B em
+`orca terminal list --worktree "id:<worktreeId>" --json` casando o `--title` por
+`contains` — um agente TUI reescreve o próprio título da aba assim que sobe, e
+comparação exata quebra logo depois.
 
 Como o bypass é o default, **as salvaguardas não podem depender da camada de
 permissão**: confira que o `prompt.md` de cada ticket contém, explícito, o "abra
@@ -82,9 +84,9 @@ escreva isso dentro do prompt com todas as letras ("`origin/main` já contém X 
 | Ticket | Worktree id | Branch | Terminal handle | PR |
 ```
 
-Worktree id inteiro (`<repoId>::<path>`). O handle vem do `orca terminal list`
-filtrado pelo `--title`; no caminho curto com `--agent`, de
-`.result.agentTerminalHandle` com fallback `.result.startupTerminal.handle`.
+Worktree id inteiro (`<repoId>::<path>`). No caminho curto com `--agent`, o
+handle vem de `.result.agentTerminalHandle`, com fallback
+`.result.startupTerminal.handle`.
 
 Esqueceu a linhagem de algum ticket? Não recrie:
 `orca worktree set --worktree "branch:<branch>" --parent-worktree "path:<parent>" --json`.
