@@ -174,9 +174,22 @@ aresta e por quê — o "por quê" é obrigatório, veja a checagem de prontidã
 
 ## Regras de criação de projeto
 
-- **Nunca existe ticket separado só para testes.** Teste é entregável do ticket que
-  criou o comportamento. Um ticket "escrever testes de X" é um ticket que aceitou X
-  incompleto.
+- **Ticket só de teste depende de o código já existir** — são dois casos com custos
+  opostos, e a regra antiga tratava os dois como o mesmo erro.
+  - **Planejando trabalho novo, nunca.** Quebrar uma feature em "implementar X" +
+    "testar X" é fatia horizontal: o teste é entregável do ticket que cria o
+    comportamento, e um ticket "escrever testes de X" é um ticket que aceitou X
+    incompleto. Aqui a dívida ainda nem existe — é o plano que a está criando.
+  - **Cobertura faltando de código já mergeado é dívida, e o ticket que a paga é
+    legítimo.** O comportamento já está em `main`, definido e em uso; criar o ticket
+    não causa a dívida, quita. Recusá-lo não faz teste nenhum aparecer, só mantém o
+    buraco sem dono.
+
+  O teste que separa os dois: **o comportamento a ser testado já está mergeado?** Se
+  sim, é dívida — e então o ticket nomeia os símbolos que cobre, não muda
+  comportamento (se precisar mudar para ficar testável, é ticket de refatoração, e o
+  teste vai dentro dele) e obedece às mesmas regras dos outros. Se o comportamento
+  nasce neste mesmo plano, o teste pertence ao ticket que o cria, sem exceção.
 - **Migration e schema ficam no mesmo ticket** que usa o schema. Migration solta
   entrega banco alterado e zero comportamento — não é fatia vertical.
 - **Não existe ticket de "foundation"** cheio de funções para uso futuro. Código sem
