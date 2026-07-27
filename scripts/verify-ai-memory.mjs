@@ -11,6 +11,13 @@
 //   node scripts/verify-ai-memory.mjs                 # run all checks
 //   node scripts/verify-ai-memory.mjs --json          # machine-readable summary
 //
+// Exit codes:
+//   0  everything that applies to this install was checked and passed
+//   1  at least one check failed
+//   2  nothing failed, but a missing prerequisite (docker, the CLI, the
+//      container) left part of the setup unverified — an unverified setup is
+//      not a verified setup, so it never reports success
+//
 // Zero deps, Node stdlib only (repo convention). Read-only: it never writes to
 // the wiki, never mutates Docker/LaunchAgent state. `ai-memory bootstrap` is run
 // with --dry-run, which the upstream docs document as collect-and-estimate only.
@@ -41,13 +48,20 @@ const OLLAMA_DEFAULT_PORT = '11434';
 const HTTP_TIMEOUT_MS = 5000;
 const CMD_TIMEOUT_MS = 60000;
 
+const EXIT_OK = 0;
+const EXIT_FAILED = 1;
+const EXIT_INCOMPLETE = 2;
+
 const jsonMode = process.argv.includes('--json');
 const results = [];
 
+// SKIP    — the check does not apply to this install (nothing to verify).
+// BLOCKED — the check applies but a prerequisite was missing, so it could not
+//           run. Never counted as success; see the exit codes above.
 function record(name, status, detail) {
   results.push({ name, status, detail });
   if (!jsonMode) {
-    const icon = { PASS: '✓', WARN: '!', FAIL: '✗', SKIP: '–' }[status] || '?';
+    const icon = { PASS: '✓', WARN: '!', FAIL: '✗', SKIP: '–', BLOCKED: '?' }[status] || '?';
     console.log(`${icon} ${name}${detail ? ` — ${detail}` : ''}`);
   }
 }
@@ -194,7 +208,7 @@ async function checkLlmBackend(config) {
     case 'undetermined':
       return record(
         'LLM backend',
-        'SKIP',
+        'BLOCKED',
         `could not read AI_MEMORY_LLM_* from container "${CONTAINER}" — backend NOT verified. ` +
           'Export AI_MEMORY_LLM_PROVIDER/AI_MEMORY_LLM_BASE_URL to check a remote or native deploy',
       );
@@ -209,7 +223,10 @@ async function checkLlmBackend(config) {
 
 // Docker + ai-memory container running
 function checkContainer() {
-  if (!have('docker')) return record('Docker', 'SKIP', 'docker not found — native/remote deploy?');
+  if (!have('docker')) {
+    record('Docker', 'BLOCKED', 'docker not found — cannot inspect the server container');
+    return false;
+  }
   const ps = sh('docker', ['ps', '--filter', `name=${CONTAINER}`, '--format', '{{.Names}} {{.Status}}']);
   if (ps.stdout.includes(CONTAINER)) {
     record('ai-memory container', 'PASS', ps.stdout.split('\n')[0]);
@@ -229,7 +246,7 @@ function checkStatus(config) {
   let r;
   if (have('ai-memory')) r = sh('ai-memory', ['status', '--json']);
   else if (have('docker')) r = sh('docker', ['exec', CONTAINER, 'ai-memory', 'status', '--json']);
-  else return record('ai-memory status', 'SKIP', 'neither ai-memory wrapper nor docker available');
+  else return record('ai-memory status', 'BLOCKED', 'neither the ai-memory wrapper nor docker is available');
 
   if (!r.ok) return record('ai-memory status', 'FAIL', (r.stderr || r.stdout || `exit ${r.code}`).split('\n')[0]);
   let parsed;
@@ -256,7 +273,7 @@ function checkBootstrapDryRun() {
   let r;
   if (have('ai-memory')) r = sh('ai-memory', ['bootstrap', '--dry-run'], { cwd: REPO });
   else if (have('docker')) r = sh('docker', ['exec', '-w', '/data', CONTAINER, 'ai-memory', 'bootstrap', '--dry-run']);
-  else return record('bootstrap --dry-run', 'SKIP', 'no ai-memory CLI available');
+  else return record('bootstrap --dry-run', 'BLOCKED', 'no ai-memory CLI available');
   if (!r.ok && !r.stdout) return record('bootstrap --dry-run', 'WARN', (r.stderr || `exit ${r.code}`).split('\n')[0]);
   try {
     const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')));
@@ -268,7 +285,7 @@ function checkBootstrapDryRun() {
 
 // Wiki is git-versioned (proves capture is being committed)
 function checkWikiGit() {
-  if (!have('docker')) return record('Wiki git history', 'SKIP', 'docker not available');
+  if (!have('docker')) return record('Wiki git history', 'BLOCKED', 'docker not available');
   const log = sh('docker', ['exec', CONTAINER, 'git', '-C', '/data/wiki', 'log', '--oneline', '-n', '5']);
   if (log.ok && log.stdout) record('Wiki git history', 'PASS', `${log.stdout.split('\n').length} recent commits`);
   else record('Wiki git history', 'WARN', 'no wiki git log yet — capture a session first');
@@ -285,17 +302,36 @@ async function main() {
 
   const up = checkContainer();
   await checkLlmBackend(config);
-  if (up) { checkStatus(config); checkBootstrapDryRun(); checkWikiGit(); }
-  else record('Downstream checks', 'SKIP', 'container not running — fix that first');
+  if (up) {
+    checkStatus(config);
+    checkBootstrapDryRun();
+    checkWikiGit();
+  } else {
+    record(
+      'Server-side checks',
+      'BLOCKED',
+      'no running container — status, bootstrap reachability and wiki git history were not checked',
+    );
+  }
 
   const fails = results.filter((r) => r.status === 'FAIL').length;
   const warns = results.filter((r) => r.status === 'WARN').length;
+  const blocked = results.filter((r) => r.status === 'BLOCKED');
+  const ok = fails === 0 && blocked.length === 0;
+
   if (jsonMode) {
-    console.log(JSON.stringify({ ok: fails === 0, fails, warns, results }, null, 2));
+    console.log(JSON.stringify({ ok, fails, warns, blocked: blocked.length, results }, null, 2));
   } else {
-    console.log(`\n${fails === 0 ? '✓ all critical checks passed' : `✗ ${fails} failed`}` + (warns ? `, ${warns} warning(s)` : ''));
+    let summary;
+    if (fails > 0) summary = `✗ ${fails} failed`;
+    else if (blocked.length > 0) {
+      summary = `? incomplete — not verified: ${blocked.map((r) => r.name).join(', ')}`;
+    } else summary = '✓ all critical checks passed';
+    console.log(`\n${summary}${warns ? `, ${warns} warning(s)` : ''}`);
   }
-  process.exit(fails === 0 ? 0 : 1);
+
+  if (fails > 0) process.exit(EXIT_FAILED);
+  process.exit(ok ? EXIT_OK : EXIT_INCOMPLETE);
 }
 
 main();
