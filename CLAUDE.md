@@ -119,7 +119,7 @@ This repo's concrete conventions are already documented above and in `docs/` —
 
 ## Perfil de risco do projeto
 
-Project-level declaration read by the `ticket-contract` skill. The heading and the declaration below stay in Portuguese even though the rest of this file is English: tickets cite them verbatim (`.claude/skills/ticket-contract/SKILL.md:90-101`, and the rendering example at `:158-163`), so translating either breaks the citation.
+Project-level declaration read by the `ticket-contract` skill. The heading and the declaration below stay in Portuguese even though the rest of this file is English: tickets cite them verbatim (`.claude/skills/ticket-contract/SKILL.md`, section "Declaração de perfil do projeto", and the rendering example under "Como renderizar os 12 campos"), so translating either breaks the citation.
 
 > Este harness não tem runtime em produção, não emite telemetria e não toca dado pessoal. Os artefatos são markdown e scripts Node stdlib instalados por symlink, e o rollback padrão de qualquer mudança é `git revert` do PR.
 
