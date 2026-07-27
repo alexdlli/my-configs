@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Install (or uninstall) the personal Claude Code harness into ~/.claude/.
 //
-// Symlinks ~/.claude/{agents,hooks} into the harness checkout, and deep-merges
+// Symlinks ~/.claude/{agents,hooks,commands} into the harness checkout, and deep-merges
 // a managed slice of ~/.claude/settings.json (agent, permissions.allow, and
 // every hook event the harness declares) without disturbing keys the user owns
 // (theme, enabledPlugins, extraKnownMarketplaces, ...).
@@ -30,7 +30,7 @@ const HOME = os.homedir();
 const TARGET_DIR = path.join(HOME, '.claude');
 const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
-const SYMLINK_ITEMS = ['agents', 'hooks'];
+const SYMLINK_ITEMS = ['agents', 'hooks', 'commands'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
 const METADATA_VERSION = 2;
 
@@ -58,6 +58,7 @@ Options:
 What gets installed:
   ~/.claude/agents   → symlink to <harness>/.claude/agents
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
+  ~/.claude/commands → symlink to <harness>/.claude/commands
   ~/.claude/settings.json deep-merged: adds agent, permissions.allow entries,
                      and every hook event declared by the harness settings. All
                      other keys (theme, enabledPlugins, extraKnownMarketplaces,
