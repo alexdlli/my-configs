@@ -52,20 +52,18 @@ junto com o prompt padrão do worker (a skill tem o template) e crie:
 
 ```bash
 orca worktree create --repo "id:<repoId>" --name "w<N>-<ticket>" \
-  --parent-worktree "path:<parent>" --base-branch origin/main --issue <n> --json
-orca terminal create --worktree "id:<worktreeId>" --title "w<N>-<ticket>" \
-  --command 'claude --dangerously-skip-permissions' --json
-orca terminal wait --terminal "<handle>" --for tui-idle --timeout-ms 60000 --json
-orca terminal send --terminal "<handle>" --text "$(cat .wave/<ticket>/prompt.md)" --enter --json
+  --parent-worktree "path:<parent>" --base-branch origin/main --issue <n> \
+  --agent claude --prompt "$(cat .wave/<ticket>/prompt.md)" --json
 ```
 
-São dois passos porque `--agent` não aceita argv extra e o worker roda com
-`--dangerously-skip-permissions` **por padrão** — agente parado num prompt de
-permissão é agente bloqueado que ninguém está olhando. Para desligar num ticket,
-eu peço; é opt-out. O handle sai do envelope do `terminal create`, com plano B em
-`orca terminal list --worktree "id:<worktreeId>" --json` casando o `--title` por
-`contains` — um agente TUI reescreve o próprio título da aba assim que sobe, e
-comparação exata quebra logo depois.
+**Um comando, não dois.** O `--agent` sobe o agente na primeira aba (nada de
+shell órfão) e o `--prompt` viaja no argv de lançamento (nada de `terminal wait`
+nem `terminal send`, e portanto nada da corrida de `tui-idle`). O
+`--dangerously-skip-permissions` do worker **não vem daqui**: vem do setting
+`agentDefaultArgs` do Orca, que já traz o bypass por default de fábrica — é
+opt-out, e desligar num ticket é o caminho de exceção da skill (passo 2b), não uma
+flag deste comando. O handle sai de `.result.agentTerminalHandle`, com fallback
+`.result.startupTerminal.handle`.
 
 Como o bypass é o default, **as salvaguardas não podem depender só da camada de
 permissão**: confira que o `prompt.md` de cada ticket contém, explícito, o "abra
@@ -86,9 +84,7 @@ escreva isso dentro do prompt com todas as letras ("`origin/main` já contém X 
 | Ticket | Worktree id | Branch | Terminal handle | PR |
 ```
 
-Worktree id inteiro (`<repoId>::<path>`). No caminho curto com `--agent`, o
-handle vem de `.result.agentTerminalHandle`, com fallback
-`.result.startupTerminal.handle`.
+Worktree id inteiro (`<repoId>::<path>`).
 
 Esqueceu a linhagem de algum ticket? Não recrie:
 `orca worktree set --worktree "branch:<branch>" --parent-worktree "path:<parent>" --json`.
