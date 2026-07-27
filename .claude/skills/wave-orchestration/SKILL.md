@@ -238,16 +238,30 @@ estava esperando.
 
 ### 2 — Um worktree por ticket
 
+O worker roda com `--dangerously-skip-permissions` por padrão (ver
+`### Bypass de permissão` adiante), e `--agent <id>` **não aceita argv extra** —
+ele sobe o agente conhecido sem flags. Por isso o caminho padrão tem dois
+passos: cria o worktree, sobe o CLI com o argv que você quer, espera o TUI ficar
+pronto e manda o prompt.
+
 ```bash
-orca worktree create \
+NEW=$(orca worktree create \
   --repo "id:$REPO_ID" \
   --name w1-issue-3 \
   --parent-worktree "path:$PARENT" \
   --base-branch origin/main \
   --issue 3 \
-  --agent claude \
-  --prompt "$(cat .wave/3/prompt.md)" \
-  --json
+  --json)
+WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
+
+orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
+  --command 'claude --dangerously-skip-permissions' --json
+
+HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
+  | jq -r '.result.terminals[] | select(.title == "w1-issue-3") | .handle')
+
+orca terminal wait --terminal "$HANDLE" --for tui-idle --timeout-ms 60000 --json
+orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
 ```
 
 | Flag | Por quê |
@@ -257,20 +271,42 @@ orca worktree create \
 | `--parent-worktree path:$PARENT` | Linhagem: os worktrees da onda são **filhos** do worktree atual, não irmãos soltos |
 | `--base-branch origin/main` | O corte. Depende do passo 1 ter rodado |
 | `--issue <n>` / `--linear-issue <id\|url>` | Vincula o worktree ao ticket. GitHub usa `--issue`, Linear usa `--linear-issue` |
-| `--agent <id>` | Sobe o agente no **primeiro** terminal do worktree. Ids conhecidos: `claude`, `codex`, e os outros TUIs instalados |
-| `--prompt "$(cat ...)"` | Ver passo 3. Nunca inline |
 | `--setup` | `inherit` é o default. Passe `--setup run` quando o ticket precisa das deps instaladas para rodar teste |
+| `--title` no `terminal create` | O mesmo nome do worktree. É por ele que você reacha o handle, e é o que distingue o terminal do agente do shell de fallback |
+
+Três detalhes que fazem esse caminho falhar em silêncio:
+
+- **`wait --for tui-idle` não é opcional.** Texto mandado para um TUI que ainda
+  está subindo é perdido, e a perda é silenciosa: o terminal fica lá, vazio,
+  parecendo um agente pensando. Sempre com `--timeout-ms`.
+- **Pegue o handle pelo `--title`, não pelo envelope do `terminal create`.** O
+  título é seu e é estável; o envelope varia entre runtimes.
+- **Sem `--agent`, o create abre um shell de fallback** quando o repo não tem
+  terminal default configurado. Mire só no handle do agente, e só feche o outro
+  depois que `orca terminal list` confirmar que ele é um shell sem uso.
 
 Não passe `--activate` num loop de N tickets: cada `--activate` rouba o foco do
 app e o humano perde o lugar N vezes.
 
-Com `--agent`, **não** crie um segundo terminal com o mesmo agente depois. O
-agente já está no primeiro terminal; um segundo é um agente duplicado no mesmo
-checkout, brigando pelos mesmos arquivos.
+**Caminho curto**, para quando o humano desligou o bypass naquele ticket e
+nenhum argv é necessário — um comando só, agente no primeiro terminal:
+
+```bash
+orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
+  --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 \
+  --agent claude --prompt "$(cat .wave/3/prompt.md)" --json
+```
+
+Ids de agente conhecidos: `claude`, `codex`, e os outros TUIs instalados. Com
+`--agent`, **não** crie um segundo terminal com o mesmo agente depois: ele já
+está no primeiro, e um segundo é um agente duplicado no mesmo checkout brigando
+pelos mesmos arquivos.
 
 ### 3 — O prompt vai em ARQUIVO, sempre
 
-Escreva `.wave/<ticket>/prompt.md` e passe `--prompt "$(cat .wave/<ticket>/prompt.md)"`.
+Escreva `.wave/<ticket>/prompt.md` e passe o **conteúdo do arquivo**:
+`--text "$(cat .wave/<ticket>/prompt.md)"` no `terminal send`, ou
+`--prompt "$(cat .wave/<ticket>/prompt.md)"` no caminho curto.
 **Nunca cole o markdown direto na linha de comando.**
 
 O prompt de um ticket bom tem vários KB de markdown: crase, `$`, `!`, aspas,
@@ -309,17 +345,19 @@ Uma linha por ticket, atualizada a cada create:
 - **Worktree id** é o `.result.worktree.id` do create, no formato
   `<repoId>::<path>`. Guarde **inteiro**; o `repoId` sozinho endereça o repo, não
   o worktree.
-- **Terminal handle** sai de `.result.agentTerminalHandle`; runtimes antigos
-  devolvem só `.result.startupTerminal.handle`. Leia os dois:
+- **Terminal handle** no caminho padrão vem do `orca terminal list --worktree
+  "id:<worktreeId>" --json`, filtrado pelo `--title`. No caminho curto
+  (`--agent`) ele sai do envelope do create, em `.result.agentTerminalHandle`;
+  runtimes antigos devolvem só `.result.startupTerminal.handle`, então leia os
+  dois:
 
   ```bash
   HANDLE=$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$CREATE")
   ```
 
-  Handle vazio não é falha do create: recupere com
-  `orca terminal list --worktree "id:<worktreeId>" --json` e leia
-  `.result.terminals[].handle`. Handles são de escopo de runtime — se o Orca
-  reiniciar, o handle antigo morre e tem que ser readquirido pela mesma lista.
+  Handle vazio não é falha do create: recupere pela mesma lista. Handles são de
+  escopo de runtime — se o Orca reiniciar, o handle antigo morre e tem que ser
+  readquirido.
 
 Opcionalmente, mova a coluna do board com
 `orca worktree set --worktree "id:<worktreeId>" --workspace-status in-progress --json`
@@ -404,64 +442,63 @@ Sem `Co-Authored-By`, sem "Generated with", sem marca equivalente — em commit,
 PR, título, corpo ou comentário. O autor é o alexdlli.
 
 ## Ao terminar
-Abra o PR contra `main` e **PARE**. Não faça merge, não peça para mergear, não
-mergeie "porque o CI ficou verde". Quem aperta merge é o humano.
+Abra o PR contra `main` e **PARE**.
+
+**Você não faz merge. Nunca.** Não rode `gh pr merge`, não mergeie pela UI, não
+peça a outro agente que mergeie, não mergeie "porque o CI ficou verde" nem
+"porque o review aprovou". Isso vale **mesmo que o comando esteja disponível
+para você**: ausência de bloqueio não é permissão. Quem aperta merge é o humano,
+e o seu trabalho termina no PR aberto.
 ```
+
+A última seção não é redundância com o `permissions.deny` do harness: sob
+`--dangerously-skip-permissions`, que é o default do worker, não se pode assumir
+que o deny em arquivo ainda vale. Essa instrução **é** a garantia. Não a
+encurte, não a resuma, não a mova para o fim de outro parágrafo.
 
 ### Agente não-default: Codex, ou um modelo específico
 
 `--agent <id>` escolhe **o agente, não o modelo**: ele não aceita `--model` nem
-`-c model_reasoning_effort=...`. Para isso o caminho é de dois passos — cria o
-worktree sem `--agent`, e sobe o CLI com o argv que você quer:
+`-c model_reasoning_effort=...`. Mas isso não exige caminho novo — é o caminho
+padrão do passo 2, trocando só o `--command`:
 
 ```bash
-NEW=$(orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
-  --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 --json)
-WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
-
 orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
   --command 'codex --model gpt-5.5 -c model_reasoning_effort="xhigh"' --json
-
-HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
-  | jq -r '.result.terminals[] | select(.title == "w1-issue-3") | .handle')
-
-orca terminal wait --terminal "$HANDLE" --for tui-idle --timeout-ms 60000 --json
-orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
 ```
 
-O handle vem do `terminal list` filtrado pelo `--title` que você mesmo deu, e
-não do envelope do `terminal create`: o `--title` é seu, é estável, e é o que
-distingue o terminal do agente do shell de fallback no mesmo worktree.
+O resto (`terminal list` pelo `--title`, `wait --for tui-idle`, `send --text`) é
+idêntico.
 
-O `wait --for tui-idle` **não é opcional**: mandar texto para um TUI que ainda
-está subindo perde o prompt, e a perda é silenciosa — o terminal fica lá, vazio,
-parecendo um agente pensando. Sempre com `--timeout-ms`.
+**Se o CLI local rejeitar o modelo, pare e mostre o erro exato.** O erro está no
+próprio terminal: `orca terminal read --terminal "$HANDLE" --json`. Não caia em
+outro modelo em silêncio — o humano pediu aquele modelo por um motivo, e um
+worker rodando o modelo errado entrega um resultado que ninguém consegue
+explicar depois.
 
-Sem `--agent`, o create abre um shell de fallback quando o repo não tem terminal
-default configurado. Mire só no handle do agente; só feche o outro terminal
-depois que `orca terminal list` confirmar que ele é um shell sem uso.
+### Bypass de permissão: ligado por padrão, e o que isso obriga
 
-**Se o CLI local rejeitar o modelo, pare e mostre o erro exato** (`orca terminal
-read --terminal "$HANDLE"`). Não caia em outro modelo em silêncio: o humano
-pediu aquele modelo por um motivo, e um worker rodando o modelo errado entrega
-um resultado que ninguém consegue explicar depois.
+O worker roda com `--dangerously-skip-permissions` por padrão. O motivo é
+operacional: numa onda de N worktrees ninguém está olhando o terminal de cada
+agente, e agente parado num prompt de permissão é agente bloqueado que só é
+descoberto horas depois. Para desligar num ticket específico, o humano pede — é
+**opt-out**, não opt-in.
 
-### Bypass de permissão: desligado por padrão
-
-`--dangerously-skip-permissions` **não** entra no comando do worker por padrão.
-
-Há uma questão em aberto — issue #2 em `alexdlli/my-configs` — sobre se o
-`permissions.deny` declarado em arquivo sobrevive ao bypass. Enquanto isso não
-for medido, ninguém sabe se `Bash(gh pr merge *)` continua negado numa sessão
-com bypass ligado. Se o humano pedir o bypass explicitamente, diga na hora, em
-uma frase: **ligar o bypass pode anular a garantia de "merge é sempre humano"**.
-A decisão é dele, e ela é registrada; não é sua para tomar sozinho.
+**A consequência, e é ela que muda o desenho do fluxo:** não se pode assumir que
+o `permissions.deny` declarado em arquivo continua valendo sob bypass — a
+questão está aberta (issue #2 em `alexdlli/my-configs`) e, até ser medida, o
+pressuposto correto é o pior caso. Por isso **as salvaguardas desta onda não
+podem depender do prompt de permissão**: "abra o PR e pare" tem que estar
+escrito, explícito e inequívoco, no prompt que todo worker recebe — e está, na
+seção `## Ao terminar` do template acima. Camada de permissão, se sobreviver, é
+bônus; a garantia é o texto.
 
 ### O que o dispatch nunca faz
 
 - **Nunca mergeia.** `Bash(gh pr merge *)` está no `permissions.deny` do harness,
-  e isso é deterministicamente o certo. Não existe caminho nesta skill que tente
-  merge, nem instrução ao worker para mergear.
+  mas a garantia que conta é a instrução no prompt do worker: sob bypass, o deny
+  pode não valer. Não existe caminho nesta skill que tente merge, nem instrução
+  ao worker para mergear.
 - **Nunca dispara duas ondas.** Onda seguinte espera merge humano do que veio
   antes, não aprovação e não CI verde.
 - **Nunca commita na `main`** nem edita o worktree de outro ticket.
