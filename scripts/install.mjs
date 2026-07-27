@@ -38,6 +38,13 @@ const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
 // harness links one entry at a time and never displaces a name it does not own.
 const HARNESS_SKILLS_DIR = path.join(HARNESS_ROOT, '.claude', 'skills');
 const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
+
+// Skills installed by other toolkits outside ~/.claude/skills. Claude Code only
+// loads what lives under ~/.claude/skills, so without a link these are inert.
+// orca-cli is Orca's worktree/terminal control and handoff path.
+const EXTERNAL_SKILL_LINKS = {
+  'orca-cli': path.join(HOME, '.agents', 'skills', 'orca-cli'),
+};
 const METADATA_VERSION = 2;
 
 // v1 metadata predates addedLinks. That installer only ever created these two
@@ -65,7 +72,8 @@ What gets installed:
   ~/.claude/agents   → symlink to <harness>/.claude/agents
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
   ~/.claude/commands → symlink to <harness>/.claude/commands
-  ~/.claude/skills/<name> → one symlink per entry in <harness>/.claude/skills.
+  ~/.claude/skills/<name> → one symlink per entry in <harness>/.claude/skills,
+                     plus the external skills the harness exposes (orca-cli).
                      Never the directory itself: it is shared with skills from
                      plugins and other toolkits. A name that already exists and
                      is not ours is reported and skipped, never overwritten.
@@ -418,9 +426,24 @@ async function harnessSkillNames() {
     .sort();
 }
 
+async function skillSources() {
+  const sources = new Map();
+  for (const name of await harnessSkillNames()) {
+    sources.set(name, path.join(HARNESS_SKILLS_DIR, name));
+  }
+  for (const [name, target] of Object.entries(EXTERNAL_SKILL_LINKS)) {
+    if (!existsSync(target)) {
+      console.log(`! external skill ${name} not found at ${target} — skipping`);
+      continue;
+    }
+    sources.set(name, target);
+  }
+  return sources;
+}
+
 async function linkSkills(dryRun) {
-  const names = await harnessSkillNames();
-  if (names.length === 0) return [];
+  const sources = await skillSources();
+  if (sources.size === 0) return [];
 
   if (!existsSync(TARGET_SKILLS_DIR)) {
     if (dryRun) {
@@ -432,10 +455,10 @@ async function linkSkills(dryRun) {
   }
 
   const links = [];
-  for (const name of names) {
+  for (const [name, target] of sources) {
     const link = await ensureLink(
       path.join(TARGET_SKILLS_DIR, name),
-      path.join(HARNESS_SKILLS_DIR, name),
+      target,
       dryRun,
       CONFLICT_SKIP,
     );
