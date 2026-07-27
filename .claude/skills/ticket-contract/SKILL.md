@@ -113,6 +113,55 @@ Sem declaração escrita, os três campos são obrigatórios em todo ticket, com
 declaração é afirmação verificável: se ninguém consegue confirmá-la olhando o repo, ela não
 existe — pergunte ao usuário em vez de escrever uma por conta própria.
 
+## Como renderizar os 12 campos
+
+O formato é prescrito, não escolha de cada rodada. Auditar um backlog em lote — "todo ticket
+tem o campo 3?", "algum campo 6 sem path?" — só é barato quando os doze corpos têm a mesma
+forma e o mesmo endereço para cada campo. Sem prescrição, cada rodada inventa um layout e a
+auditoria vira leitura manual, ticket por ticket.
+
+**Padrão: um heading `##` por campo, numerado, na ordem do contrato, com o nome do campo.**
+
+```markdown
+## 1. Título
+## 2. Problema e por que resolver
+## 3. Escopo e o que está FORA
+## 4. Comportamento esperado
+## 5. Detalhes técnicos relevantes
+## 6. Módulos, funções e arquivos afetados
+## 7. Acceptance criteria
+## 8. Cenários de teste
+## 9. Dependências em `blockedBy`
+## 10. Rollout e kill switch
+## 11. Eventos e métricas
+## 12. i18n, LGPD e factories
+```
+
+Por que este e não outro:
+
+- O número dá endereço estável. `grep '^## 7\.'` acha o acceptance criteria de qualquer
+  ticket, em qualquer tracker, sem parser e sem convenção paralela.
+- Heading é o que sobrevive à renderização do GitHub e do Linear; tabela e lista de
+  definição, não.
+- **O campo 1 é repetido no corpo de propósito**, mesmo com o tracker tendo campo de título
+  próprio: o teste que define este contrato é colar **só o corpo** numa sessão nova, e sem
+  essa seção a coisa a fazer se perde. O preço é conhecido — mudou o título, muda nos dois
+  lugares.
+
+Dentro de cada seção, prosa e bullets. Campo 7 em checkbox (`- [ ]`), uma condição por
+linha. Campo 8, um bullet por cenário, rotulado pelo tipo (caminho feliz, borda, falha).
+
+O custo desse formato é corpo de 100-130 linhas. Isso se paga nos campos 3 a 8, que carregam
+o trabalho — e não se paga em campo coberto pela declaração de perfil do projeto, que fica em
+**uma linha sob o heading**, sem parágrafo de justificativa:
+
+```markdown
+## 11. Eventos e métricas
+
+Coberto pela declaração de perfil do projeto (`CLAUDE.md`, "Perfil de risco do projeto"): o
+repo não emite telemetria.
+```
+
 ## Bom vs ruim nos quatro campos mais errados
 
 **1 — Título**
