@@ -148,22 +148,40 @@ async function getJson(url) {
 async function checkShim(config) {
   const url = hostFacingUrl(config.baseUrl);
   if (!url) return record('LLM backend', 'FAIL', `unparsable base URL "${config.baseUrl}"`);
+  let health;
   try {
-    const health = await getJson(`${url.origin}/healthz`);
-    if (!health?.ok) {
-      return record('LLM backend', 'FAIL', `${url.origin}/healthz did not report ok`);
-    }
-    record('LLM backend', 'PASS', `claude -p shim up at ${url.origin} (backend: ${health.backend})`);
-    if (config.model && health.model && health.model !== config.model) {
-      record('LLM model', 'WARN', `server asks for ${config.model}, shim defaults to ${health.model}`);
-    } else {
-      record('LLM model', 'PASS', config.model || health.model || '(shim default)');
-    }
+    health = await getJson(`${url.origin}/healthz`);
   } catch (e) {
+    return reportShimFailure(url, config, `is unreachable (${e.message})`);
+  }
+  if (!health?.ok) return reportShimFailure(url, config, 'did not report ok');
+
+  record('LLM backend', 'PASS', `claude -p shim up at ${url.origin} (backend: ${health.backend})`);
+  if (config.model && health.model && health.model !== config.model) {
+    record('LLM model', 'WARN', `server asks for ${config.model}, shim defaults to ${health.model}`);
+  } else {
+    record('LLM model', 'PASS', config.model || health.model || '(shim default)');
+  }
+}
+
+// A non-Ollama openai-compat base URL is this harness's shim by convention, but
+// it can also be a third-party server (LM Studio and friends) with no /healthz.
+// Probe the endpoint the ai-memory server itself uses before blaming the shim.
+async function reportShimFailure(url, config, healthzProblem) {
+  const modelsUrl = `${url.origin}${url.pathname.replace(/\/$/, '')}/models`;
+  try {
+    await getJson(modelsUrl);
+    record(
+      'LLM backend',
+      'WARN',
+      `${modelsUrl} answers but ${url.origin}/healthz ${healthzProblem} — an openai-compat backend other than this harness's shim`,
+    );
+    record('LLM model', 'SKIP', `${config.model || 'model'} not checked against an unknown backend`);
+  } catch {
     record(
       'LLM backend',
       'FAIL',
-      `${url.origin}/healthz unreachable (${e.message}). Check the LaunchAgent: ` +
+      `${url.origin}/healthz ${healthzProblem} — check the LaunchAgent: ` +
         'launchctl list | grep claude-openai-shim',
     );
   }
