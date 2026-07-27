@@ -6,8 +6,8 @@
 //   2. Throttles to at most one check every 6 hours, using a per-user cache file.
 //   3. Verifies the harness is a git checkout on `main` with a clean tree.
 //   4. `git fetch origin main`, fast-forwards if behind, prints a one-line summary.
-//   5. If the applied diff touched the installer's inputs (skills or
-//      settings.json), suggests re-running the installer. It never runs it.
+//   5. If the applied diff touched the installer's inputs (skills, settings.json
+//      or the installer itself), suggests re-running it. It never runs it.
 //
 // The hook never blocks a session — every failure path exits 0. Network/git
 // problems print a one-line stderr warning at most. The pre-fetch timestamp
@@ -45,8 +45,15 @@ const NON_INTERACTIVE_GIT_ENV = {
   GIT_SSH_COMMAND: 'ssh -oBatchMode=yes',
 };
 
-// Paths whose contents only reach ~/.claude through scripts/install.mjs.
-const INSTALLER_MANAGED_PATHS = ['.claude/skills/', '.claude/settings.json'];
+// Paths whose contents only reach ~/.claude through scripts/install.mjs: skills
+// are linked one entry at a time, settings.json is merged, and the installer
+// itself decides which links exist at all. Directories linked whole (agents,
+// hooks, commands) are live through their symlink and need no re-run.
+const INSTALLER_MANAGED_PATHS = [
+  '.claude/skills/',
+  '.claude/settings.json',
+  'scripts/install.mjs',
+];
 
 function softWarn(msg) {
   process.stderr.write(`claude-setup: ${msg}\n`);
@@ -229,7 +236,7 @@ async function main() {
 
     if (touchesInstallerInputs(harnessDir, oldSha, newSha)) {
       process.stdout.write(
-        `claude-setup: update touched skills/settings — run 'node ${path.join(harnessDir, 'scripts', 'install.mjs')}' to apply\n`
+        `claude-setup: update touched installer-managed files — run 'node ${path.join(harnessDir, 'scripts', 'install.mjs')}' to apply\n`
       );
     }
   } finally {
