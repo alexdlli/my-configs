@@ -20,6 +20,7 @@ docs/
   integrations/        # orca.md, maestri.md, ecotokens.md, ai-memory.md
 scripts/
   install.mjs          # symlink + merge installer
+  docs-inventory.test.mjs  # fails when the docs stop matching the real directories
   waves/               # wave pipeline: tickets-linear, tickets-github, graph, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
   verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
@@ -48,7 +49,7 @@ CLAUDE.md              # session-level guidance Claude reads automatically
    ```
 
 2. Update `orchestrator.md`'s "Roster" section so the orchestrator knows it can delegate to the new agent.
-3. Update the roster table in `CLAUDE.md`, `README.md`, and `docs/agent-system.md` — including the specialist **count** in that file's opening line, and the read-only allowlist paragraph if the new agent has no `Edit`/`Write`. Verify the count against `ls -1 .claude/agents/*.md | wc -l` rather than the number currently written there.
+3. Update the roster table in `CLAUDE.md`, `README.md`, and `docs/agent-system.md` — including the specialist **count** in that file's opening line, and the read-only allowlist paragraph if the new agent has no `Edit`/`Write`. Don't count by hand: `node --test 'scripts/*.test.mjs'` names every doc that still omits the agent, and every count that no longer adds up (see [Docs that list or count things](#docs-that-list-or-count-things)).
 4. Re-run `node scripts/install.mjs` (no-op for symlinks, but confirms nothing broke), then open a session, run `/agents`, confirm the new agent appears and routes for an example task.
 
 Guidelines:
@@ -95,10 +96,42 @@ Don't add a hook just because you can. Add one when there's a real recurring pai
 - Then a real install in the same fake home and confirm the symlinks + merged settings look right.
 - Syntax check: `node --check scripts/install.mjs`.
 
+## Docs that list or count things
+
+Prose that says "five hooks", or a table that claims to list every agent, goes stale in silence: nothing breaks, no error appears, and nobody notices until someone counts. It has already happened four times here. `scripts/docs-inventory.test.mjs` reads the real directories and fails when a doc disagrees. It checks two separate things.
+
+**Every entry must be named in the docs that index it.** The test holds, per inventory, the docs that enumerate it, and asserts each entry name appears there — case-insensitive and delimited, so `pr-reviewer` does not stand in for `reviewer`.
+
+| Inventory | Read from | Docs that must name every entry |
+|---|---|---|
+| `agents` | `.claude/agents/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
+| `skills` | `.claude/skills/*/` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
+| `commands` | `.claude/commands/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
+| `hooks` | `.claude/hooks/*.mjs` | `README.md` |
+| `integrations` | `docs/integrations/*.md` | `README.md`, `docs/contributing.md` |
+| `waveScripts` | `scripts/waves/*.mjs` minus `*.test.mjs` | `CLAUDE.md`, `docs/contributing.md` |
+
+Naming the entry is the point; the number is only its symptom. A new agent that nobody documented is the actual defect, and the failure says which file exists and which doc omits it. When a new doc becomes an index for an inventory, add it to that inventory's `indexes` in the test.
+
+**A number in prose must carry a marker.** Where a sentence states a cardinality, pin it with an HTML comment immediately before the number:
+
+```markdown
+Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation ...
+```
+
+The test reads the token right after the marker — digits or spelled out, up to twenty — and compares it with the directory. Pinning the position is what keeps this from being a regex guessing at prose: rewrite the sentence and the marker travels with the number, or the test reports that the marker no longer has one after it. Valid keys are the inventory names above plus `specialists` (agents minus `orchestrator`). **Never put the marker at the start of a line** — CommonMark then treats the whole line as raw HTML and stops rendering the markdown on it. The test flags that too.
+
+Three limits, all deliberate:
+
+- A count written **without** a marker is invisible to the test. Add the marker when you write the count; there is no way to find an unmarked one without regex-guessing at prose, which is what makes this class of test untrustworthy.
+- Markers inside fenced code blocks are ignored, so an example like the one above is never a live claim.
+- `.claude/skills` is exempt from the reverse "this path is not on disk" check. `~/.claude/skills` is shared ground: docs there legitimately point at a skill installed outside this repo (`to-tickets`) or at a planned destination (`maestri-orchestration`). The other five directories are owned by the harness alone, so a path into them that does not resolve is a real broken reference.
+
 ## Running the tests
 
 ```bash
-node --test scripts/waves/*.test.mjs
+node --test 'scripts/*.test.mjs'
+node --test 'scripts/waves/*.test.mjs'
 node --test '.claude/hooks/lib/*.test.mjs'
 ```
 
