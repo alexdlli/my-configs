@@ -57,7 +57,7 @@ The installer is idempotent: running again refreshes the symlinks (no-op if alre
 
 `.claude/hooks/auto-update.mjs` runs as a `SessionStart` hook and keeps the checkout fresh for you. It is deliberately conservative:
 
-- At most one check every 6 hours (cache file under `~/Library/Caches/claude-setup/last-check`, plus a PID lock next to it).
+- At most one check every 6 hours (cache file under `~/Library/Caches/claude-setup/last-check`, plus a PID lock next to it). A lock left behind by a killed session is detected via its PID and broken, so auto-update can't get stuck off.
 - Only when the harness is on `main` with a clean working tree; it uses `git pull --ff-only`.
 - Git runs non-interactively (`GIT_TERMINAL_PROMPT=0`, `ssh -oBatchMode=yes`), so a missing credential fails fast instead of hanging the session.
 - Every failure path exits 0 — the hook never blocks a session.

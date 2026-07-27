@@ -69,6 +69,43 @@ function resolveCacheDir() {
   return path.join(os.homedir(), '.cache', 'claude-setup');
 }
 
+function lockIsHeld(lockFile) {
+  let pid;
+  try {
+    pid = Number(readFileSync(lockFile, 'utf8').trim());
+  } catch {
+    return false;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // The holder exists but belongs to another user — still a live lock.
+    return err.code === 'EPERM';
+  }
+}
+
+// A SIGKILLed hook never runs its cleanup, so the lock outlives its holder and
+// would disable auto-update forever. Break it only once the holder is gone.
+function acquireLock(lockFile) {
+  try {
+    writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
+    return true;
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+  }
+  if (lockIsHeld(lockFile)) return false;
+  try {
+    unlinkSync(lockFile);
+    writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
+    return true;
+  } catch {
+    // Another session broke the same stale lock first; let it do the work.
+    return false;
+  }
+}
+
 function touchesInstallerInputs(harnessDir, oldSha, newSha) {
   const res = git('-C', harnessDir, 'diff', '--name-only', `${oldSha}..${newSha}`);
   if (res.status !== 0) return false;
@@ -123,12 +160,7 @@ async function main() {
     return;
   }
 
-  try {
-    writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
-  } catch (err) {
-    if (err.code === 'EEXIST') return;
-    throw err;
-  }
+  if (!acquireLock(lockFile)) return;
 
   const cleanupLock = () => {
     try {
