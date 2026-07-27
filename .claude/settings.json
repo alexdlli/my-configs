@@ -33,7 +33,6 @@
       "Bash(orca worktree current *)"
     ],
     "deny": [
-      "Bash(gh pr merge *)",
       "Bash(git push --force *)",
       "Bash(git commit --no-verify *)"
     ]
