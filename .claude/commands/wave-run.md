@@ -67,10 +67,12 @@ eu peço; é opt-out. O handle sai do envelope do `terminal create`, com plano B
 `contains` — um agente TUI reescreve o próprio título da aba assim que sobe, e
 comparação exata quebra logo depois.
 
-Como o bypass é o default, **as salvaguardas não podem depender da camada de
+Como o bypass é o default, **as salvaguardas não podem depender só da camada de
 permissão**: confira que o `prompt.md` de cada ticket contém, explícito, o "abra
-o PR contra `main` e PARE, você não faz merge nunca" do template. É ele a
-garantia, não o `permissions.deny`.
+o PR contra `main` e PARE, você não faz merge nunca" do template. O
+`permissions.deny` sobrevive ao bypass (medido na issue #2) e o hook
+`guard-destructive` cobre até a forma envelopada — o texto do prompt é a terceira
+camada, não a única.
 
 O prompt vai **em arquivo**, nunca colado inline: markdown de vários KB quebra no
 escaping do shell, e o modo de falha é um prompt truncado que o agente obedece

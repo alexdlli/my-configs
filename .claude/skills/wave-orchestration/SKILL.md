@@ -455,10 +455,12 @@ para você**: ausência de bloqueio não é permissão. Quem aperta merge é o h
 e o seu trabalho termina no PR aberto.
 ```
 
-A última seção não é redundância com o `permissions.deny` do harness: sob
-`--dangerously-skip-permissions`, que é o default do worker, não se pode assumir
-que o deny em arquivo ainda vale. Essa instrução **é** a garantia. Não a
-encurte, não a resuma, não a mova para o fim de outro parágrafo.
+A última seção não é redundância com o `permissions.deny` do harness. O deny
+sobrevive ao bypass (medido, issue #2), mas é casamento de string: barra
+`gh pr merge 3` e não enxerga `bash -c "gh pr merge 3"`. O hook
+`guard-destructive` fecha esse envelope, e esta instrução é a camada que não
+depende de nenhum dos dois. Não a encurte, não a resuma, não a mova para o fim
+de outro parágrafo.
 
 ### Agente não-default: Codex, ou um modelo específico
 
@@ -488,21 +490,23 @@ agente, e agente parado num prompt de permissão é agente bloqueado que só é
 descoberto horas depois. Para desligar num ticket específico, o humano pede — é
 **opt-out**, não opt-in.
 
-**A consequência, e é ela que muda o desenho do fluxo:** não se pode assumir que
-o `permissions.deny` declarado em arquivo continua valendo sob bypass — a
-questão está aberta (issue #2 em `alexdlli/my-configs`) e, até ser medida, o
-pressuposto correto é o pior caso. Por isso **as salvaguardas desta onda não
-podem depender do prompt de permissão**: "abra o PR e pare" tem que estar
-escrito, explícito e inequívoco, no prompt que todo worker recebe — e está, na
-seção `## Ao terminar` do template acima. Camada de permissão, se sobreviver, é
-bônus; a garantia é o texto.
+**A consequência, e é ela que muda o desenho do fluxo:** medido na issue #2 de
+`alexdlli/my-configs` (fechada), o `permissions.deny` declarado em arquivo
+continua valendo sob bypass — mas é casamento de string e não enxerga
+`bash -c "gh pr merge 3"`, e o hook `guard-destructive` existe justamente para
+barrar as duas formas. Ainda assim **as salvaguardas desta onda não podem
+depender só da camada de permissão**: "abra o PR e pare" tem que estar escrito,
+explícito e inequívoco, no prompt que todo worker recebe — e está, na seção
+`## Ao terminar` do template acima. O contexto de subagente, que é onde o worker
+executa quase tudo, não foi medido; o texto do prompt é o que não depende dele.
 
 ### O que o dispatch nunca faz
 
-- **Nunca mergeia.** `Bash(gh pr merge *)` está no `permissions.deny` do harness,
-  mas a garantia que conta é a instrução no prompt do worker: sob bypass, o deny
-  pode não valer. Não existe caminho nesta skill que tente merge, nem instrução
-  ao worker para mergear.
+- **Nunca mergeia.** `Bash(gh pr merge *)` está no `permissions.deny` do harness e
+  o hook `guard-destructive` pega até a forma envelopada — as duas camadas foram
+  medidas sob bypass. A instrução no prompt do worker continua lá mesmo assim,
+  por defesa em camadas. Não existe caminho nesta skill que tente merge, nem
+  instrução ao worker para mergear.
 - **Nunca dispara duas ondas.** Onda seguinte espera merge humano do que veio
   antes, não aprovação e não CI verde.
 - **Nunca commita na `main`** nem edita o worktree de outro ticket.

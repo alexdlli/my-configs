@@ -30,7 +30,7 @@ Além do rename, `/to-issues` foi **superseded** pela skill `ticket-contract` de
 
 O persona manda recrutar todo agente com `--dangerously-skip-permissions`. O harness instala um `permissions.deny` com `Bash(gh pr merge *)`, `Bash(git push --force *)` e `Bash(git commit --no-verify *)`, que é a garantia determinística de que **merge é sempre humano**.
 
-Se o deny sobrevive ao bypass está **em medição** (issue #2 em `alexdlli/my-configs`). Até haver número, o desenho assume o pior caso: a garantia vive no **prompt do worker**, não na camada de permissão. O Alex decidiu manter o bypass ligado por padrão — recruit parado num prompt de permissão é recruit bloqueado, e ninguém está olhando o terminal dele.
+Foi medido (issue #2 em `alexdlli/my-configs`, fechada): o deny **sobrevive** ao bypass. Só que é casamento de string — barra `gh pr merge 3`, não `bash -c "gh pr merge 3"` — e quem fecha esse vão é o hook `PreToolUse` `guard-destructive` (ver [`../guard-destructive.md`](../guard-destructive.md)). A instrução no **prompt do worker** continua escrita mesmo assim: defesa em camadas, e o contexto de subagente não foi medido. O Alex decidiu manter o bypass ligado por padrão — recruit parado num prompt de permissão é recruit bloqueado, e ninguém está olhando o terminal dele.
 
 ## O que já subiu para as skills compartilhadas
 
