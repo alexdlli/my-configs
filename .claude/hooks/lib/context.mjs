@@ -1,5 +1,6 @@
 // Session environment detection: which terminal host is running this session,
-// and which GitHub account / issue tracker applies to the working directory.
+// which GitHub account / issue tracker applies to the working directory, and
+// whether a wave can be dispatched from here.
 //
 // `detectContext` is pure: env and cwd come in as parameters, nothing is read
 // from disk, no process is spawned. That is what makes it cheap enough for a
@@ -22,8 +23,18 @@ export const HOST_MAESTRI = 'maestri';
 export const HOST_ORCA = 'orca';
 export const HOST_PLAIN = 'plain';
 
+export const DISPATCH_DRIVER_ORCA = 'orca-cli';
+
 const ORCA_TERM_PROGRAM = 'Orca';
 const ORCA_WORKTREE_SEPARATOR = '::';
+
+const DISPATCH_REASON_ORCA =
+  'orca worktree create + orca terminal: one worktree per ticket, agent in its first terminal';
+// Maestri exports its CLI only as $MAESTRI_CLI inside the app's own terminal, so
+// nothing outside it can spawn a wave — and no wave adapter targets it yet either.
+const DISPATCH_REASON_MAESTRI =
+  'no wave adapter for Maestri yet, and its CLI exists only as $MAESTRI_CLI inside the app terminal';
+const DISPATCH_REASON_PLAIN = 'no worktree manager in this session — the human dispatches by hand';
 
 const WORK_DIR_NAME = 'work';
 const WORK_TRACKER = 'jira';
@@ -96,6 +107,21 @@ function isUnderWorkRoot(env, cwd) {
   return resolved === workRoot || resolved.startsWith(workRoot + path.sep);
 }
 
+// Describes whether a wave can be dispatched from this host, never dispatches.
+// The description is a property of the host alone: no CLI is probed, no worktree
+// is read. A caller that wants to know whether the Orca app is actually up asks
+// the `orca` binary; this only says which adapter would be used if it were.
+function describeDispatch(host) {
+  if (host === HOST_ORCA) {
+    return { available: true, driver: DISPATCH_DRIVER_ORCA, reason: DISPATCH_REASON_ORCA };
+  }
+  return {
+    available: false,
+    driver: null,
+    reason: host === HOST_MAESTRI ? DISPATCH_REASON_MAESTRI : DISPATCH_REASON_PLAIN,
+  };
+}
+
 export function detectContext(env = process.env, cwd = process.cwd()) {
   const { host, hostDetail } = detectHost(env);
   const underWork = isUnderWorkRoot(env, cwd);
@@ -103,6 +129,7 @@ export function detectContext(env = process.env, cwd = process.cwd()) {
   return {
     host,
     hostDetail,
+    dispatch: describeDispatch(host),
     tracker: underWork ? WORK_TRACKER : null,
     trackerSource: underWork ? TRACKER_SOURCE_CWD_WORK : TRACKER_SOURCE_UNKNOWN,
     account: underWork ? ACCOUNT_WORK : ACCOUNT_UNKNOWN,

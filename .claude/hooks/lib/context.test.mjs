@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HOST_MAESTRI, HOST_ORCA, HOST_PLAIN, detectContext } from './context.mjs';
+import {
+  DISPATCH_DRIVER_ORCA,
+  HOST_MAESTRI,
+  HOST_ORCA,
+  HOST_PLAIN,
+  detectContext,
+} from './context.mjs';
 
 const HOME = '/Users/tester';
 const OUTSIDE_WORK_CWD = `${HOME}/Developer/my-configs`;
@@ -103,4 +109,37 @@ test('outside ~/work no tracker is claimed', () => {
     assert.equal(ctx.account, 'unknown');
     assert.equal(ctx.trackerSource, 'unknown');
   }
+});
+
+test('an Orca session advertises wave dispatch through the orca CLI', () => {
+  const ctx = detectContext(orcaEnv, OUTSIDE_WORK_CWD);
+  assert.equal(ctx.dispatch.available, true);
+  assert.equal(ctx.dispatch.driver, DISPATCH_DRIVER_ORCA);
+});
+
+test('a Maestri session reports dispatch unavailable and names the missing adapter', () => {
+  const ctx = detectContext(maestriEnv, OUTSIDE_WORK_CWD);
+  assert.equal(ctx.dispatch.available, false);
+  assert.equal(ctx.dispatch.driver, null);
+  assert.match(ctx.dispatch.reason, /MAESTRI_CLI/);
+});
+
+test('a plain terminal reports dispatch unavailable and manual', () => {
+  const ctx = detectContext({ HOME }, OUTSIDE_WORK_CWD);
+  assert.equal(ctx.dispatch.available, false);
+  assert.equal(ctx.dispatch.driver, null);
+  assert.match(ctx.dispatch.reason, /manual|by hand/);
+});
+
+test('every host explains its dispatch, available or not', () => {
+  for (const env of [orcaEnv, maestriEnv, { HOME }]) {
+    const { dispatch } = detectContext(env, OUTSIDE_WORK_CWD);
+    assert.notEqual(dispatch.reason.trim(), '');
+  }
+});
+
+test('dispatch availability does not depend on the working directory', () => {
+  const personal = detectContext(orcaEnv, OUTSIDE_WORK_CWD);
+  const work = detectContext(orcaEnv, WORK_CWD);
+  assert.deepEqual(personal.dispatch, work.dispatch);
 });
