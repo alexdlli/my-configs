@@ -32,6 +32,16 @@ const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
 const SYMLINK_ITEMS = ['agents', 'hooks'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
+const METADATA_VERSION = 2;
+
+// v1 metadata predates addedLinks. That installer only ever created these two
+// symlinks, so they are exactly what an uninstall of a v1 install must remove.
+const V1_MANAGED_LINK_NAMES = ['agents', 'hooks'];
+
+// An existing entry that is not one of ours is either backed up out of the way
+// or left untouched, depending on how much the target directory belongs to us.
+const CONFLICT_BACKUP = 'backup';
+const CONFLICT_SKIP = 'skip';
 
 function usage() {
   console.log(`Install the personal Claude Code harness into ~/.claude/.
@@ -153,12 +163,18 @@ function userHasHookForScript(userEntries, scriptName) {
   });
 }
 
-// Returns { merged, added: { addedKeys, addedAllowEntries, addedHooks } }.
-// `merged` is the full settings to write; `added` records only what this run
-// introduced (so uninstall can revert exactly that, nothing else).
+// Returns { merged, added }. `merged` is the full settings to write; `added`
+// records only what this run introduced (so uninstall can revert exactly that,
+// nothing else). `addedLinks` is filled in by the caller.
 function buildMergedSettings(userSettings, harnessSettings, opts) {
   const merged = cloneJson(userSettings);
-  const added = { addedKeys: [], addedAllowEntries: [], addedHooks: [] };
+  const added = {
+    addedKeys: [],
+    addedAllowEntries: [],
+    addedDenyEntries: [],
+    addedHooks: [],
+    addedLinks: [],
+  };
 
   if (Object.hasOwn(harnessSettings, 'agent')) {
     const harnessAgent = harnessSettings.agent;
@@ -219,26 +235,57 @@ function hookSignature(hook) {
   return JSON.stringify([hook.event, hook.command]);
 }
 
-function mergeMetadata(prior, added) {
-  const priorKeys = Array.isArray(prior?.addedKeys) ? prior.addedKeys : [];
-  const priorAllow = Array.isArray(prior?.addedAllowEntries) ? prior.addedAllowEntries : [];
-  const priorHooks = Array.isArray(prior?.addedHooks) ? prior.addedHooks : [];
-  const keySet = new Set([...priorKeys, ...added.addedKeys]);
-  const allowSet = new Set([...priorAllow, ...added.addedAllowEntries]);
-  const hookSeen = new Set(priorHooks.map(hookSignature));
-  const mergedHooks = [...priorHooks];
-  for (const h of added.addedHooks) {
-    const sig = hookSignature(h);
-    if (!hookSeen.has(sig)) {
-      hookSeen.add(sig);
-      mergedHooks.push(h);
-    }
+function linkSignature(link) {
+  return JSON.stringify([link.path, link.target]);
+}
+
+function dedupeBySignature(prior, incoming, signature) {
+  const seen = new Set(prior.map(signature));
+  const merged = [...prior];
+  for (const item of incoming) {
+    const sig = signature(item);
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function normalizeMetadata(raw) {
+  const asArray = (v) => (Array.isArray(v) ? v : []);
+  let addedLinks;
+  if (Array.isArray(raw?.addedLinks)) {
+    addedLinks = raw.addedLinks;
+  } else if (raw?.version) {
+    addedLinks = V1_MANAGED_LINK_NAMES.map((name) => ({
+      path: path.join(TARGET_DIR, name),
+      target: path.join(HARNESS_ROOT, '.claude', name),
+    }));
+  } else {
+    addedLinks = [];
   }
   return {
-    version: 1,
-    addedKeys: [...keySet],
-    addedAllowEntries: [...allowSet],
-    addedHooks: mergedHooks,
+    addedKeys: asArray(raw?.addedKeys),
+    addedAllowEntries: asArray(raw?.addedAllowEntries),
+    addedDenyEntries: asArray(raw?.addedDenyEntries),
+    addedHooks: asArray(raw?.addedHooks),
+    addedLinks,
+  };
+}
+
+function mergeMetadata(prior, added) {
+  const normalized = normalizeMetadata(prior);
+  return {
+    version: METADATA_VERSION,
+    addedKeys: [...new Set([...normalized.addedKeys, ...added.addedKeys])],
+    addedAllowEntries: [
+      ...new Set([...normalized.addedAllowEntries, ...added.addedAllowEntries]),
+    ],
+    addedDenyEntries: [
+      ...new Set([...normalized.addedDenyEntries, ...added.addedDenyEntries]),
+    ],
+    addedHooks: dedupeBySignature(normalized.addedHooks, added.addedHooks, hookSignature),
+    addedLinks: dedupeBySignature(normalized.addedLinks, added.addedLinks, linkSignature),
   };
 }
 
@@ -258,51 +305,78 @@ async function ensureTargetDir(dryRun) {
   console.log(`✓ created ${TARGET_DIR}`);
 }
 
-async function planSymlink(name, dryRun) {
-  const src = path.join(HARNESS_ROOT, '.claude', name);
-  const dest = path.join(TARGET_DIR, name);
+async function readLinkTarget(p) {
+  try {
+    return await fs.readlink(p);
+  } catch {
+    return null;
+  }
+}
+
+// Returns null when the destination is left alone, otherwise
+// { path, target, changed } — `changed` marks a link this run created.
+async function ensureLink(dest, target, dryRun, onConflict) {
   const kind = await pathKind(dest);
 
   if (kind === 'symlink') {
-    let current;
-    try {
-      current = await fs.readlink(dest);
-    } catch {
-      current = null;
+    const current = await readLinkTarget(dest);
+    if (current === target) {
+      console.log(`✓ ${dest} already points to ${target}`);
+      return { path: dest, target, changed: false };
     }
-    if (current === src) {
-      console.log(`✓ ${dest} already points to ${src}`);
-      return;
+    if (onConflict === CONFLICT_SKIP) {
+      console.log(`! ${dest} → ${current} (not ours) — skipping`);
+      return null;
     }
     if (dryRun) {
-      console.log(`→ would replace symlink ${dest} (currently → ${current}) with → ${src}`);
-      return;
+      console.log(`→ would replace symlink ${dest} (currently → ${current}) with → ${target}`);
+    } else {
+      await fs.unlink(dest);
+      await fs.symlink(target, dest, 'dir');
+      console.log(`✓ replaced symlink ${dest} → ${target}`);
     }
-    await fs.unlink(dest);
-    await fs.symlink(src, dest, 'dir');
-    console.log(`✓ replaced symlink ${dest} → ${src}`);
-    return;
+    return { path: dest, target, changed: true };
   }
 
   if (kind === 'absent') {
     if (dryRun) {
-      console.log(`→ would symlink ${dest} → ${src}`);
-      return;
+      console.log(`→ would symlink ${dest} → ${target}`);
+    } else {
+      await fs.symlink(target, dest, 'dir');
+      console.log(`✓ symlinked ${dest} → ${target}`);
     }
-    await fs.symlink(src, dest, 'dir');
-    console.log(`✓ symlinked ${dest} → ${src}`);
-    return;
+    return { path: dest, target, changed: true };
+  }
+
+  if (onConflict === CONFLICT_SKIP) {
+    console.log(`! ${dest} already exists (${kind}) and is not ours — skipping`);
+    return null;
   }
 
   const backupPath = `${dest}.backup-${Date.now()}`;
   if (dryRun) {
-    console.log(`→ would back up ${dest} (${kind}) → ${backupPath}, then symlink → ${src}`);
-    return;
+    console.log(`→ would back up ${dest} (${kind}) → ${backupPath}, then symlink → ${target}`);
+  } else {
+    await fs.rename(dest, backupPath);
+    console.log(`! backed up existing ${kind} at ${dest} → ${backupPath}`);
+    await fs.symlink(target, dest, 'dir');
+    console.log(`✓ symlinked ${dest} → ${target}`);
   }
-  await fs.rename(dest, backupPath);
-  console.log(`! backed up existing ${kind} at ${dest} → ${backupPath}`);
-  await fs.symlink(src, dest, 'dir');
-  console.log(`✓ symlinked ${dest} → ${src}`);
+  return { path: dest, target, changed: true };
+}
+
+async function linkHarnessDirs(dryRun) {
+  const links = [];
+  for (const name of SYMLINK_ITEMS) {
+    const link = await ensureLink(
+      path.join(TARGET_DIR, name),
+      path.join(HARNESS_ROOT, '.claude', name),
+      dryRun,
+      CONFLICT_BACKUP,
+    );
+    if (link) links.push(link);
+  }
+  return links;
 }
 
 async function writeSettingsAtomic(merged) {
@@ -325,20 +399,21 @@ async function runInstall(opts) {
 
   await ensureTargetDir(opts.dryRun);
 
-  for (const name of SYMLINK_ITEMS) {
-    await planSymlink(name, opts.dryRun);
-  }
+  const links = await linkHarnessDirs(opts.dryRun);
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
   const harnessSettings = await readJsonOrEmpty(
     path.join(HARNESS_ROOT, '.claude', 'settings.json'),
   );
   const { merged, added } = buildMergedSettings(userSettings, harnessSettings, opts);
+  added.addedLinks = links.map(({ path: dest, target }) => ({ path: dest, target }));
 
   const preservedKeys = describePreserved(userSettings, added);
   const summaryParts = [];
   if (preservedKeys.length > 0) summaryParts.push(`preserved ${preservedKeys.join(', ')}`);
   const addedSummary = [];
+  const createdLinks = links.filter((link) => link.changed).length;
+  if (createdLinks > 0) addedSummary.push(`${createdLinks} link(s)`);
   if (added.addedKeys.length > 0) addedSummary.push(added.addedKeys.join(', '));
   if (added.addedAllowEntries.length > 0)
     addedSummary.push(`${added.addedAllowEntries.length} permissions.allow entries`);
@@ -372,9 +447,7 @@ async function runInstall(opts) {
   console.log('\nDone. Open a new Claude Code session and run /agents to confirm orchestrator is active.');
 }
 
-async function removeManagedSymlink(name, dryRun) {
-  const expectedSrc = path.join(HARNESS_ROOT, '.claude', name);
-  const dest = path.join(TARGET_DIR, name);
+async function removeManagedLink(dest, expectedTarget, dryRun) {
   const kind = await pathKind(dest);
 
   if (kind === 'absent') {
@@ -385,13 +458,8 @@ async function removeManagedSymlink(name, dryRun) {
     console.log(`! ${dest} exists but is not a symlink — leaving alone`);
     return;
   }
-  let current;
-  try {
-    current = await fs.readlink(dest);
-  } catch {
-    current = null;
-  }
-  if (current !== expectedSrc) {
+  const current = await readLinkTarget(dest);
+  if (current !== expectedTarget) {
     console.log(`! ${dest} → ${current} (not ours) — leaving alone`);
     return;
   }
@@ -446,14 +514,15 @@ async function runUninstall(opts) {
   console.log(`mode:    ${opts.dryRun ? 'uninstall (dry-run)' : 'uninstall'}`);
   console.log();
 
-  for (const name of SYMLINK_ITEMS) {
-    await removeManagedSymlink(name, opts.dryRun);
-  }
-
-  const metadata = await readJsonOrEmpty(METADATA_PATH);
-  if (!metadata.version) {
-    console.log('  no .my-configs-managed.json metadata — leaving settings.json untouched');
+  const rawMetadata = await readJsonOrEmpty(METADATA_PATH);
+  if (!rawMetadata.version) {
+    console.log('  no .my-configs-managed.json metadata — nothing to revert');
     return;
+  }
+  const metadata = normalizeMetadata(rawMetadata);
+
+  for (const { path: dest, target } of metadata.addedLinks) {
+    await removeManagedLink(dest, target, opts.dryRun);
   }
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
