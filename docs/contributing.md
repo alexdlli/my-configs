@@ -139,6 +139,8 @@ Both forms are validated. Quoting hands the glob to Node's own matcher instead o
 
 **Never pass a directory to `node --test`.** On the Node in use here (24.15.0) it is broken for *any* directory: the positional is resolved by the CJS loader as a module and the runner never starts. The failure is not obvious — instead of erroring out, it reports the directory path itself as a single failing test named `scripts/waves`, with the message `'test failed'` and a plausible duration. So a suite that never ran looks like a suite that ran and failed. This has already cost two people time. Pass a glob or explicit file paths.
 
+Every push to `main` and every pull request runs `.github/workflows/ci.yml` — `node --check` on every `.mjs` in the tree, the three globs above, and one install/uninstall cycle against a throwaway `$HOME`.
+
 ## Commit rules
 
 - Never include "Claude Code" or "Claude" as co-author.
