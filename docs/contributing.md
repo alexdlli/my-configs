@@ -107,7 +107,7 @@ Prose that says "five hooks", or a table that claims to list every agent, goes s
 | `agents` | `.claude/agents/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
 | `skills` | `.claude/skills/*/` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
 | `commands` | `.claude/commands/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
-| `hooks` | `.claude/hooks/*.mjs` | `README.md` |
+| `hooks` | `.claude/hooks/*.mjs` | `README.md`, `docs/installation.md` |
 | `integrations` | `docs/integrations/*.md` | `README.md`, `docs/contributing.md` |
 | `waveScripts` | `scripts/waves/*.mjs` minus `*.test.mjs` | `CLAUDE.md`, `docs/contributing.md` |
 

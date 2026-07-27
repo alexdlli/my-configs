@@ -22,7 +22,7 @@ When you run `node scripts/install.mjs`, it:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
    - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision — see the measured limits below)
-   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the same three commands as the deny list, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
+   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the same three commands as the deny list, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
 
 ### What `permissions.deny` guarantees under `--dangerously-skip-permissions`

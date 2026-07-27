@@ -15,6 +15,7 @@ const README = 'README.md';
 const CLAUDE = 'CLAUDE.md';
 const AGENT_SYSTEM = 'docs/agent-system.md';
 const CONTRIBUTING = 'docs/contributing.md';
+const INSTALLATION = 'docs/installation.md';
 
 const ORCHESTRATOR_AGENT = 'orchestrator';
 const UNWALKED_DIRECTORIES = new Set(['.git', 'node_modules', '.wave']);
@@ -47,7 +48,7 @@ const INVENTORIES = {
   hooks: {
     dir: '.claude/hooks',
     suffix: MODULE,
-    indexes: [README],
+    indexes: [README, INSTALLATION],
   },
   integrations: {
     dir: 'docs/integrations',
