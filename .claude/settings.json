@@ -26,6 +26,10 @@
       "Bash(orca linear team *)",
       "Bash(orca skills get *)",
       "Bash(orca status *)",
+      "Bash(orca terminal create *)",
+      "Bash(orca terminal send *)",
+      "Bash(orca terminal wait *)",
+      "Bash(orca worktree create *)",
       "Bash(orca worktree current *)"
     ],
     "deny": [
