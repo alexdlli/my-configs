@@ -221,15 +221,17 @@ function runBackup(opts) {
   waitForHealthy(dockerBin);
 
   docker(dockerBin, ['exec', CONTAINER, 'ai-memory', 'backup', '--to', containerPath]);
-  try {
-    docker(dockerBin, ['cp', `${CONTAINER}:${containerPath}`, hostPath]);
-  } finally {
-    const rm = docker(dockerBin, ['exec', CONTAINER, 'rm', '-f', containerPath], { allowFail: true });
-    if (rm.code !== 0) {
-      console.warn(
-        `! warning: failed to remove temp backup ${containerPath} inside "${CONTAINER}": ${rm.stderr.trim()}`,
-      );
-    }
+  // A failed copy must not leave the archive behind inside the volume, and
+  // die() would skip any cleanup after it, so report the failure last.
+  const copied = docker(dockerBin, ['cp', `${CONTAINER}:${containerPath}`, hostPath], { allowFail: true });
+  const rm = docker(dockerBin, ['exec', CONTAINER, 'rm', '-f', containerPath], { allowFail: true });
+  if (rm.code !== 0) {
+    console.warn(
+      `! warning: failed to remove temp backup ${containerPath} inside "${CONTAINER}": ${rm.stderr.trim()}`,
+    );
+  }
+  if (copied.code !== 0) {
+    die(`\`docker cp ${CONTAINER}:${containerPath} ${hostPath}\` failed: ${copied.stderr.trim()}`);
   }
 
   const sizeMb = (fs.statSync(hostPath).size / (1024 * 1024)).toFixed(1);
