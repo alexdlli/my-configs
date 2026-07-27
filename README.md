@@ -19,7 +19,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 | `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
-Plus two hooks that reinforce delegation behavior across prompts and through context compaction.
+Plus three hooks: two that reinforce delegation behavior across prompts and through context compaction, and one that keeps the harness checkout up to date at session start.
 
 ## Install
 
