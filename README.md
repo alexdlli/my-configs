@@ -61,6 +61,8 @@ Removes only the links this installer created (matched by recorded target) and r
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
 ├── setup-ai-memory.mjs  # one-shot ai-memory (long-term memory) setup
+├── verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
+├── backup-ai-memory.mjs # ai-memory volume backup, rotation + daily LaunchAgent
 └── claude-openai-shim.mjs  # OpenAI-compat shim over `claude -p` (subscription)
 docs/
 ├── agent-system.md      # full agent reference

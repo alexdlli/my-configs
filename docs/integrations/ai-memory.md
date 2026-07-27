@@ -50,8 +50,7 @@ node scripts/setup-ai-memory.mjs              # claude-sub (default)
 Verify:
 
 ```bash
-curl -s localhost:8787/healthz       # {"ok":true,...}  shim is up
-ai-memory status                     # server + provider health
+node scripts/verify-ai-memory.mjs    # the whole chain, end to end (see below)
 ```
 
 Then open a new Claude Code session — the SessionStart hook fetches any pending handoff before your first prompt.
@@ -82,6 +81,45 @@ cd <repo> && ai-memory bootstrap
 ```
 
 Per-project isolation is by construction (`<wiki>/<workspace>/<project>/…`, keyed off `basename($cwd)`). Drop a `.ai-memory.toml` marker to override workspace/project for monorepos, worktrees, or work/personal splits.
+
+## Checking the install — `scripts/verify-ai-memory.mjs`
+
+Read-only end-to-end check of the whole chain, for when memory "stops working" and you need to know *which* link broke. It never writes to the wiki and never touches Docker or LaunchAgent state (`ai-memory bootstrap` is run with `--dry-run`, i.e. collect-and-estimate only).
+
+```bash
+node scripts/verify-ai-memory.mjs           # human-readable checklist
+node scripts/verify-ai-memory.mjs --json    # same results as JSON
+```
+
+What it checks:
+
+| Check | Passes when |
+|---|---|
+| ai-memory container | the container exists and is running |
+| LLM backend | the backend the **server is actually configured with** answers. The provider is read from the container's own `AI_MEMORY_LLM_*` env, so `claude-sub` is checked against the shim's `/healthz`, `local` against Ollama's `/v1/models`. `anthropic`/`anthropic-oauth` have no local endpoint and are skipped; a zero-LLM install has no backend to check |
+| LLM model | the configured model is the one the backend serves (Ollama: actually pulled) |
+| `ai-memory status` | the server answers and reports the provider the container was started with |
+| `bootstrap --dry-run` | the server can collect sources — proves it reaches the LLM backend |
+| Wiki git history | `/data/wiki` has commits, i.e. capture is being committed |
+
+Exit codes: `0` all applicable checks passed · `1` something failed · `2` nothing failed but a prerequisite was missing (no docker, no CLI, no container) so part of the setup was **not verified** — the summary line names exactly what went unchecked. An unverified setup never reports success.
+
+Env overrides (only needed when the local container is not the source of truth, e.g. a remote or native deploy): `AI_MEMORY_CONTAINER`, `AI_MEMORY_REPO`, `AI_MEMORY_LLM_PROVIDER`, `AI_MEMORY_LLM_BASE_URL`, `AI_MEMORY_LLM_MODEL`.
+
+## Backups — `scripts/backup-ai-memory.mjs`
+
+The memory lives in the `ai-memory-data` Docker volume; `docker volume rm` or a dead disk takes all of it. This script dumps the volume (wiki + archive + index + config) to the host with rotation, and can install a LaunchAgent that repeats it at login/boot and once a day at 12:00.
+
+```bash
+node scripts/backup-ai-memory.mjs             # one backup now
+node scripts/backup-ai-memory.mjs --dry-run   # print the plan, change nothing
+node scripts/backup-ai-memory.mjs --install   # write + load the LaunchAgent
+node scripts/backup-ai-memory.mjs --uninstall # unload + remove it
+```
+
+Each run waits for the container to report healthy (up to 10 min), runs `ai-memory backup` *inside* it, copies the archive out to `~/ai-memory-backups/ai-memory-<YYYYMMDD>-<HHMMSS>.tar.gz`, removes the temporary archive from the volume (even when the copy fails), and prunes all but the newest 14. Restore with `ai-memory restore --from <archive>`.
+
+Env overrides: `AI_MEMORY_CONTAINER`, `AI_MEMORY_BACKUP_DIR`, `AI_MEMORY_BACKUP_KEEP`. The LaunchAgent (`com.my-configs.ai-memory-backup`) logs to `<backup dir>/backup.log`.
 
 ## Getting the learning onto another computer (and keeping it synced)
 
@@ -139,6 +177,8 @@ docker rm -f ai-memory       # stop + remove the server (data volume survives)
 # remove the shim LaunchAgent (claude-sub):
 launchctl unload ~/Library/LaunchAgents/com.my-configs.claude-openai-shim.plist
 rm ~/Library/LaunchAgents/com.my-configs.claude-openai-shim.plist
+
+node scripts/backup-ai-memory.mjs --uninstall   # remove the backup LaunchAgent
 
 docker volume rm ai-memory-data   # destructive: erase all memory
 ```

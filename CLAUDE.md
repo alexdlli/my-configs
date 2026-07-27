@@ -37,6 +37,8 @@ If any of these is missing or out of date, tell me before proceeding.
 - **`scripts/install.mjs`** — installer (symlinks + settings merge + uninstall)
 - **`scripts/setup-ai-memory.mjs`** — one-shot [ai-memory](https://github.com/akitaonrails/ai-memory) setup (long-term markdown-wiki memory + Hermes-style auto-improve for coding agents). `--provider` selects the LLM backend; default `claude-sub` routes ai-memory's `openai-compat` provider through the local `claude -p` shim so it uses your Claude subscription via the sanctioned CLI path. ai-memory owns its own MCP/hooks/instructions and merges them idempotently, coexisting with `install.mjs`. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
 - **`scripts/claude-openai-shim.mjs`** — zero-dep OpenAI-compatible HTTP server that shells out to `claude -p` (stripping `ANTHROPIC_API_KEY` to force subscription auth). Kept alive by a LaunchAgent so memory works in every session.
+- **`scripts/verify-ai-memory.mjs`** — read-only end-to-end check of the ai-memory chain (container, the LLM backend the server is actually configured with, `ai-memory status`, bootstrap reachability, wiki git history). `--json` for a machine-readable summary; exit 2 means a prerequisite was missing and part of the setup went unverified.
+- **`scripts/backup-ai-memory.mjs`** — dumps the `ai-memory-data` volume to `~/ai-memory-backups` with rotation; `--install` adds a LaunchAgent that repeats it at login/boot and daily. Supports `--dry-run` and `--uninstall`.
 - **`docs/`** — install guide and agent system reference
 
 ## Agent System
