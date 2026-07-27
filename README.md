@@ -22,9 +22,9 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 | `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
-Plus five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force` and `git commit --no-verify` — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
+Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force` and `git commit --no-verify` — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
-Five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+The harness ships <!-- docs-count:skills -->five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the <!-- docs-count:commands -->seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
 ## Install
 
@@ -102,7 +102,7 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 | EcoTokens | Optional Rust output filter | [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md) |
 | ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. `node scripts/setup-ai-memory.mjs`; the default `claude-sub` provider uses your Claude subscription through a local `claude -p` shim | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |
 
-All four are optional and independent of the agent harness.
+All <!-- docs-count:integrations -->four are optional and independent of the agent harness.
 
 ## Notes
 

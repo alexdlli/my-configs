@@ -1,6 +1,6 @@
 # Agent System
 
-This harness ships an orchestrator + 14 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + <!-- docs-count:specialists -->14 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
@@ -53,7 +53,7 @@ Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-
 
 ## Skills
 
-Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. Five ship with the harness, under `.claude/skills/`.
+Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. <!-- docs-count:skills -->Five ship with the harness, under `.claude/skills/`.
 
 | Skill | What it owns |
 |-------|--------------|
