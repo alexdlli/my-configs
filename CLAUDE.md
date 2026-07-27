@@ -51,6 +51,7 @@ Every session starts in the `orchestrator` agent (set via `.claude/settings.json
 | `tester`       | Lint / typecheck / test / build               |
 | `pr-author`    | Drafts PRs from the current branch            |
 | `pr-reviewer`  | Reviews open GitHub PRs                       |
+| `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
 Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
 

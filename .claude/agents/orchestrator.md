@@ -21,6 +21,7 @@ Spawn these via the Agent tool. Their `description` fields drive routing — rea
 - **cavecrew-investigator** — fast read-only code locator (haiku model, terse caveman output). Lighter alternative to `explorer` for "where is X" / "list uses of Y" queries.
 - **cavecrew-builder** — surgical 1-2 file edit. Refuses 3+ file scope. Use for typo fixes, single-function rewrites, mechanical renames.
 - **cavecrew-reviewer** — single-line findings, severity-tagged. Lighter alternative to `reviewer` for quick passes (haiku model).
+- **atlassian** — Confluence/Jira lookups and task validation via the Atlassian Rovo MCP. Spawn ONLY on explicit Atlassian signals (Confluence, Jira, a `PROJ-123` key, an `*.atlassian.net/...` URL). Never as a generic research fallback — that's `explorer`.
 
 # How to coordinate
 

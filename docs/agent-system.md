@@ -1,6 +1,6 @@
 # Agent System
 
-This harness ships an orchestrator + 10 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + 11 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
@@ -17,6 +17,9 @@ This harness ships an orchestrator + 10 specialist subagents, all defined under 
 | `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
 | `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | inherit | — (caveman)      |
 | `cavecrew-reviewer`     | Single-line, severity-tagged findings              | Read, Grep, Bash                       | haiku   | — (caveman)      |
+| `atlassian`    | Confluence search, Jira lookups, task validation | Read, `mcp__atlassian__*`                        | inherit | —                |
+
+`atlassian` is the only agent with MCP access, and it needs the Atlassian Rovo MCP server configured in the session (this repo's installer does not manage MCP servers). Without it the agent is inert.
 
 Inspiration credit: [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — a non-Claude (OpenCode + Oh My OpenAgent) configuration that uses Greek-mythology personas for specialized agents. We adopted the *idea*, not the implementation; this harness uses Claude Code's official subagents mechanism.
 
@@ -41,7 +44,7 @@ Subagents inherit the parent session's permission mode. You don't need to config
 | Accept-edits      | implementer and tester edit without prompts. Full pipeline runs cleanly. |
 | Default           | Subagents prompt for permission per tool, like the parent.          |
 
-Read-only enforcement on `explorer`/`planner`/`reviewer`/`pr-reviewer`/`pr-author`/`cavecrew-investigator`/`cavecrew-reviewer` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt — that's the safety contract behind their "dry-run by default" posture.
+Read-only enforcement on `explorer`/`planner`/`reviewer`/`pr-reviewer`/`pr-author`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt — that's the safety contract behind their "dry-run by default" posture.
 
 ## Troubleshooting
 

@@ -17,6 +17,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
 | `cavecrew-builder`      | Surgical 1-2 file edit                        |
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
+| `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
 Plus two hooks that reinforce delegation behavior across prompts and through context compaction.
 
