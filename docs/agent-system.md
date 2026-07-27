@@ -1,6 +1,6 @@
 # Agent System
 
-This harness ships an orchestrator + 13 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + 14 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
@@ -15,6 +15,7 @@ This harness ships an orchestrator + 13 specialist subagents, all defined under 
 | `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | inherit | —                |
 | `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | inherit | —                |
 | `pr-triage`    | Classifies a PR's open feedback threads from `threads.json`; recommends, never applies | Read, Grep, Glob             | inherit | —                |
+| `wave-monitor` | Reports the state of a wave's branches as one compact table; never fixes, never merges | Read, Bash                  | haiku   | —                |
 | `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | inherit | atlas            |
 | `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
 | `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | inherit | — (caveman)      |
@@ -46,7 +47,7 @@ Subagents inherit the parent session's permission mode. You don't need to config
 | Accept-edits      | implementer and tester edit without prompts. Full pipeline runs cleanly. |
 | Default           | Subagents prompt for permission per tool, like the parent.          |
 
-Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `orca linear create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision.
+Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`wave-monitor`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `orca linear create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision. `wave-monitor` is the same shape from the other side: its `Bash` exists to query `pr-state.mjs`, `git` and `gh`, and the one command that would end a wave on its own — `gh pr merge` — is in `permissions.deny`, so merge stays human even when a worker runs with permissions bypassed.
 
 `pr-triage` goes one step further and has no `Bash` at all. The thread bodies it reads are untrusted input — anyone who can comment on a PR writes text that lands in its context, and review comments routinely contain "run this" or "apply this patch". Denying it every writing and executing tool is what makes prompt injection through a comment a non-event: the worst a malicious comment can achieve is a wrong recommendation, which a human reads before anything happens.
 
@@ -93,6 +94,8 @@ One `.md` per command under `.claude/commands/`, symlinked as a whole directory 
 | `/ticket-new` | Turn a discussion, spec or raw scope into tickets that satisfy the ticket contract. Spawns `pm`; approval is required before anything is published to the tracker. |
 | `/review-adversarial` | Adversarial review of the diff against a base (default `main`) via the `adversarial-review` skill. |
 | `/wave-plan` | Read a Linear project or a GitHub repo slice, build its dependency graph, and print the wave plan via the `wave-orchestration` skill. |
+| `/wave-run` | Dispatch **one** wave of that plan — one worktree and one agent per ticket, cut from an up-to-date `origin/main`. Never merges, never chains the next wave. |
+| `/wave-status` | Spawn `wave-monitor` for the branches of a running wave and print its table. Reports only: no fixing, no merging. |
 | `/pr-babysit` | Drive a PR to review-ready via the `pr-babysitting` skill, with CI and feedback tracked as separate states. |
 
 The wave and PR commands invoke `scripts/waves/*` through the `~/.claude/harness` symlink, so their paths are stable regardless of where the checkout lives. Their read-only invocations are pre-approved in `.claude/settings.json`; the tracker writes they may lead to (`orca linear create`, `status set`, `comment add`, `attach`) are not, and prompt every time.

@@ -16,6 +16,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `pr-author`    | Drafts PRs from the current branch            |
 | `pr-reviewer`  | Reviews open GitHub PRs                       |
 | `pr-triage`    | Classifies PR feedback threads; never applies, never posts |
+| `wave-monitor` | Wave branch state in one compact table (haiku); never fixes, never merges |
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
 | `cavecrew-builder`      | Surgical 1-2 file edit                        |
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
@@ -23,7 +24,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 
 Plus four hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, and one that reports the terminal host and account context.
 
-Five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the five slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+Five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
 ## Install
 
@@ -60,7 +61,8 @@ Removes only the links this installer created (matched by recorded target) and r
 ├── agents/              # orchestrator + specialists
 ├── hooks/               # orchestrator reminder, preserve-orchestrator, auto-update, session-context
 │   └── lib/             # shared hook helpers (+ their tests)
-├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan /pr-babysit
+├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan
+│                        # /wave-run /wave-status /pr-babysit
 ├── skills/              # ticket-contract, orca-linear, adversarial-review,
 │                        # wave-orchestration, pr-babysitting — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
