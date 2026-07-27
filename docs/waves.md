@@ -362,12 +362,21 @@ worktrees ninguém está olhando o terminal de cada agente, e agente parado num 
 permissão é agente bloqueado descoberto horas depois. Desligar é **opt-out**, por pedido
 explícito.
 
-A consequência muda o desenho: não se pode assumir que o `permissions.deny` declarado em
-arquivo sobrevive ao bypass — a questão está aberta (issue #2 em `alexdlli/my-configs`) e, até
-ser medida, o pressuposto é o pior caso. Por isso **a garantia de "merge é sempre humano" mora
-no prompt do worker**, não na camada de permissão: o "abra o PR contra `main` e PARE, você não
-faz merge nunca — mesmo que o comando esteja disponível" é texto explícito no template, e é ele
-que conta. `Bash(gh pr merge *)` no `permissions.deny` continua lá; é bônus, não a garantia.
+A questão que isso abria foi medida (issue #2 em `alexdlli/my-configs`, fechada). O
+`permissions.deny` declarado em arquivo **sobrevive** ao bypass: os quatro comandos negados
+continuaram barrados com o flag ligado. Só que o `deny` é casamento de string, e o bypass
+remove o prompt de aprovação que era o backstop dele — `Bash(gh pr merge *)` barra
+`gh pr merge 3` e não enxerga `bash -c "gh pr merge 3"`. Quem fecha esse envelope é o hook
+`PreToolUse` `.claude/hooks/guard-destructive.mjs`, que barra as duas formas e continua sendo
+avaliado sob bypass ([`guard-destructive.md`](guard-destructive.md)).
+
+Mesmo assim, **a garantia de "merge é sempre humano" continua morando também no prompt do
+worker**: o "abra o PR contra `main` e PARE, você não faz merge nunca — mesmo que o comando
+esteja disponível" segue sendo texto explícito no template. Não porque o deny falhe, mas porque
+o desenho é defesa em camadas — e a camada de baixo tem um vão conhecido. **O contexto de
+subagente não foi medido**, e o worker nasce no `orchestrator` e delega: quase tudo que uma
+onda executa acontece exatamente nesse contexto. As duas camadas de permissão rodam no cliente;
+a única garantia que não depende dele é branch protection no GitHub.
 
 Como `--agent <id>` não aceita argv extra, o caminho padrão do dispatch é de dois passos:
 
