@@ -35,6 +35,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-context.mjs",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
