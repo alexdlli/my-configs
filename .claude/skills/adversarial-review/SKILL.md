@@ -106,6 +106,55 @@ o código deveria existir, não como corrigi-lo. Deleção é correção válida
 costuma ser a mais barata — reescrever o miolo de algo que não deveria estar lá é
 trabalho caro para preservar um erro.
 
+## Freio de escopo: o que não entra no laudo
+
+**Teste de admissão.** Antes de entrar no laudo, cada achado passa por quatro
+portas — basta abrir uma. Ele afeta:
+
+1. a **correção** do código do diff, presente ou futura;
+2. o **requisito declarado** — aquele que o passo 1 mandou copiar literalmente;
+3. o **raio de dano da mudança**, pelas quatro lentes de dano do catálogo:
+   segurança, integridade de dados e reversibilidade, ativação no dado real,
+   regressão;
+4. uma **regra de forma do repo verificável nominalmente** (existe ou não, sem
+   julgamento): assinatura de IA no commit (`Co-Authored-By: Claude`) no repo
+   cujo `CLAUDE.md` a proíbe, regra inviolável da onda. Bullet de julgamento
+   estrutural ("sem duplicação desnecessária", "estrutura clara") **não abre esta
+   porta** — volta às portas 1 a 3.
+
+Se nenhuma das quatro abre, **o achado não entra na lista de achados** — só o par
+convergente tem sobrevida, abaixo.
+
+**Manutenibilidade e Operação continuam valendo**, pela porta 1 e no eixo da
+correção **futura** — o freio corta o achado, não a lente:
+
+- Manutenibilidade passa "o próximo a mexer precisa reconstruir o raciocínio"
+  sobre o diff; não passa "poderia ser mais genérico" nem preferência de estilo.
+- Operação passa "o caminho de erro novo falha sem registrar qual registro
+  falhou"; não passa "o formato deste log podia ser melhor".
+
+**Deleção passa**: propor que o código não deveria existir (seção acima) é achado
+de correção — o freio corta trabalho a mais, não a menos. **Achado não medido
+entra rotulado HIPÓTESE, não cortado**, se abriria porta sob a hipótese.
+
+**O eixo do rótulo é pertencer ao diff, nunca ser mencionado pelo requisito.**
+Código que o diff introduziu bloqueia com o requisito calado sobre o assunto. O
+que o diff não introduziu sai rotulado no bloco **não bloqueante**, nunca
+descartado; a exceção é a suíte vermelha por motivo alheio ao diff, **primeiro
+achado do relatório** ("Baseline primeiro"), no slot do topo do formato.
+
+**A admissão roda depois do pareamento, sobre o par, e nunca corta só uma das
+duas cópias.** Par que não abre porta nenhuma, ou que é sobre código
+preexistente, sai no bloco **não bloqueante**, não entre os bloqueantes:
+convergência protege o par de ser mutilado, não promove a bloqueante o que não
+abriu porta. Nada cortado some em silêncio — o freio decide admissão, nunca quem
+tem razão: discordância sobre achado admitido vai ao humano ("Divergência"), e o
+que caiu vai contado na cobertura, com a porta que faltou.
+
+**O freio se aplica na consolidação dos dois laudos, nunca no prompt de cada
+revisor**: quem aplica é quem confronta os laudos no passo 5. Passá-lo no spawn
+contamina as duas lentes com o mesmo critério de corte.
+
 ## Leitura do resultado
 
 **Convergência** — os dois chegaram ao mesmo achado por caminhos diferentes:
@@ -124,6 +173,9 @@ limpo sem cobertura declarada é laudo vazio.
 ## Formato de saída
 
 ```
+## Baseline (se vermelho por motivo alheio ao diff)
+- o que quebra, desde quando, e que a mudança em revisão não é responsável.
+
 ## Convergente (as duas lentes — prioridade)
 - `path:line` — achado. Como cada lente chegou nele.
 
@@ -133,8 +185,13 @@ limpo sem cobertura declarada é laudo vazio.
 ## Isolado (uma lente só)
 - `path:line` — achado, e por qual lente.
 
+## Não bloqueante
+- `path:line` — fora do escopo do diff: achado real em código que o diff não introduziu, e por qual lente.
+- `path:line` — par convergente que não abriu nenhuma das quatro portas do freio.
+
 ## Cobertura
 - Lente A: o que olhou, o que não olhou.
 - Lente B: o que olhou, o que não olhou.
 - Baseline: estado da suíte antes da revisão.
+- Freio de escopo: quantos achados a admissão cortou, e por que porta nenhuma passaram.
 ```
