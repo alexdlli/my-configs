@@ -34,7 +34,7 @@
 //   local           openai-compat -> http://host.docker.internal:11434/v1 (Ollama).
 //   none            zero-LLM (FTS5 + rule-based summaries; no auto-improve).
 //
-// macOS only (LaunchAgent + Docker Desktop host.docker.internal). Node 20+.
+// macOS only (LaunchAgent + Docker Desktop host.docker.internal). Node.js 24+.
 
 import { argv, exit, platform, env, execPath } from 'node:process';
 import { spawnSync } from 'node:child_process';

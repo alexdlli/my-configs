@@ -19,7 +19,7 @@
 //   AI_MEMORY_BACKUP_DIR  host backup directory    (default: ~/ai-memory-backups)
 //   AI_MEMORY_BACKUP_KEEP archives to retain       (default: 14)
 //
-// macOS only (LaunchAgent + Docker Desktop). Node 20+, stdlib only.
+// macOS only (LaunchAgent + Docker Desktop). Node.js 24+, stdlib only.
 
 import { argv, exit, platform, env, execPath } from 'node:process';
 import { spawnSync } from 'node:child_process';

@@ -26,7 +26,7 @@
 //   SHIM_TIMEOUT_MS  per-call timeout        (default 120000)
 //   SHIM_DEBUG       set to log requests
 //
-// Zero dependencies (Node stdlib only). Node 20+.
+// Zero dependencies (Node stdlib only). Node.js 24+.
 
 import http from 'node:http';
 import { spawn } from 'node:child_process';

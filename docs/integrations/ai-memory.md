@@ -39,7 +39,7 @@ Anthropic's [Claude Code legal/compliance doc](https://code.claude.com/docs/en/l
 
 ## Install
 
-Prerequisites: Docker Desktop, Node.js 20+, and the `claude` CLI **logged into your subscription** (`claude` once interactively). Make sure `ANTHROPIC_API_KEY` is **not** exported in your shell, or Claude Code/the shim would bill the API instead of the subscription.
+Prerequisites: Docker Desktop, Node.js 24+ (the harness installer requires it), and the `claude` CLI **logged into your subscription** (`claude` once interactively). Make sure `ANTHROPIC_API_KEY` is **not** exported in your shell, or Claude Code/the shim would bill the API instead of the subscription.
 
 ```bash
 cd ~/Developer/my-configs
