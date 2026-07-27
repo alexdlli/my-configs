@@ -27,7 +27,7 @@
 //   node scripts/waves/fetch-pr-threads.mjs <number|url|branch> [--repo owner/name]
 //                                           [--out threads.json] [--compact]
 //
-// Exit codes are the shared wave table from pr-state.mjs (0 ok, 2 usage, 3 gh
+// Exit codes are the shared wave table from gh.mjs (0 ok, 2 usage, 3 gh
 // missing, 4 unauthenticated, 5 no such PR, 6 rate limited, 1 anything else).
 //
 // Zero deps, Node stdlib only (repo convention). Read-only: it never posts,
@@ -44,7 +44,7 @@ import {
   classifyGhFailure,
   gh,
   repoFromPullUrl,
-} from './pr-state.mjs';
+} from './gh.mjs';
 
 const SCHEMA = 'wave.pr-threads/1';
 
