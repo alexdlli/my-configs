@@ -1,0 +1,288 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    # The harness is macOS-only in use, but install.mjs branches on win32 only
+    # (scripts/install.mjs:673) — there is no darwin path to exercise — and
+    # node --check / node --test are platform agnostic. Ubuntu is the faster
+    # runner; a macOS one would only test code that does not exist.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No cache: there is no package.json or lockfile to key it on, and
+      # setup-node fails the step when the cache path resolves to nothing.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: syntax check every .mjs
+        run: |
+          set -euo pipefail
+
+          # Materialised before the loop, never piped into it: the status of a
+          # process substitution is not checked by anything, so a find that dies
+          # halfway (an unreadable directory) would feed the loop a partial list
+          # and pass. As a plain assignment, set -e and pipefail kill the step.
+          files="$(find . -name '*.mjs' -not -path './.git/*' | sort)"
+
+          checked=0
+          broken=0
+          while IFS= read -r file; do
+            # A here-string on an empty list still yields one empty line, which
+            # must not count as a checked file — the guard below depends on it.
+            [ -n "$file" ] || continue
+            checked=$((checked + 1))
+            if ! node --check "$file"; then
+              echo "syntax error in $file"
+              broken=$((broken + 1))
+            fi
+          done <<< "$files"
+
+          echo "checked $checked .mjs files"
+
+          # A find that matches nothing is the same silent pass as an empty glob.
+          if [ "$checked" -eq 0 ]; then
+            echo "no .mjs file found — the discovery pattern is broken, not the repo"
+            exit 1
+          fi
+
+          if [ "$broken" -gt 0 ]; then
+            echo "$broken file(s) failed node --check"
+            exit 1
+          fi
+
+      - name: run the test globs
+        run: |
+          set -euo pipefail
+
+          # Globs, never directories: on Node 24.15.0 a directory positional is
+          # resolved as a module and reported as one failing test, so a suite
+          # that never ran looks like a suite that ran and failed. Quoted, so
+          # Node's matcher expands them instead of the shell.
+          globs=(
+            'scripts/*.test.mjs'
+            'scripts/waves/*.test.mjs'
+            '.claude/hooks/lib/*.test.mjs'
+          )
+
+          # One floor per glob, same order, measured on the suite as it stands.
+          # A floor and not an equality: a ticket that adds tests stays green,
+          # while a suite that shrinks — a deleted file, a *.test.mjs renamed
+          # out of the pattern — fails. The only change that has to edit a
+          # number here is a deliberate test removal, which is exactly when a
+          # human should be looking. A floor on the total would not do: a glob
+          # can collapse to a single test while the sum still looks healthy.
+          min_pass_per_glob=(11 123 32)
+
+          # The pair is the contract. Deleting a glob line without its floor is
+          # how a whole suite stops running while the step stays green.
+          if [ "${#globs[@]}" -ne "${#min_pass_per_glob[@]}" ]; then
+            echo "${#globs[@]} globs but ${#min_pass_per_glob[@]} floors — a glob was added or removed without its floor"
+            exit 1
+          fi
+
+          total=0
+          for index in "${!globs[@]}"; do
+            glob="${globs[$index]}"
+            floor="${min_pass_per_glob[$index]}"
+            echo "=== $glob (floor $floor) ==="
+            output="$(mktemp "${TMPDIR:-/tmp}/ci-node-test.XXXXXX")"
+            status=0
+            node --test --test-reporter=tap "$glob" > "$output" 2>&1 || status=$?
+            cat "$output"
+
+            # TAP is requested on purpose: the default reporter is human output,
+            # free to reword between Node minors, and node-version: '24' floats.
+            # TAP is a format, so "# pass N" is a contract and a future 24.x
+            # cannot turn a healthy repo red by rephrasing its summary.
+            pass="$(awk '/^# pass [0-9]+$/ { value = $NF } END { print value + 0 }' "$output")"
+            rm -f "$output"
+
+            if [ "$status" -ne 0 ]; then
+              echo "node --test failed for $glob (exit $status)"
+              exit 1
+            fi
+
+            # An empty glob reports 0 tests and exits 0, so this also catches a
+            # pattern that stopped matching anything.
+            if [ "$pass" -lt "$floor" ]; then
+              echo "$glob passed $pass tests, below its floor of $floor"
+              exit 1
+            fi
+
+            total=$((total + pass))
+          done
+
+          echo "total: $total tests across ${#globs[@]} globs"
+
+      - name: install and uninstall against a throwaway HOME
+        env:
+          FAKE_HOME: ${{ github.workspace }}/.ci-home
+          CHECKOUT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          rm -rf "$FAKE_HOME"
+          mkdir -p "$FAKE_HOME"
+
+          HOME="$FAKE_HOME" node scripts/install.mjs
+
+          node --input-type=module <<'POST_INSTALL'
+          import { lstat, readFile, readlink, realpath, stat } from 'node:fs/promises';
+          import path from 'node:path';
+
+          const EXPECTED_AGENT = 'orchestrator';
+          const REQUIRED_DENY = [
+            'Bash(gh pr merge *)',
+            'Bash(git push --force *)',
+            'Bash(git commit --no-verify *)',
+          ];
+          const HOOK_COMMAND_PREFIX = 'node ';
+
+          const checkout = await realpath(process.env.CHECKOUT);
+          const targetDir = path.join(process.env.FAKE_HOME, '.claude');
+          const hooksDir = path.join(targetDir, 'hooks');
+
+          // Derived from the checkout, so the assertion is "this exact target"
+          // and not "somewhere under a prefix" — the fake HOME lives inside the
+          // workspace, so a prefix test accepts a link that points at itself.
+          const EXPECTED_LINK_TARGETS = new Map([
+            ['harness', checkout],
+            ['agents', path.join(checkout, '.claude', 'agents')],
+            ['hooks', path.join(checkout, '.claude', 'hooks')],
+            ['commands', path.join(checkout, '.claude', 'commands')],
+          ]);
+
+          const installed = JSON.parse(await readFile(path.join(targetDir, 'settings.json'), 'utf8'));
+          const source = JSON.parse(await readFile(path.join(checkout, '.claude', 'settings.json'), 'utf8'));
+
+          const problems = [];
+
+          if (installed.agent !== EXPECTED_AGENT) {
+            problems.push(`agent is ${JSON.stringify(installed.agent)}, expected ${JSON.stringify(EXPECTED_AGENT)}`);
+          }
+
+          const allow = new Set(installed.permissions?.allow);
+          for (const entry of source.permissions.allow) {
+            if (!allow.has(entry)) problems.push(`permissions.allow is missing ${entry}`);
+          }
+
+          const deny = new Set(installed.permissions?.deny);
+          for (const entry of REQUIRED_DENY) {
+            if (!deny.has(entry)) problems.push(`permissions.deny is missing the guarantee ${entry}`);
+          }
+
+          // The event names alone say nothing: the installer rewrites every
+          // command to an absolute path under the installed hooks directory,
+          // and a hook whose script is gone is a hook that silently never runs
+          // — guard-destructive.mjs among them.
+          let expectedHookCommands = 0;
+          let verifiedHookCommands = 0;
+
+          for (const [event, sourceGroups] of Object.entries(source.hooks)) {
+            for (const group of sourceGroups) expectedHookCommands += group.hooks.length;
+
+            const installedGroups = installed.hooks?.[event];
+            if (!Array.isArray(installedGroups) || installedGroups.length === 0) {
+              problems.push(`hooks is missing the event ${event}`);
+              continue;
+            }
+
+            for (const group of installedGroups) {
+              for (const hook of group.hooks ?? []) {
+                const command = hook.command ?? '';
+                if (!command.startsWith(HOOK_COMMAND_PREFIX)) {
+                  problems.push(`${event}: hook command is not a node invocation: ${command}`);
+                  continue;
+                }
+                const script = command.slice(HOOK_COMMAND_PREFIX.length);
+                if (!script.startsWith(`${hooksDir}${path.sep}`)) {
+                  problems.push(`${event}: hook script ${script} is outside ${hooksDir}`);
+                  continue;
+                }
+                if (!(await stat(script).catch(() => null))?.isFile()) {
+                  problems.push(`${event}: hook script ${script} does not exist`);
+                  continue;
+                }
+                verifiedHookCommands += 1;
+              }
+            }
+          }
+
+          if (verifiedHookCommands !== expectedHookCommands) {
+            problems.push(`verified ${verifiedHookCommands} hook commands, the harness declares ${expectedHookCommands}`);
+          }
+
+          for (const [name, expected] of EXPECTED_LINK_TARGETS) {
+            const link = path.join(targetDir, name);
+            const stats = await lstat(link).catch(() => null);
+            if (!stats?.isSymbolicLink()) {
+              problems.push(`${link} is not a symlink`);
+              continue;
+            }
+            const target = path.resolve(targetDir, await readlink(link));
+            if (target !== expected) {
+              problems.push(`${link} points at ${target}, expected ${expected}`);
+              continue;
+            }
+            // A link can hold the right string and still resolve to nothing.
+            if (!(await stat(target).catch(() => null))) {
+              problems.push(`${link} points at ${target}, which does not exist`);
+            }
+          }
+
+          if (problems.length > 0) {
+            console.error('post-install assertions failed:');
+            for (const problem of problems) console.error(`  ${problem}`);
+            process.exit(1);
+          }
+
+          console.log(`post-install assertions passed: agent, ${source.permissions.allow.length} allow entries, ${REQUIRED_DENY.length} deny guarantees, ${Object.keys(source.hooks).length} hook events, ${verifiedHookCommands} hook commands resolving under ${hooksDir}, ${EXPECTED_LINK_TARGETS.size} links`);
+          POST_INSTALL
+
+          HOME="$FAKE_HOME" node scripts/install.mjs --uninstall
+
+          node --input-type=module <<'POST_UNINSTALL'
+          import { readdir, readlink, realpath } from 'node:fs/promises';
+          import path from 'node:path';
+
+          const checkout = await realpath(process.env.CHECKOUT);
+
+          // An empty skills/ directory and settings.json.backup-<epoch> are what a
+          // correct uninstall leaves behind, so emptiness is not the assertion: a
+          // surviving link into the checkout is. Symlinked directories are read,
+          // never followed.
+          const leaks = [];
+          async function scan(dir) {
+            for (const entry of await readdir(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isSymbolicLink()) {
+                const target = path.resolve(dir, await readlink(full));
+                if (target === checkout || target.startsWith(`${checkout}${path.sep}`)) {
+                  leaks.push(`${full} → ${target}`);
+                }
+              } else if (entry.isDirectory()) {
+                await scan(full);
+              }
+            }
+          }
+          await scan(process.env.FAKE_HOME);
+
+          if (leaks.length > 0) {
+            console.error('uninstall left symlinks pointing into the checkout:');
+            for (const leak of leaks) console.error(`  ${leak}`);
+            process.exit(1);
+          }
+
+          console.log('post-uninstall assertions passed: no symlink under the fake HOME points into the checkout');
+          POST_UNINSTALL
