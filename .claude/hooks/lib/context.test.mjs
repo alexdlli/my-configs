@@ -115,6 +115,7 @@ test('an Orca session advertises wave dispatch through the orca CLI', () => {
   const ctx = detectContext(orcaEnv, OUTSIDE_WORK_CWD);
   assert.equal(ctx.dispatch.available, true);
   assert.equal(ctx.dispatch.driver, DISPATCH_DRIVER_ORCA);
+  assert.match(ctx.dispatch.reason, /--agent/);
 });
 
 test('a Maestri session reports dispatch unavailable and names the missing adapter', () => {

@@ -29,7 +29,7 @@ const ORCA_TERM_PROGRAM = 'Orca';
 const ORCA_WORKTREE_SEPARATOR = '::';
 
 const DISPATCH_REASON_ORCA =
-  'orca worktree create + orca terminal: one worktree per ticket, agent in its first terminal';
+  'orca worktree create --agent: one worktree per ticket, agent launched in its first terminal';
 // Maestri exports its CLI only as $MAESTRI_CLI inside the app's own terminal, so
 // nothing outside it can spawn a wave — and no wave adapter targets it yet either.
 const DISPATCH_REASON_MAESTRI =
