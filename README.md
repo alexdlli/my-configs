@@ -22,7 +22,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 | `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
-Plus four hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, and one that reports the terminal host and account context.
+Plus five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force` and `git commit --no-verify` — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
 Five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
@@ -59,7 +59,8 @@ Removes only the links this installer created (matched by recorded target) and r
 ```
 .claude/
 ├── agents/              # orchestrator + specialists
-├── hooks/               # orchestrator reminder, preserve-orchestrator, auto-update, session-context
+├── hooks/               # orchestrator-reminder, preserve-orchestrator, auto-update,
+│                        # session-context, guard-destructive
 │   └── lib/             # shared hook helpers (+ their tests)
 ├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan
 │                        # /wave-run /wave-status /pr-babysit
@@ -78,6 +79,8 @@ docs/
 ├── installation.md      # detailed install + troubleshooting
 ├── contributing.md      # conventions for working on this harness
 ├── waves.md             # ticket contract, dependency graph, wave plan
+├── guard-destructive.md # the PreToolUse guard: the three permission layers,
+│                        # what it blocks and what it deliberately doesn't
 └── integrations/        # orca, maestri, ecotokens, ai-memory
 ```
 
