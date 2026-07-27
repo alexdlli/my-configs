@@ -13,7 +13,6 @@ Always read these first, every session, without me having to ask:
 - [`docs/agent-system.md`](docs/agent-system.md) — agent system architecture and roles
 - [`docs/contributing.md`](docs/contributing.md) — contribution conventions for this repo
 - The **Token-saving conventions** and **Commit Rules** sections below in this file — they are the code standards
-- «reference PR/module to match» — FLAG: no reference PR/module identified in this repo. Fill in the PR or module that represents your quality floor, or delete this line.
 
 If any of these is missing or out of date, tell me before proceeding.
 
@@ -108,7 +107,6 @@ These complement the **Commit Rules** and **Token-saving conventions** above; th
 - Update documentation when behavior changes.
 - Don't trust a PR description; audit the actual code.
 - Keep structure clear enough for an agent to navigate (clean code for agents).
-- Match the level of the «reference PR/module» named above — that is the quality floor. (See FLAG in the required-reading section.)
 
 ## Project-specific standards
 
