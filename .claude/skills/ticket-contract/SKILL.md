@@ -97,6 +97,43 @@ nunca omitido em silêncio, porque a omissão não distingue "irrelevante" de
 - Ruim: `blockedBy: PAY-11` porque PAY-11 tem número menor e "parece vir antes".
 - Bom: `blockedBy: PAY-11 — este ticket consome o campo CardStatus.expired que PAY-11 cria no schema`. Sem uma frase dessas, a aresta não existe.
 
+## Campo 9 no GitHub: as duas armadilhas do marcador
+
+No GitHub uma das duas fontes de aresta é um marcador no corpo da issue: um comentário
+HTML ancorado, de miolo `blocked-by: #12, owner/repo#34`. O leitor
+(`scripts/waves/tickets-github.mjs`) procura esse padrão em **qualquer** corpo de issue e
+não distingue "issue que declara uma aresta" de "issue que fala sobre a convenção". Daí
+duas regras que não são estilo, são corretude do grafo.
+
+**1. Ticket que documenta o marcador não pode conter o marcador.** O literal no corpo cria
+aresta fantasma para as issues do exemplo; se o exemplo for cross-repo, ainda dispara uma
+leitura de bloqueador externo que falha. Para falar do marcador sem disparar o leitor, use
+uma das duas formas seguras — nunca o literal:
+
+- **Cite só o miolo:** "comentário HTML ancorado, de miolo `blocked-by: #12`". Sem a
+  abertura e o fechamento do comentário não existe casamento.
+- **Cite a forma byte a byte por referência:** o regex `/<!--\s*blocked-by\s*:([\s\S]*?)-->/gi`
+  em `scripts/waves/tickets-github.mjs:117`, e o exemplo renderizado em `docs/waves.md:205`.
+  Colar o regex é seguro: ele exige `blocked-by` logo depois da abertura, e no texto dele o
+  que vem ali é `\s*`, que não é espaço em branco.
+
+O precedente é a issue #5 deste repo: a primeira versão do corpo trazia seis literais e
+teria criado arestas para `#12` e para um `owner/repo#34` inexistente. Só não entrou porque
+o parser real foi rodado contra os corpos antes de publicar — faça o mesmo sempre que um
+ticket falar do marcador, e confira que o resultado é zero marcador:
+
+```bash
+node -e "import('$HOME/.claude/harness/scripts/waves/tickets-github.mjs').then(m=>console.log(m.parseBlockedByMarkers(require('fs').readFileSync(process.argv[1],'utf8'),'owner/repo')))" corpo.md
+# { ids: [], malformed: [], markers: 0 }
+```
+
+**2. "Sem bloqueador" se declara em prosa, nunca em marcador vazio.** Miolo vazio é
+classificado como malformado: o leitor emite `! bad data:` e sai com código 8, derrubando o
+plano de ondas inteiro por um ticket que só queria dizer que não depende de nada. O mesmo
+vale para miolo em texto (`blocked-by: nenhum`, `blocked-by: n/a`), que não é referência de
+issue. Ticket sem bloqueador **não leva marcador nenhum**: o campo 9 diz em prosa que não há
+aresta e por quê — o "por quê" é obrigatório, veja a checagem de prontidão.
+
 ## Regras de criação de projeto
 
 - **Nunca existe ticket separado só para testes.** Teste é entregável do ticket que
