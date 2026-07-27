@@ -21,7 +21,7 @@ docs/
 scripts/
   install.mjs          # symlink + merge installer
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
-  waves/               # wave pipeline: tickets-linear, tickets-github, graph, pr-state, fetch-pr-threads
+  waves/               # wave pipeline: tickets-linear, tickets-github, graph, gh, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
   verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
   backup-ai-memory.mjs # volume backup + rotation + LaunchAgent
