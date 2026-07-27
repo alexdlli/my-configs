@@ -50,14 +50,20 @@ single issue, and match the parser exactly.
 - **Estimate** is the `est:<n>` label (`est:3`, `est: 0.5`, `EST:2`; decimals fine). The
   label must exist first — `gh label create`. No label means `estimate: null` in the plan;
   two `est:` labels with different values are bad data, not a silent pick.
-- **`blockedBy`** is the union of the issue's native dependency (`gh issue edit
-  --add-blocked-by`) and the anchored body marker. Numbers only exist after creation, so
-  publish blockers first, collect the numbers, then declare the edge on the dependents.
-- **The marker is an HTML comment and the reader finds it in ANY issue body.** Never paste
-  it into a ticket that merely talks about the convention — that creates a phantom edge to
-  whatever issue your example names. Never emit it empty either: a ticket with no blocker
-  carries no marker at all and says so in prose in field 9. Both rules, plus the two safe
-  ways to quote the syntax, are in `ticket-contract` under "Campo 9 no GitHub".
+- **`blockedBy`** is the union of two sources, deduplicated: the issue's native dependency
+  and the anchored body marker. Numbers only exist after creation, so publish the blockers
+  first, collect their numbers, then declare each edge by writing the marker into the body
+  of the dependent — never into the blocker's. Wiring the native relation with `gh issue
+  edit --add-blocked-by` is optional and comes later: the reader unions and dedups the two
+  sources, so the marker alone already produces the edge.
+- **The marker is an HTML comment and the reader finds it in ANY issue body.** Spelled out
+  in full — safe here, because the reader parses issue bodies and never this file — it is
+  `<!-- blocked-by: #12, owner/repo#34 -->`. The short form `#12` assumes the target repo;
+  a blocker living in another repo needs `owner/repo#12`. Never paste that literal into a
+  ticket that merely talks about the convention — that creates a phantom edge to whatever
+  issue your example names. Never emit it empty either: a ticket with no blocker carries no
+  marker at all and says so in prose in field 9. Both rules, plus the two safe ways to
+  quote the syntax, are in `ticket-contract` under "Campo 9 no GitHub".
 - **Verify before reporting done.** Run
   `node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> <slice>`
   over the slice you created: exit 0, and the edges visible in the table. Exit 8 means the
