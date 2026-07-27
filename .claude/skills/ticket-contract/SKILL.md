@@ -59,8 +59,9 @@ específico. Todo o resto de `to-tickets` continua valendo.
 
 Todo ticket carrega os 12. Campo que não se aplica é declarado como "não se aplica" —
 nunca omitido em silêncio, porque a omissão não distingue "irrelevante" de
-"esquecido". Os campos 10, 11 e 12 têm uma saída de escala quando o projeto inteiro os
-dispensa: veja "Declaração de perfil do projeto", logo abaixo da tabela.
+"esquecido". Os campos 11 e 12 têm uma saída de escala quando o projeto inteiro os
+dispensa: veja "Declaração de perfil do projeto", logo abaixo da tabela. O campo 10 não
+tem essa saída — nenhuma declaração de projeto responde por ele.
 
 | # | Campo | O que precisa estar lá |
 |---|---|---|
@@ -79,11 +80,19 @@ dispensa: veja "Declaração de perfil do projeto", logo abaixo da tabela.
 
 ## Declaração de perfil do projeto
 
-Os campos 10, 11 e 12 pressupõem um produto com runtime, telemetria e dado de usuário. Num
-repo que é só markdown e script stdlib, os três saem "não se aplica" em **todo** ticket: no
-primeiro projeto real deste harness foram 6 de 6, cada um gastando ~15% do corpo para não
-dizer nada. Pior que o desperdício: "não se aplica" repetido tantas vezes deixa de ser lido
-exatamente onde importaria.
+Os campos 11 e 12 pressupõem um produto com telemetria e dado de usuário. Num repo que é só
+markdown e script stdlib, os dois saem "não se aplica" quase sempre: no primeiro projeto real
+deste harness, 5 dos 6 tickets em cada um dos dois, gastando corpo para não dizer nada. Pior
+que o desperdício: "não se aplica" repetido tantas vezes deixa de ser lido exatamente onde
+importaria.
+
+**O campo 10 fica de fora da dispensa.** Ele pressupõe risco, e risco existe até em repo de
+markdown: nos mesmos 6 tickets, os 6 trouxeram risco concreto mais a contenção contra ele —
+`$HOME` falso e remote descartável no experimento de permissões, "diff vazio no corpo das
+funções extraídas" na refatoração, desabilitar o workflow pela aba Actions no primeiro CI.
+Quando uma declaração diz que o rollback padrão é `git revert`, ela descreve o rollback
+**padrão**; não afirma que o ticket não tem risco a declarar. Essa resposta é por ticket, e
+nenhuma declaração de projeto a antecipa.
 
 A saída não é omitir. É declarar uma vez, no nível do projeto.
 
@@ -105,11 +114,13 @@ Com a declaração escrita:
 - Cada campo coberto vira **uma linha** no ticket, citando a declaração. O campo não some e
   não vira parágrafo. O formato exato está em "Como renderizar os 12 campos".
 - **A exceção volta ao normal, por ticket.** Ticket que faz o que a declaração não cobre —
-  passa a tocar dado pessoal, adiciona texto de interface, muda algo cujo rollback não é
-  `git revert` — preenche o campo por extenso e diz qual premissa da declaração ele quebra.
-  A declaração cobre o repo, não absolve o ticket.
+  passa a tocar dado pessoal, adiciona texto de interface, emite um sinal observável de
+  verdade — preenche o campo por extenso e diz qual premissa da declaração ele quebra.
+  A declaração cobre o repo, não absolve o ticket. Nos mesmos 6 tickets a exceção caiu duas
+  vezes: o campo 11 da #6, em que o status do check de CI é a própria métrica, e o campo 12
+  da #3, em que fixture de payload de PR obriga dado sintético.
 
-Sem declaração escrita, os três campos são obrigatórios em todo ticket, como sempre foram. E
+Sem declaração escrita, os dois campos são obrigatórios em todo ticket, como sempre foram. E
 declaração é afirmação verificável: se ninguém consegue confirmá-la olhando o repo, ela não
 existe — pergunte ao usuário em vez de escrever uma por conta própria.
 
@@ -259,7 +270,8 @@ aresta e por quê — o "por quê" é obrigatório, veja a checagem de prontidã
 Rode item a item. Qualquer `não` reprova o ticket — corrija antes de publicar ou de
 soltar o agente.
 
-- [ ] Os 12 campos estão presentes: preenchidos, marcados como "não se aplica", ou — só os campos 10, 11 e 12 — resolvidos na linha única que cita a declaração de perfil do projeto.
+- [ ] Os 12 campos estão presentes: preenchidos, marcados como "não se aplica", ou — só os campos 11 e 12 — resolvidos na linha única que cita a declaração de perfil do projeto.
+- [ ] O campo 10 não usa essa linha única: ou traz o risco deste ticket com a contenção contra ele, ou diz por que este ticket não tem risco. Declaração de projeto não responde por ele.
 - [ ] O título, sozinho, diz o que muda no produto.
 - [ ] Existe pelo menos um item explícito FORA do escopo.
 - [ ] Todo termo de domínio usado aparece definido no ticket ou é vocabulário do codebase.
