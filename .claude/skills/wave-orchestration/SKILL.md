@@ -238,30 +238,20 @@ estava esperando.
 
 ### 2 — Um worktree por ticket
 
-O worker roda com `--dangerously-skip-permissions` por padrão (ver
-`### Bypass de permissão` adiante), e `--agent <id>` **não aceita argv extra** —
-ele sobe o agente conhecido sem flags. Por isso o caminho padrão tem dois
-passos: cria o worktree, sobe o CLI com o argv que você quer, espera o TUI ficar
-pronto e manda o prompt.
+**Um comando por ticket.** O `create` corta o worktree, sobe o agente no
+**primeiro** terminal e entrega o prompt no argv de lançamento:
 
 ```bash
-NEW=$(orca worktree create \
+CREATE=$(orca worktree create \
   --repo "id:$REPO_ID" \
   --name w1-issue-3 \
   --parent-worktree "path:$PARENT" \
   --base-branch origin/main \
   --issue 3 \
+  --agent claude \
+  --prompt "$(cat .wave/3/prompt.md)" \
   --json)
-WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
-
-TERM=$(orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
-  --command 'claude --dangerously-skip-permissions' --json)
-HANDLE=$(jq -r '.result.terminal.handle // .result.handle // empty' <<<"$TERM")
-[ -n "$HANDLE" ] || HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
-  | jq -r '.result.terminals[] | select(.title | contains("w1-issue-3")) | .handle')
-
-orca terminal wait --terminal "$HANDLE" --for tui-idle --timeout-ms 60000 --json
-orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
+HANDLE=$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$CREATE")
 ```
 
 | Flag | Por quê |
@@ -271,45 +261,112 @@ orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --ente
 | `--parent-worktree path:$PARENT` | Linhagem: os worktrees da onda são **filhos** do worktree atual, não irmãos soltos |
 | `--base-branch origin/main` | O corte. Depende do passo 1 ter rodado |
 | `--issue <n>` / `--linear-issue <id\|url>` | Vincula o worktree ao ticket. GitHub usa `--issue`, Linear usa `--linear-issue` |
+| `--agent claude` | Sobe o agente conhecido no primeiro terminal. Ids: `claude`, `codex`, e os outros TUIs instalados |
+| `--prompt "$(cat ...)"` | O prompt do ticket, sempre do arquivo (passo 3) |
 | `--setup` | `inherit` é o default. Passe `--setup run` quando o ticket precisa das deps instaladas para rodar teste |
-| `--title` no `terminal create` | O mesmo nome do worktree. É o que distingue o terminal do agente do shell de fallback, e o plano B para reachar o handle |
 
-Três detalhes que fazem esse caminho falhar em silêncio:
+**O argv do agente não vem da linha de comando — vem do setting.** `--agent
+claude` não sobe um `claude` pelado: o Orca monta
+`claude --dangerously-skip-permissions '<prompt>'` a partir de
+`settings.agentDefaultArgs`, em
+`~/Library/Application Support/orca/profiles/local-default/orca-data.json`, que
+já traz `{"claude": "--dangerously-skip-permissions", "codex":
+"--dangerously-bypass-approvals-and-sandbox"}`. E isso é **default de fábrica**,
+não configuração desta máquina: no `app.asar` a constante chama-se
+`YOLO_TUI_AGENT_ARGS`, com `DEFAULT_TUI_AGENT_ARGS = YOLO_TUI_AGENT_ARGS`. Não
+existe flag de CLI para trocar esse argv (ver `### Bypass de permissão`
+adiante).
 
-- **`wait --for tui-idle` não é opcional.** Texto mandado para um TUI que ainda
-  está subindo é perdido, e a perda é silenciosa: o terminal fica lá, vazio,
-  parecendo um agente pensando. Sempre com `--timeout-ms`.
-- **Pegue o handle logo depois do `terminal create`, e case o título por
-  `contains`, nunca por igualdade.** Um agente TUI reescreve o próprio título da
-  aba assim que sobe — um `w1-issue-3` vira algo como `⠐ w1-issue-3` ou o nome
-  que o agente escolher. Comparação exata funciona no primeiro segundo e para de
-  funcionar depois, que é o pior tipo de bug para depurar às cegas.
-- **Sem `--agent`, o create abre um shell de fallback** quando o repo não tem
-  terminal default configurado. Mire só no handle do agente, e só feche o outro
-  depois que `orca terminal list` confirmar que ele é um shell sem uso.
+Duas armadilhas do caminho de dois passos simplesmente **não existem aqui**:
+
+- **Nenhum shell órfão.** O agente entra na primeira aba — que é exatamente a que
+  virava o shell de fallback quando o `create` rodava sem `--agent`.
+- **Nenhuma corrida de `tui-idle`.** O agente `claude` tem
+  `promptInjectionMode: "argv"`: o prompt viaja no argv de lançamento, não é
+  digitado no TUI. Não há `terminal wait`, não há `terminal send`, e o defeito
+  descrito no passo 2b não tem por onde acontecer.
+
+Com `--agent`, **não** crie um segundo terminal com o mesmo agente depois: ele já
+está no primeiro, e um segundo é um agente duplicado no mesmo checkout brigando
+pelos mesmos arquivos.
 
 Não passe `--activate` num loop de N tickets: cada `--activate` rouba o foco do
 app e o humano perde o lugar N vezes.
 
-**Caminho curto**, para quando o humano desligou o bypass naquele ticket e
-nenhum argv é necessário — um comando só, agente no primeiro terminal:
+### 2b — Caminho de exceção: dois passos, com verificação
+
+Só quando o `--agent` não expressa o que o ticket precisa: **agente não-default**
+ou **modelo específico** (ver `### Agente não-default` adiante). Nunca como
+padrão — e a razão está medida.
+
+**O defeito: no primeiro disparo real de onda, 4 de 5 tickets subiram sem
+prompt.** `orca terminal wait --for tui-idle --timeout-ms 60000 --json` devolveu
+`{ok: true, state: null, waitedMs: null}` — voltou na hora, sem esperar coisa
+alguma. O `terminal send --text ... --enter` seguinte entregou o texto, mas o
+Enter chegou cedo demais: o prompt de 15-22 KB ficou **no composer, não
+submetido**. Da tela, o terminal parecia um agente pensando. Só apareceu porque o
+humano olhou.
+
+Daí a regra deste caminho: **verificação, não esperança.** Depois do `send`,
+confirme a submissão lendo o terminal.
 
 ```bash
-orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
-  --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 \
-  --agent claude --prompt "$(cat .wave/3/prompt.md)" --json
+NEW=$(orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
+  --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 --json)
+WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
+
+TERM=$(orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
+  --command 'codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.5' --json)
+HANDLE=$(jq -r '.result.terminal.handle // .result.handle // empty' <<<"$TERM")
+[ -n "$HANDLE" ] || HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
+  | jq -r '.result.terminals[] | select(.title | contains("w1-issue-3")) | .handle')
+
+orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
+orca terminal read --terminal "$HANDLE" --json
 ```
 
-Ids de agente conhecidos: `claude`, `codex`, e os outros TUIs instalados. Com
-`--agent`, **não** crie um segundo terminal com o mesmo agente depois: ele já
-está no primeiro, e um segundo é um agente duplicado no mesmo checkout brigando
-pelos mesmos arquivos.
+Se o `read` mostrar o prompt parado no composer em vez de um agente trabalhando,
+mande só o Enter e leia de novo:
+
+```bash
+orca terminal send --terminal "$HANDLE" --text "" --enter --json
+orca terminal read --terminal "$HANDLE" --json
+```
+
+`wait --for tui-idle` pode continuar no roteiro como aceleração, mas **não vale
+como garantia**: ele já voltou `state: null` na hora, para 4 terminais de 5. Quem
+decide é o `read`.
+
+**Pegue o handle do envelope do `terminal create`, na hora.** O plano B por
+título (`contains`, nunca igualdade) só vale nos primeiros instantes: o TUI
+reescreve o título da aba assim que sobe, e depois disso o título não identifica
+mais nada.
+
+**E sobra um shell.** Sem `--agent`, o `create` abriu um terminal de fallback, e
+ele fica aberto ao lado do agente. **Casar por título não desempata os dois:**
+ambos aparecem com o mesmo texto (`⠂ orchestrator`), porque quem escreve o título
+da aba é o TUI, não o `--title`. O discriminador confiável é
+`orca worktree ps --json`, que traz `worktrees[].agents[].paneKey` no formato
+`<tabId>:<leafId>` — monte o set de paneKeys de agente e trate como não-agente
+todo terminal cujo `<tabId>:<leafId>` esteja fora do set:
+
+```bash
+AGENT_PANES=$(orca worktree ps --json | jq -r '.result.worktrees[].agents[].paneKey')
+orca terminal list --worktree "id:$WT_ID" --json | jq -r --arg panes "$AGENT_PANES" '
+  ($panes | split("\n")) as $set
+  | .result.terminals[]
+  | select(("\(.tabId):\(.leafId)" | IN($set[])) | not)
+  | .handle'
+```
+
+Fecha com `orca terminal close --terminal <handle> --tab`. Confira o handle antes
+de fechar: aba errada é um agente da onda morto no meio do trabalho.
 
 ### 3 — O prompt vai em ARQUIVO, sempre
 
 Escreva `.wave/<ticket>/prompt.md` e passe o **conteúdo do arquivo**:
-`--text "$(cat .wave/<ticket>/prompt.md)"` no `terminal send`, ou
-`--prompt "$(cat .wave/<ticket>/prompt.md)"` no caminho curto.
+`--prompt "$(cat .wave/<ticket>/prompt.md)"` no `worktree create`, ou
+`--text "$(cat .wave/<ticket>/prompt.md)"` no `terminal send` do caminho 2b.
 **Nunca cole o markdown direto na linha de comando.**
 
 O prompt de um ticket bom tem vários KB de markdown: crase, `$`, `!`, aspas,
@@ -348,20 +405,19 @@ Uma linha por ticket, atualizada a cada create:
 - **Worktree id** é o `.result.worktree.id` do create, no formato
   `<repoId>::<path>`. Guarde **inteiro**; o `repoId` sozinho endereça o repo, não
   o worktree.
-- **Terminal handle** no caminho padrão vem do envelope do `terminal create`,
-  com plano B em `orca terminal list --worktree "id:<worktreeId>" --json` casando
-  o título por `contains`. No caminho curto (`--agent`) ele sai do envelope do
-  `worktree create`, em `.result.agentTerminalHandle`;
-  runtimes antigos devolvem só `.result.startupTerminal.handle`, então leia os
-  dois:
+- **Terminal handle** no caminho padrão sai do envelope do `worktree create`, em
+  `.result.agentTerminalHandle`; runtimes antigos devolvem só
+  `.result.startupTerminal.handle`, então leia os dois:
 
   ```bash
   HANDLE=$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$CREATE")
   ```
 
-  Handle vazio não é falha do create: recupere pela mesma lista. Handles são de
-  escopo de runtime — se o Orca reiniciar, o handle antigo morre e tem que ser
-  readquirido.
+  No caminho de exceção (2b) ele vem do envelope do `terminal create`, com plano
+  B em `orca terminal list --worktree "id:<worktreeId>" --json` casando o título
+  por `contains`. Handle vazio não é falha do create: recupere pela mesma lista.
+  Handles são de escopo de runtime — se o Orca reiniciar, o handle antigo morre e
+  tem que ser readquirido.
 
 Opcionalmente, mova a coluna do board com
 `orca worktree set --worktree "id:<worktreeId>" --workspace-status in-progress --json`
@@ -465,16 +521,18 @@ de outro parágrafo.
 ### Agente não-default: Codex, ou um modelo específico
 
 `--agent <id>` escolhe **o agente, não o modelo**: ele não aceita `--model` nem
-`-c model_reasoning_effort=...`. Mas isso não exige caminho novo — é o caminho
-padrão do passo 2, trocando só o `--command`:
+`-c model_reasoning_effort=...`. É esta a situação — junto com o agente que não
+está na lista de ids conhecidos — que justifica o caminho de exceção do passo 2b.
+Só o `--command` muda:
 
-```bash
-orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
-  --command 'codex --model gpt-5.5 -c model_reasoning_effort="xhigh"' --json
+```text
+codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.5 -c model_reasoning_effort="xhigh"
 ```
 
-O resto (`terminal list` pelo `--title`, `wait --for tui-idle`, `send --text`) é
-idêntico.
+O resto é o 2b inteiro, sem atalho: handle do envelope, `send --text`, **`read`
+para confirmar que o prompt foi submetido** e descarte do shell órfão por
+`paneKey`. Repare que o bypass vai escrito à mão: `agentDefaultArgs` só vale no
+caminho `--agent`, então aqui o argv é responsabilidade de quem monta a linha.
 
 **Se o CLI local rejeitar o modelo, pare e mostre o erro exato.** O erro está no
 próprio terminal: `orca terminal read --terminal "$HANDLE" --json`. Não caia em
@@ -487,8 +545,14 @@ explicar depois.
 O worker roda com `--dangerously-skip-permissions` por padrão. O motivo é
 operacional: numa onda de N worktrees ninguém está olhando o terminal de cada
 agente, e agente parado num prompt de permissão é agente bloqueado que só é
-descoberto horas depois. Para desligar num ticket específico, o humano pede — é
-**opt-out**, não opt-in.
+descoberto horas depois. É **opt-out**, não opt-in.
+
+**Quem liga isso não é a skill, é o Orca.** O argv sai de
+`settings.agentDefaultArgs` (`orca-data.json`), cujo default de fábrica é a
+constante `YOLO_TUI_AGENT_ARGS` do `app.asar`. O dispatch não passa flag nenhuma
+de bypass no caminho padrão, e não existe flag de CLI para desligá-la ali:
+desligar num ticket é mexer no setting, ou cair no caminho de exceção 2b e montar
+o `--command` à mão.
 
 **A consequência, e é ela que muda o desenho do fluxo:** medido na issue #2 de
 `alexdlli/my-configs` (fechada), o `permissions.deny` declarado em arquivo
