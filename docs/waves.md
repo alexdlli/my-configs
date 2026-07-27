@@ -156,10 +156,10 @@ mais páginas de issues do que o cursor consegue percorrer.
 ### Testes
 
 `node --test <diretório>` não funciona no Node instalado (24.15): o diretório é resolvido como
-módulo e o runner nem chega a rodar. Passe os arquivos:
+módulo e o runner nem chega a rodar. Passe um glob:
 
 ```bash
-node --test scripts/waves/graph.test.mjs scripts/waves/tickets-linear.test.mjs scripts/waves/tickets-github.test.mjs
+node --test 'scripts/waves/*.test.mjs'
 ```
 
 O grafo é coberto por fixtures — caminho simples, fan-in, ciclo de 2 e de 3 nós, auto-bloqueio,
