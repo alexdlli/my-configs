@@ -12,14 +12,24 @@ node scripts/install.mjs
 
 When you run `node scripts/install.mjs`, it:
 
-1. Creates two symlinks:
-   - `~/.claude/agents` → `<repo>/.claude/agents`
-   - `~/.claude/hooks`  → `<repo>/.claude/hooks`
+1. Creates symlinks:
+   - `~/.claude/harness`  → `<repo>` (stable path to the checkout, so skills and hooks reach `scripts/**` without hardcoding a clone location)
+   - `~/.claude/agents`   → `<repo>/.claude/agents`
+   - `~/.claude/hooks`    → `<repo>/.claude/hooks`
+   - `~/.claude/commands` → `<repo>/.claude/commands`
+   - `~/.claude/skills/<name>` → one link **per entry**, never the directory itself (see below)
 2. Deep-merges harness keys into `~/.claude/settings.json`:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
+   - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision)
    - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd)
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
+
+### Why skills are linked one by one
+
+`~/.claude/skills` is shared ground — plugins and other toolkits (argent, maestri, ...) install their skills there too. Symlinking the whole directory to the harness would hide every one of them, so the installer links each entry of `<repo>/.claude/skills` individually. The same mechanism exposes skills that live outside the harness (currently `orca-cli`, from `~/.agents/skills/orca-cli`); if the source is missing the installer says so and moves on.
+
+A name that already exists in `~/.claude/skills` and is not one of our links is **reported and skipped** — never overwritten, never backed up.
 
 Other keys in your `~/.claude/settings.json` (`theme`, `enabledPlugins`, `extraKnownMarketplaces`, anything custom) are left untouched.
 
@@ -35,8 +45,8 @@ Other keys in your `~/.claude/settings.json` (`theme`, `enabledPlugins`, `extraK
 
 ## Conflicts
 
-**`~/.claude/agents` or `~/.claude/hooks` already exists as a real directory.**
-The installer backs it up to `~/.claude/<name>.backup-<timestamp>` and proceeds. The message in the output points to the backup location.
+**`~/.claude/agents`, `~/.claude/hooks`, `~/.claude/commands` or `~/.claude/harness` already exists as a real directory.**
+The installer backs it up to `~/.claude/<name>.backup-<timestamp>` and proceeds. The message in the output points to the backup location. This does **not** apply to `~/.claude/skills` entries, which are only ever skipped.
 
 **`~/.claude/settings.json` already has `agent` set to something other than `orchestrator`.**
 The installer aborts with a clear message. Re-run with `--force-agent` to overwrite, or remove the field manually.
@@ -73,7 +83,11 @@ Opt out per-machine: `export CLAUDE_SETUP_SKIP_AUTOUPDATE=1`. It also self-skips
 node scripts/install.mjs --uninstall
 ```
 
-Removes the two symlinks. Reads `~/.claude/.my-configs-managed.json` and reverts ONLY the keys/permissions/hooks that the installer added — your `theme`, plugins, and unrelated permissions stay intact. Deletes the metadata file at the end.
+Reads `~/.claude/.my-configs-managed.json` and reverts ONLY what the installer added — your `theme`, plugins, and unrelated permissions stay intact. Deletes the metadata file at the end.
+
+Every link the installer created is recorded in the metadata as a `{path, target}` pair, and a link is removed only when its current `readlink` matches the recorded target exactly. A third-party entry that happens to share a name is left where it is. With no metadata file there is nothing to revert, and the uninstaller touches nothing.
+
+Metadata written before this scheme (`version: 1`) has no link records; uninstalling one of those removes the only two links that version ever created (`agents` and `hooks`).
 
 ## Optional: ai-memory (long-term memory)
 

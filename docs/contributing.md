@@ -9,6 +9,8 @@ Notes for working on this harness. It's small on purpose — settings, agents, h
   settings.json        # baseline merged into ~/.claude/settings.json
   agents/              # one .md per agent
   hooks/               # hook scripts (.mjs)
+  commands/            # one .md per slash command
+  skills/              # one directory per skill, linked entry by entry
 docs/                  # this file + agent-system.md + installation.md
 scripts/install.mjs    # symlink + merge installer
 CLAUDE.md              # session-level guidance Claude reads automatically
@@ -67,7 +69,9 @@ Don't add a hook just because you can. Add one when there's a real recurring pai
 
 - Maintain the flags: default install, `--dry-run`, `--uninstall`, `--force-agent`, `--help`.
 - Keep the deep-merge behavior for `settings.json` — never clobber unrelated keys (`theme`, `enabledPlugins`, etc.).
-- Keep the metadata file (`~/.claude/.my-configs-managed.json`) accurate — `--uninstall` reads it to revert precisely what was added.
+- Keep the metadata file (`~/.claude/.my-configs-managed.json`) accurate — `--uninstall` reads it to revert precisely what was added, and removes a link only when its `readlink` still matches the recorded target.
+- Never symlink `~/.claude/skills` itself; it is shared with plugins and other toolkits. Add skills to `.claude/skills/` (linked per entry automatically) or, for a skill installed elsewhere on disk, to `EXTERNAL_SKILL_LINKS`.
+- Bump `METADATA_VERSION` when the metadata shape changes, and teach `normalizeMetadata` how to read the old shape.
 - Test with `--dry-run` against a fake `$HOME`:
   ```bash
   HOME=/tmp/fake-home node scripts/install.mjs --dry-run

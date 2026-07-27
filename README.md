@@ -29,7 +29,7 @@ cd ~/Developer/my-configs
 node scripts/install.mjs
 ```
 
-That symlinks `~/.claude/agents` and `~/.claude/hooks` to this checkout, and deep-merges the harness keys (`agent`, `permissions.allow`, and every hook event declared in `.claude/settings.json`) into your `~/.claude/settings.json`. Existing keys (theme, plugins, etc.) are preserved.
+That symlinks `~/.claude/{harness,agents,hooks,commands}` to this checkout, links each `.claude/skills` entry individually into the shared `~/.claude/skills` (third-party skills are never displaced), and deep-merges the harness keys (`agent`, `permissions.allow`, `permissions.deny`, and every hook event declared in `.claude/settings.json`) into your `~/.claude/settings.json`. Existing keys (theme, plugins, etc.) are preserved.
 
 Open a new Claude Code session anywhere and run `/agents` — `orchestrator` should be active.
 
@@ -47,7 +47,7 @@ node scripts/install.mjs   # idempotent; refreshes symlinks + re-merges settings
 node scripts/install.mjs --uninstall
 ```
 
-Removes the symlinks and reverts only the keys the installer added to `~/.claude/settings.json` (your other settings stay intact).
+Removes only the links this installer created (matched by recorded target) and reverts only the keys it added to `~/.claude/settings.json`. Your other settings and any third-party skills stay intact.
 
 ## Layout
 
@@ -55,6 +55,8 @@ Removes the symlinks and reverts only the keys the installer added to `~/.claude
 .claude/
 ├── agents/              # orchestrator + specialists
 ├── hooks/               # orchestrator reminder + preserve-orchestrator + auto-update
+├── commands/            # slash commands (/sync-harness)
+├── skills/              # skills, linked one by one into ~/.claude/skills
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)

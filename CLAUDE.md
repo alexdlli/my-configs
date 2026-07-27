@@ -29,9 +29,11 @@ If any of these is missing or out of date, tell me before proceeding.
 
 ## What Goes Here
 
-- **`.claude/settings.json`** — baseline tool permissions, default agent, and hooks (deep-merged into `~/.claude/settings.json` by the installer)
+- **`.claude/settings.json`** — baseline tool permissions (`allow` + `deny`), default agent, and hooks (deep-merged into `~/.claude/settings.json` by the installer)
 - **`.claude/agents/`** — orchestrator + specialist subagent definitions (symlinked into `~/.claude/agents/`)
 - **`.claude/hooks/`** — Claude Code hook scripts (symlinked into `~/.claude/hooks/`)
+- **`.claude/commands/`** — slash commands (symlinked into `~/.claude/commands/`)
+- **`.claude/skills/`** — skills, linked **one entry at a time** into `~/.claude/skills/`. That directory is shared with plugins and other toolkits, so the installer never symlinks it wholesale and never overwrites a name it doesn't own. Same mechanism exposes skills living outside the harness (`orca-cli`).
 - **`scripts/install.mjs`** — installer (symlinks + settings merge + uninstall)
 - **`scripts/setup-ai-memory.mjs`** — one-shot [ai-memory](https://github.com/akitaonrails/ai-memory) setup (long-term markdown-wiki memory + Hermes-style auto-improve for coding agents). `--provider` selects the LLM backend; default `claude-sub` routes ai-memory's `openai-compat` provider through the local `claude -p` shim so it uses your Claude subscription via the sanctioned CLI path. ai-memory owns its own MCP/hooks/instructions and merges them idempotently, coexisting with `install.mjs`. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
 - **`scripts/claude-openai-shim.mjs`** — zero-dep OpenAI-compatible HTTP server that shells out to `claude -p` (stripping `ANTHROPIC_API_KEY` to force subscription auth). Kept alive by a LaunchAgent so memory works in every session.
