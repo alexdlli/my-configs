@@ -62,6 +62,8 @@ const SHIM_LABEL = 'com.my-configs.claude-openai-shim';
 const SHIM_PLIST = path.join(HOME, 'Library', 'LaunchAgents', `${SHIM_LABEL}.plist`);
 const SHIM_LOG_DIR = path.join(HOME, '.local', 'share', 'ai-memory');
 const DEFAULT_PORT = 8787;
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
 const DEFAULT_MODEL = 'claude-haiku-4-5';
 const LOCAL_MODEL = 'qwen3:8b';
 
@@ -105,7 +107,7 @@ function parseArgs(args) {
     if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--no-server') opts.server = false;
     else if (a === '--provider') opts.provider = args[++i];
-    else if (a === '--port') opts.port = Number(args[++i]);
+    else if (a === '--port') opts.port = parsePort(args[++i]);
     else if (a === '--model') opts.model = args[++i];
     else if (a === '-h' || a === '--help') {
       usage();
@@ -128,6 +130,25 @@ function parseArgs(args) {
 function die(msg) {
   console.error(`! error: ${msg}`);
   exit(1);
+}
+
+// An unvalidated port lands in the LaunchAgent plist and in the container's
+// base URL, where "NaN" fails much later and much less clearly.
+function parsePort(raw) {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < MIN_PORT || n > MAX_PORT) {
+    die(`--port must be an integer between ${MIN_PORT} and ${MAX_PORT} (got "${raw}").`);
+  }
+  return n;
+}
+
+function escapeXml(s) {
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
 }
 
 function redactArg(arg) {
@@ -208,28 +229,29 @@ function ensureShimAgent(opts) {
   }
   const nodeBin = execPath; // absolute path to the node running this script
   const claudeBin = opts.dryRun ? 'claude' : which('claude') || 'claude';
+  const agentPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${LOCAL_BIN}`;
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>${SHIM_LABEL}</string>
+  <key>Label</key><string>${escapeXml(SHIM_LABEL)}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${nodeBin}</string>
-    <string>${SHIM_SCRIPT}</string>
+    <string>${escapeXml(nodeBin)}</string>
+    <string>${escapeXml(SHIM_SCRIPT)}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>SHIM_PORT</key><string>${opts.port}</string>
+    <key>SHIM_PORT</key><string>${escapeXml(opts.port)}</string>
     <key>SHIM_HOST</key><string>127.0.0.1</string>
-    <key>SHIM_MODEL</key><string>${opts.model}</string>
-    <key>CLAUDE_BIN</key><string>${claudeBin}</string>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${LOCAL_BIN}</string>
+    <key>SHIM_MODEL</key><string>${escapeXml(opts.model)}</string>
+    <key>CLAUDE_BIN</key><string>${escapeXml(claudeBin)}</string>
+    <key>PATH</key><string>${escapeXml(agentPath)}</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${path.join(SHIM_LOG_DIR, 'shim.out.log')}</string>
-  <key>StandardErrorPath</key><string>${path.join(SHIM_LOG_DIR, 'shim.err.log')}</string>
+  <key>StandardOutPath</key><string>${escapeXml(path.join(SHIM_LOG_DIR, 'shim.out.log'))}</string>
+  <key>StandardErrorPath</key><string>${escapeXml(path.join(SHIM_LOG_DIR, 'shim.err.log'))}</string>
 </dict>
 </plist>
 `;
