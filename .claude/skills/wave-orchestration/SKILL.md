@@ -5,9 +5,10 @@ description: >-
   projeto de tickets. Use quando o usuário pedir "plano de ondas", "quantas
   frentes dá pra tocar em paralelo", "o que dá pra começar agora", "monta o
   grafo desse projeto", ou ao orquestrar várias frentes com marcos de
-  sincronização. Lê o projeto no Linear via `orca linear`, monta o grafo pelas
-  relações reais de bloqueio e apresenta as ondas ao humano. Hoje é somente
-  leitura: o disparo dos agentes é manual.
+  sincronização. Lê os tickets de uma de duas fontes — projeto no Linear via
+  `orca linear`, ou GitHub Issues via `gh` — monta o grafo pelas relações reais
+  de bloqueio e apresenta as ondas ao humano. Hoje é somente leitura: o disparo
+  dos agentes é manual.
 ---
 
 # Orquestração em ondas
@@ -27,6 +28,10 @@ bloqueador; nunca inferida de título, numeração ou ordem). Projeto sem
 `blockedBy` preenchido gera uma onda 1 gigante que mente sobre o paralelismo
 disponível — nesse caso, volte para `ticket-contract` antes de planejar.
 
+Onde a aresta mora depende da fonte: no Linear, na relação "blocked by"; no
+GitHub, na dependência nativa da issue **ou** no marcador `<!-- blocked-by: ...
+-->` no corpo. Nos dois casos ela é declarada, nunca inferida.
+
 **Não confunda dois artefatos de nome parecido:**
 
 | Artefato | O que é | Quem escreve |
@@ -37,23 +42,74 @@ disponível — nesse caso, volte para `ticket-contract` antes de planejar.
 O primeiro existe antes da onda começar; o segundo nasce dentro da execução de
 um ticket. Um não substitui o outro.
 
-## 1 — Ler o projeto e montar o grafo
+## 1 — Ler os tickets e montar o grafo
 
-Dois scripts, um pipe. Não recalcule ondas na cabeça e não reordene o resultado:
-o cálculo é do `graph.mjs` e é testado.
+Dois scripts, dois passos. Não recalcule ondas na cabeça e não reordene o
+resultado: o cálculo é do `graph.mjs` e é testado.
+
+### Escolher a fonte
+
+**O `graph.mjs` é agnóstico de fonte.** Ele consome o formato normalizado e não
+sabe de onde veio. Só o primeiro passo muda:
+
+| Fonte | Leitor | Recorte |
+|---|---|---|
+| Linear (pessoal) | `tickets-linear.mjs` | O projeto (URL ou nome) |
+| GitHub Issues | `tickets-github.mjs` | `--repo` obrigatório, `--milestone`/`--label` opcionais |
+
+Como escolher, nesta ordem:
+
+1. **O usuário disse.** "plano de ondas do milestone 7" ou uma URL do Linear
+   resolve sozinho.
+2. **O tracker do repo**, por `node ~/.claude/hooks/session-context.mjs --json`
+   (campos `tracker` e `trackerSource`). Nunca adivinhe pelo nome do repo.
+3. **Na dúvida, pergunte.** Rodar o leitor errado devolve "projeto não
+   encontrado" ou um plano do repo inteiro — os dois custam uma rodada.
+
+Jira não tem leitor: lá a leitura é via agente `atlassian`, e não existe pipeline
+automatizado de ondas.
+
+### Linear
 
 ```bash
 node ~/.claude/harness/scripts/waves/tickets-linear.mjs "<projeto>" --json > /tmp/wave-tickets.json
 node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
 ```
 
-`<projeto>` é a URL ou o nome do projeto no Linear.
+`<projeto>` é a URL ou o nome do projeto no Linear. O leitor distingue CLI
+ausente (3), app Orca fora do ar (4), Linear desconectado (5), projeto não
+encontrado ou ambíguo (6) e erro do `orca` (7).
 
-**Rode os dois passos separados, nunca num pipe direto.** Num pipe, o código de
-saída do leitor some e um erro dele vira "plano vazio". Se o primeiro comando
-falhar, pare e reporte o motivo: ele distingue CLI ausente (3), app Orca fora do
-ar (4), Linear desconectado (5), projeto não encontrado ou ambíguo (6) e erro do
-`orca` (7).
+### GitHub Issues
+
+```bash
+node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> --milestone <n> --json > /tmp/wave-tickets.json
+node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
+```
+
+**`--repo` é obrigatório e o recorte não é.** Sem `--milestone` e sem `--label` o
+escopo é o repo inteiro, em todos os estados — o leitor avisa isso no stderr em
+caixa alta, e acima de 1000 issues ele recusa em vez de truncar. Se o aviso de
+repo inteiro aparecer e o humano queria um milestone, pare e confirme antes de
+apresentar o plano.
+
+O `blockedBy` sai da **união** de duas fontes: a dependência nativa do GitHub
+("blocked by", a mesma da barra lateral da issue) e um marcador ancorado no
+corpo, `<!-- blocked-by: #12, owner/repo#34 -->`. Estimativa vem da label
+`est:<n>`. Detalhes em `~/.claude/harness/docs/waves.md`.
+
+Códigos de saída: CLI `gh` ausente (3), GitHub inalcançável ou rate limit (4),
+não autenticado ou sem escopo (5), repo inexistente ou issues desabilitadas (6),
+erro do `gh` ou leitura truncada (7), **tickets emitidos mas dado ruim atrás
+deles (8)**. O 8 é o único em que o stdout ainda presta: marcador malformado ou
+labels `est:` conflitantes. Leve o `! bad data:` do stderr ao humano.
+
+### Os dois passos são separados de propósito
+
+**Nunca use um pipe direto.** Num pipe, o código de saída do leitor some e um
+erro dele vira "plano vazio". Se o primeiro comando falhar, pare e reporte o
+motivo — nenhum dos dois leitores emite array vazio como sucesso, e leitura
+legítima de zero tickets vem anunciada no stderr.
 
 O `graph.mjs` sai com 3 quando o plano está **incompleto** — ciclo de
 dependência ou `blockedBy` apontando para id inexistente. Nesse caso o plano

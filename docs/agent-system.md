@@ -59,7 +59,7 @@ Skills are procedure documents Claude loads on demand. Routing works like it doe
 | `ticket-contract` | The 12 fields a ticket needs in order to work as a standalone agent prompt, plus the project-creation rules, the readiness check and the tracker adapter. Source of truth for the `pm` agent. |
 | `orca-linear` | Discovery stub for the `orca linear` CLI — reading, creating and triaging Linear issues. Deliberately thin: the full, version-matched guide comes from the binary via `orca skills get orca-linear`. |
 | `adversarial-review` | Reviewing a diff through two independent lenses. Spawns `reviewer` twice in parallel, each with a distinct lens and fresh context, then confronts the two reports. |
-| `wave-orchestration` | Planning execution in waves from a ticket dependency graph: how to build the graph, how to present the plan, and the wave's non-negotiable rules. |
+| `wave-orchestration` | Planning execution in waves from a ticket dependency graph: how to pick the source (Linear via `orca linear`, or GitHub Issues via `gh`), how to build the graph, how to present the plan, and the wave's non-negotiable rules. |
 | `pr-babysitting` | Driving an open PR to review-ready, tracking CI and feedback as two independent states. Uses `pr-state.mjs` and `fetch-pr-threads.mjs`, and delegates thread classification to `pr-triage`. |
 
 ### Two different things are called a "contract"
@@ -92,7 +92,7 @@ One `.md` per command under `.claude/commands/`, symlinked as a whole directory 
 | `/sync-harness` | Force a harness update now, bypassing only the 6h throttle. All other safety checks still apply. |
 | `/ticket-new` | Turn a discussion, spec or raw scope into tickets that satisfy the ticket contract. Spawns `pm`; approval is required before anything is published to the tracker. |
 | `/review-adversarial` | Adversarial review of the diff against a base (default `main`) via the `adversarial-review` skill. |
-| `/wave-plan` | Read a Linear project, build its dependency graph, and print the wave plan via the `wave-orchestration` skill. |
+| `/wave-plan` | Read a Linear project or a GitHub repo slice, build its dependency graph, and print the wave plan via the `wave-orchestration` skill. |
 | `/pr-babysit` | Drive a PR to review-ready via the `pr-babysitting` skill, with CI and feedback tracked as separate states. |
 
 The wave and PR commands invoke `scripts/waves/*` through the `~/.claude/harness` symlink, so their paths are stable regardless of where the checkout lives. Their read-only invocations are pre-approved in `.claude/settings.json`; the tracker writes they may lead to (`orca linear create`, `status set`, `comment add`, `attach`) are not, and prompt every time.
