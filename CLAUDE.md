@@ -47,11 +47,13 @@ Every session starts in the `orchestrator` agent (set via `.claude/settings.json
 | `orchestrator`          | Decomposition, parallel delegation, synthesis |
 | `explorer`              | Read-only research and discovery              |
 | `planner`               | Implementation strategy (read-only)           |
+| `pm`                    | Spec/discussion into contract-compliant tickets (read-only on code) |
 | `implementer`           | Writes/edits code per a plan                  |
 | `reviewer`              | Code review, quality, security                |
 | `tester`                | Lint / typecheck / test / build               |
 | `pr-author`             | Drafts PRs from the current branch            |
 | `pr-reviewer`           | Reviews open GitHub PRs                       |
+| `pr-triage`             | Classifies PR feedback threads; never applies, never posts |
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output)  |
 | `cavecrew-builder`      | Surgical 1-2 file edit                        |
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |

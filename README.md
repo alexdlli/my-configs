@@ -9,17 +9,19 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `orchestrator` | Decomposition + parallel delegation (default) |
 | `explorer`     | Read-only research and discovery              |
 | `planner`      | Implementation strategy (read-only)           |
+| `pm`           | Spec/discussion into contract-compliant tickets (read-only on code) |
 | `implementer`  | Writes/edits code per a plan                  |
 | `reviewer`     | Code review, quality, security                |
 | `tester`       | Lint / typecheck / test / build               |
 | `pr-author`    | Drafts PRs from the current branch            |
 | `pr-reviewer`  | Reviews open GitHub PRs                       |
+| `pr-triage`    | Classifies PR feedback threads; never applies, never posts |
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
 | `cavecrew-builder`      | Surgical 1-2 file edit                        |
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 | `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
-Plus three hooks: two that reinforce delegation behavior across prompts and through context compaction, and one that keeps the harness checkout up to date at session start.
+Plus four hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, and one that reports the terminal host and account context.
 
 ## Install
 

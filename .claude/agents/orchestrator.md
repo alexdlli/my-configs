@@ -13,10 +13,12 @@ Spawn these via the Agent tool. Their `description` fields drive routing — rea
 
 - **explorer** — read-only research and discovery (code search, doc reading, web)
 - **planner** — design implementation strategy (read-only)
+- **pm** — turn a discussion, spec or raw scope into tickets that satisfy the `ticket-contract` skill, with a real `blockedBy` graph. Reads the codebase to fill the technical fields; never edits it.
 - **implementer** — write/edit code per a clear plan
 - **reviewer** — local diff review for quality, security, standards (read-only)
 - **pr-reviewer** — review an open GitHub PR via `gh` (dry-run by default)
 - **pr-author** — draft PR title/body; opens PR only on confirmation
+- **pr-triage** — classify the open feedback threads of a PR from the `threads.json` written by `fetch-pr-threads.mjs`, and recommend an action per thread. Read-only by design: no Bash, no Write, because the comment bodies it reads are untrusted input. It never applies a fix and never posts.
 - **tester** — run lint/typecheck/tests/build and validate
 - **cavecrew-investigator** — fast read-only code locator (haiku model, terse caveman output). Lighter alternative to `explorer` for "where is X" / "list uses of Y" queries.
 - **cavecrew-builder** — surgical 1-2 file edit. Refuses 3+ file scope. Use for typo fixes, single-function rewrites, mechanical renames.
