@@ -206,15 +206,38 @@ function appendPermissionEntries(merged, listName, harnessEntries) {
   return appended;
 }
 
+// Removes the entries a previous run of this installer added and the harness no
+// longer declares, returning the ones actually dropped.
+//
+// Appending alone can never retract: dropping `Bash(gh pr merge *)` from the
+// harness left it sitting in an already-installed settings.json forever, which
+// silently defeated the policy change it belonged to. The metadata is what makes
+// this safe — only an entry this installer is on record as having added is ever
+// removed, so a rule the user wrote by hand stays put even when it is spelled
+// exactly like one of ours.
+function retractPermissionEntries(merged, listName, harnessEntries, previouslyAdded) {
+  if (previouslyAdded.length === 0) return [];
+  const stillDeclared = new Set(Array.isArray(harnessEntries) ? harnessEntries : []);
+  const retract = new Set(previouslyAdded.filter((entry) => !stillDeclared.has(entry)));
+  if (retract.size === 0) return [];
+  const installed = merged.permissions?.[listName];
+  if (!Array.isArray(installed)) return [...retract];
+  merged.permissions[listName] = installed.filter((entry) => !retract.has(entry));
+  return [...retract];
+}
+
 // Returns { merged, added }. `merged` is the full settings to write; `added`
 // records only what this run introduced (so uninstall can revert exactly that,
-// nothing else). `addedLinks` is filled in by the caller.
-function buildMergedSettings(userSettings, harnessSettings, opts) {
+// nothing else) plus what it retracted, so the metadata stops claiming it.
+// `addedLinks` is filled in by the caller.
+function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata) {
   const merged = cloneJson(userSettings);
   const added = {
     addedKeys: [],
     addedAllowEntries: [],
     addedDenyEntries: [],
+    retractedAllowEntries: [],
+    retractedDenyEntries: [],
     addedHooks: [],
     addedLinks: [],
   };
@@ -236,6 +259,19 @@ function buildMergedSettings(userSettings, harnessSettings, opts) {
       added.addedKeys.push('agent');
     }
   }
+
+  added.retractedAllowEntries = retractPermissionEntries(
+    merged,
+    'allow',
+    harnessSettings?.permissions?.allow,
+    priorMetadata.addedAllowEntries,
+  );
+  added.retractedDenyEntries = retractPermissionEntries(
+    merged,
+    'deny',
+    harnessSettings?.permissions?.deny,
+    priorMetadata.addedDenyEntries,
+  );
 
   added.addedAllowEntries = appendPermissionEntries(
     merged,
@@ -313,17 +349,28 @@ function normalizeMetadata(raw) {
   };
 }
 
+// A retracted entry is no longer installed, so the metadata must stop claiming
+// it — otherwise the next run's union puts it straight back.
+function unionWithout(prior, incoming, retracted) {
+  const gone = new Set(retracted);
+  return [...new Set([...prior, ...incoming])].filter((entry) => !gone.has(entry));
+}
+
 function mergeMetadata(prior, added) {
   const normalized = normalizeMetadata(prior);
   return {
     version: METADATA_VERSION,
     addedKeys: [...new Set([...normalized.addedKeys, ...added.addedKeys])],
-    addedAllowEntries: [
-      ...new Set([...normalized.addedAllowEntries, ...added.addedAllowEntries]),
-    ],
-    addedDenyEntries: [
-      ...new Set([...normalized.addedDenyEntries, ...added.addedDenyEntries]),
-    ],
+    addedAllowEntries: unionWithout(
+      normalized.addedAllowEntries,
+      added.addedAllowEntries,
+      added.retractedAllowEntries,
+    ),
+    addedDenyEntries: unionWithout(
+      normalized.addedDenyEntries,
+      added.addedDenyEntries,
+      added.retractedDenyEntries,
+    ),
     addedHooks: dedupeBySignature(normalized.addedHooks, added.addedHooks, hookSignature),
     addedLinks: dedupeBySignature(normalized.addedLinks, added.addedLinks, linkSignature),
   };
@@ -510,7 +557,14 @@ async function runInstall(opts) {
   const harnessSettings = await readJsonOrEmpty(
     path.join(HARNESS_ROOT, '.claude', 'settings.json'),
   );
-  const { merged, added } = buildMergedSettings(userSettings, harnessSettings, opts);
+  const prior = await readJsonOrEmpty(METADATA_PATH);
+  const priorMetadata = normalizeMetadata(prior);
+  const { merged, added } = buildMergedSettings(
+    userSettings,
+    harnessSettings,
+    opts,
+    priorMetadata,
+  );
   added.addedLinks = links.map(({ path: dest, target }) => ({ path: dest, target }));
 
   const preservedKeys = describePreserved(userSettings, added);
@@ -527,6 +581,8 @@ async function runInstall(opts) {
   if (added.addedHooks.length > 0)
     addedSummary.push(`${added.addedHooks.length} hook(s)`);
   if (addedSummary.length > 0) summaryParts.push(`added ${addedSummary.join(', ')}`);
+  const retracted = [...added.retractedAllowEntries, ...added.retractedDenyEntries];
+  if (retracted.length > 0) summaryParts.push(`retracted ${retracted.join(', ')}`);
   if (summaryParts.length === 0) summaryParts.push('no changes needed');
 
   if (opts.dryRun) {
@@ -534,7 +590,6 @@ async function runInstall(opts) {
     console.log('--- merged settings.json (dry-run) ---');
     console.log(JSON.stringify(merged, null, 2));
     console.log('--- end ---');
-    const prior = await readJsonOrEmpty(METADATA_PATH);
     const metadata = mergeMetadata(prior, added);
     console.log('→ would write metadata:');
     console.log(JSON.stringify(metadata, null, 2));
@@ -546,7 +601,6 @@ async function runInstall(opts) {
   await writeSettingsAtomic(merged);
   console.log(`✓ wrote ${SETTINGS_PATH}`);
 
-  const prior = await readJsonOrEmpty(METADATA_PATH);
   const metadata = mergeMetadata(prior, added);
   await fs.writeFile(METADATA_PATH, `${JSON.stringify(metadata, null, 2)}\n`);
   console.log(`✓ wrote ${METADATA_PATH}`);
