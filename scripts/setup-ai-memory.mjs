@@ -67,6 +67,13 @@ const LOCAL_MODEL = 'qwen3:8b';
 
 const PROVIDERS = ['claude-sub', 'anthropic', 'anthropic-oauth', 'local', 'none'];
 
+// Credentials are handed to child processes through the environment, never
+// through argv: argv shows up in `ps`, and this script echoes every command it
+// runs in --dry-run. Anything printed whose NAME looks like a credential is
+// masked, so the next secret someone adds is covered too.
+const SECRET_ENV_NAME = /KEY|TOKEN|SECRET|PASSWORD/i;
+const REDACTED = '***';
+
 function usage() {
   console.log(`Set up ai-memory for the my-configs harness.
 
@@ -123,13 +130,24 @@ function die(msg) {
   exit(1);
 }
 
-function run(cmd, args, { dryRun, allowFail = false } = {}) {
-  const printable = `${cmd} ${args.join(' ')}`.trim();
+function redactArg(arg) {
+  const eq = arg.indexOf('=');
+  if (eq <= 0) return arg;
+  const name = arg.slice(0, eq);
+  return SECRET_ENV_NAME.test(name) ? `${name}=${REDACTED}` : arg;
+}
+
+function run(cmd, args, { dryRun, allowFail = false, extraEnv } = {}) {
+  const printable = `${cmd} ${args.map(redactArg).join(' ')}`.trim();
   if (dryRun) {
     console.log(`  $ ${printable}`);
     return { code: 0, stdout: '', stderr: '' };
   }
-  const res = spawnSync(cmd, args, { stdio: 'inherit', encoding: 'utf8' });
+  const res = spawnSync(cmd, args, {
+    stdio: 'inherit',
+    encoding: 'utf8',
+    env: extraEnv ? { ...env, ...extraEnv } : env,
+  });
   if (res.error) {
     if (allowFail) return { code: 1, stdout: '', stderr: String(res.error) };
     die(`failed to run \`${printable}\`: ${res.error.message}`);
@@ -224,25 +242,33 @@ function ensureShimAgent(opts) {
   console.log(`✓ shim will keep running on login at http://127.0.0.1:${opts.port}`);
 }
 
-// Returns the docker `-e` flag array for the chosen provider.
+// Returns the docker `-e` flags for the chosen provider, plus the credentials
+// those flags inherit by name. `-e NAME` (no value) tells docker to copy NAME
+// from its own environment, so no secret ever reaches argv.
 function providerDockerEnv(opts) {
   switch (opts.provider) {
     case 'claude-sub':
-      return [
-        '-e', 'AI_MEMORY_LLM_PROVIDER=openai-compat',
-        '-e', `AI_MEMORY_LLM_BASE_URL=http://host.docker.internal:${opts.port}/v1`,
-        '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
-      ];
+      return {
+        flags: [
+          '-e', 'AI_MEMORY_LLM_PROVIDER=openai-compat',
+          '-e', `AI_MEMORY_LLM_BASE_URL=http://host.docker.internal:${opts.port}/v1`,
+          '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
+        ],
+        secretEnv: {},
+      };
     case 'anthropic': {
       const key = env.ANTHROPIC_API_KEY;
       if (!key && !opts.dryRun) {
         die('provider anthropic needs ANTHROPIC_API_KEY exported in this shell.');
       }
-      return [
-        '-e', 'AI_MEMORY_LLM_PROVIDER=anthropic',
-        '-e', `ANTHROPIC_API_KEY=${key || '<ANTHROPIC_API_KEY>'}`,
-        '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
-      ];
+      return {
+        flags: [
+          '-e', 'AI_MEMORY_LLM_PROVIDER=anthropic',
+          '-e', 'ANTHROPIC_API_KEY',
+          '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
+        ],
+        secretEnv: key ? { ANTHROPIC_API_KEY: key } : {},
+      };
     }
     case 'anthropic-oauth': {
       const tok = env.ANTHROPIC_OAUTH_TOKEN || env.CLAUDE_CODE_OAUTH_TOKEN;
@@ -250,22 +276,28 @@ function providerDockerEnv(opts) {
         die('provider anthropic-oauth needs CLAUDE_CODE_OAUTH_TOKEN (claude setup-token).');
       }
       console.log('! note: anthropic-oauth is unofficial / against Anthropic ToS.');
-      return [
-        '-e', 'AI_MEMORY_LLM_PROVIDER=anthropic-oauth',
-        '-e', `ANTHROPIC_OAUTH_TOKEN=${tok || '<CLAUDE_CODE_OAUTH_TOKEN>'}`,
-        '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
-      ];
+      return {
+        flags: [
+          '-e', 'AI_MEMORY_LLM_PROVIDER=anthropic-oauth',
+          '-e', 'ANTHROPIC_OAUTH_TOKEN',
+          '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
+        ],
+        secretEnv: tok ? { ANTHROPIC_OAUTH_TOKEN: tok } : {},
+      };
     }
     case 'local':
       console.log('! note: provider local needs Ollama running with the model pulled.');
-      return [
-        '-e', 'AI_MEMORY_LLM_PROVIDER=openai-compat',
-        '-e', 'AI_MEMORY_LLM_BASE_URL=http://host.docker.internal:11434/v1',
-        '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
-      ];
+      return {
+        flags: [
+          '-e', 'AI_MEMORY_LLM_PROVIDER=openai-compat',
+          '-e', 'AI_MEMORY_LLM_BASE_URL=http://host.docker.internal:11434/v1',
+          '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
+        ],
+        secretEnv: {},
+      };
     case 'none':
     default:
-      return [];
+      return { flags: [], secretEnv: {} };
   }
 }
 
@@ -278,6 +310,7 @@ function startServer(opts) {
     return;
   }
   console.log(`→ starting ai-memory server (provider: ${opts.provider})`);
+  const { flags, secretEnv } = providerDockerEnv(opts);
   run(
     'docker',
     [
@@ -285,10 +318,10 @@ function startServer(opts) {
       '--restart', 'unless-stopped',
       '-p', `${BIND}:49374`,
       '-v', 'ai-memory-data:/data',
-      ...providerDockerEnv(opts),
+      ...flags,
       IMAGE,
     ],
-    opts,
+    { ...opts, extraEnv: secretEnv },
   );
 }
 
