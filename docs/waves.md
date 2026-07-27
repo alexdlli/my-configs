@@ -336,10 +336,10 @@ ticket está errado. O `git log` é a prova, não enfeite: se o merge do bloquea
 commit impresso, o fetch não trouxe o que parecia ter trazido.
 
 **2. O prompt vai em arquivo (`.wave/<ticket>/prompt.md`), passado por
-`--text "$(cat ...)"`.** Markdown de vários KB colado inline é comido pelo escaping do shell, e
-o modo de falha não é erro: é um prompt truncado que o agente obedece achando que está
+`--prompt "$(cat ...)"`.** Markdown de vários KB colado inline é comido pelo escaping do shell,
+e o modo de falha não é erro: é um prompt truncado que o agente obedece achando que está
 completo. O arquivo também torna o disparo reexecutável — se o agente morrer, o reenvio é um
-`orca terminal send`.
+`orca terminal send --text "$(cat ...)"`.
 
 O prompt precisa ser **autocontido**: a spec inteira do ticket dentro dele. O worker nasce sem
 contexto, e cada ida ao tracker é uma rodada perdida e um ponto onde ele pode ler o ticket
@@ -378,23 +378,48 @@ subagente não foi medido**, e o worker nasce no `orchestrator` e delega: quase 
 onda executa acontece exatamente nesse contexto. As duas camadas de permissão rodam no cliente;
 a única garantia que não depende dele é branch protection no GitHub.
 
-Como `--agent <id>` não aceita argv extra, o caminho padrão do dispatch é de dois passos:
+O bypass não é passado pelo dispatch: ele mora em `settings.agentDefaultArgs`
+(`~/Library/Application Support/orca/profiles/local-default/orca-data.json`), e é default de
+fábrica — no `app.asar` a constante é `YOLO_TUI_AGENT_ARGS`, com `DEFAULT_TUI_AGENT_ARGS =
+YOLO_TUI_AGENT_ARGS`. `--agent claude` monta `claude --dangerously-skip-permissions '<prompt>'`
+sozinho, e não há flag de CLI que troque esse argv.
+
+### O dispatch é de um comando só
 
 ```bash
 orca worktree create --repo "id:<repoId>" --name "w1-issue-3" \
-  --parent-worktree "path:<parent>" --base-branch origin/main --issue 3 --json
-orca terminal create --worktree "id:<worktreeId>" --title "w1-issue-3" \
-  --command 'claude --dangerously-skip-permissions' --json
-orca terminal wait --terminal "<handle>" --for tui-idle --timeout-ms 60000 --json
-orca terminal send --terminal "<handle>" --text "$(cat .wave/3/prompt.md)" --enter --json
+  --parent-worktree "path:<parent>" --base-branch origin/main --issue 3 \
+  --agent claude --prompt "$(cat .wave/3/prompt.md)" --json
 ```
 
-O `wait` não é opcional — texto mandado a um TUI que ainda está subindo é perdido em silêncio.
-O handle sai do envelope do `terminal create`, com plano B em `orca terminal list --worktree
-"id:<worktreeId>" --json` casando o `--title` por `contains`: um agente TUI reescreve o próprio
-título da aba assim que sobe, então comparação exata funciona no primeiro segundo e para de
-funcionar depois. O caminho curto (`--agent` + `--prompt`, um comando só) fica para quando o
-bypass está desligado naquele ticket.
+O handle sai de `.result.agentTerminalHandle`, com fallback `.result.startupTerminal.handle` em
+runtimes antigos. O agente entra na **primeira** aba do worktree — a mesma que virava shell de
+fallback quando o `create` rodava sem `--agent` — e o prompt viaja no argv de lançamento, porque
+o agente `claude` tem `promptInjectionMode: "argv"`. Não há `terminal wait`, não há
+`terminal send`, e é isso que elimina o defeito abaixo.
+
+### Por que o caminho de dois passos virou exceção
+
+Ele existia como padrão sob a premissa errada de que `--agent` não aceitava argv, e cobrou o
+preço no primeiro disparo real de onda: **4 de 5 tickets subiram sem prompt**.
+`orca terminal wait --for tui-idle --timeout-ms 60000 --json` devolveu
+`{ok: true, state: null, waitedMs: null}` — retorno imediato, sem espera. O
+`terminal send --text ... --enter` seguinte entregou o texto, mas o Enter chegou cedo demais e o
+prompt de 15-22 KB ficou no composer, **não submetido**. Na tela, terminal indistinguível de um
+agente pensando; só apareceu porque o humano olhou.
+
+Hoje o caminho de dois passos serve só ao que `--agent` não expressa: agente fora da lista de
+ids conhecidos, ou modelo específico via `--command`. E nele a regra é **verificar, não
+esperar** — depois do `send`, `orca terminal read` para confirmar a submissão; se o texto ainda
+estiver no composer, `orca terminal send --text "" --enter` e ler de novo. O `wait --for
+tui-idle` pode ficar no roteiro como aceleração, nunca como garantia.
+
+Esse caminho também deixa um shell de fallback aberto ao lado do agente, e **título não
+desempata os dois**: ambos aparecem como `⠂ orchestrator`, porque quem reescreve o título da aba
+é o TUI, não o `--title`. O discriminador é `orca worktree ps --json`, que traz
+`worktrees[].agents[].paneKey` como `<tabId>:<leafId>` — todo terminal do `terminal list` cujo
+`<tabId>:<leafId>` está fora do set de paneKeys de agente é o shell, e fecha com
+`orca terminal close --terminal <handle> --tab`.
 
 ### Acompanhamento
 
