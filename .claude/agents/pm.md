@@ -68,8 +68,15 @@ single issue, and match the parser exactly.
   ways to quote the syntax, are in `ticket-contract` under "Campo 9 no GitHub".
 - **Verify before reporting done.** Run
   `node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>]`
-  over the slice you created: exit 0, and the edges visible in the table. Exit 8 means the
-  bodies you wrote are malformed — fix the body, don't recreate the issues.
+  over the slice you created, and require four things, not one: exit 0; the edges you
+  declared visible in the table; no `! could not read external blocker` line on stderr; and
+  every `external` row in the table matching a cross-repo blocker you declared on purpose.
+  Exit 0 alone does not catch the phantom edge the bullet above exists to prevent: an
+  unreadable external blocker is not bad data, so it only warns on stderr, prints as an
+  `external` row with status `?`, and still exits 0. A row you don't recognize is that
+  phantom edge — almost always a marker literal that leaked into an issue body — and the
+  dependent it blocks stays unschedulable in every wave plan. Exit 8 means the bodies you
+  wrote are malformed — fix the body, don't recreate the issues.
 
 Writing to a tracker or to GitHub is not pre-approved in `.claude/settings.json`. Expect a
 permission prompt on every create, and never work around it.
