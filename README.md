@@ -88,9 +88,17 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 - Inspired by [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — same idea, built on Claude Code's official subagents mechanism.
 - `cavecrew-*` subagents adapted from [`juliusbrussee/caveman`](https://github.com/JuliusBrussee/caveman) (MIT).
 
+## Integrations
+
+| Integration | What it gives you | Doc |
+|-------------|-------------------|-----|
+| Orca / Maestri | Terminal-host and account detection at session start, and the `orca linear` tracker path the wave pipeline reads from | [`docs/integrations/orca.md`](docs/integrations/orca.md) |
+| EcoTokens | Optional Rust output filter | [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md) |
+| ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. `node scripts/setup-ai-memory.mjs`; the default `claude-sub` provider uses your Claude subscription through a local `claude -p` shim | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |
+
+All three are optional and independent of the agent harness.
+
 ## Notes
 
 - macOS-only. Windows users: PRs welcome.
 - Re-running the installer creates `~/.claude/settings.json.backup-<ts>` snapshots; clean up with `rm ~/.claude/*.backup-*` once you're confident.
-- EcoTokens (optional Rust output filter): see [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md).
-- ai-memory (long-term cross-agent memory wiki + Hermes auto-improve): `node scripts/setup-ai-memory.mjs` — default `claude-sub` provider uses your Claude subscription via a local `claude -p` shim. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).

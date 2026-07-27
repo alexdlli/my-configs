@@ -58,7 +58,8 @@ As fases seguintes consomem tickets independentes de tracker:
 ```
 
 O tracker é detectado por `node ~/.claude/hooks/session-context.mjs --json` (campos `tracker`
-e `trackerSource`), nunca adivinhado pelo nome do repo.
+e `trackerSource`), nunca adivinhado pelo nome do repo. Os sinais de ambiente que alimentam
+essa detecção estão em [`integrations/orca.md`](integrations/orca.md).
 
 **Assimetria deliberada entre trackers:** Linear (pessoal) tem leitura e escrita, via CLI
 `orca linear` — é onde os tickets pessoais nascem. Jira (trabalho) é **somente leitura**, via
