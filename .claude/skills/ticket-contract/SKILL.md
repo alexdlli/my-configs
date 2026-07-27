@@ -218,6 +218,8 @@ soltar o agente.
 - [ ] Nenhum `blockedBy` foi inferido de ordem, numeração ou título.
 - [ ] Nada no corpo depende de contexto de conversa ("como discutimos", "o de sempre", "igual ao outro").
 - [ ] A estimativa é ≤ 5 pontos.
+- [ ] A estimativa vem com uma frase dizendo o que a sustenta: quantos arquivos, se há mecanismo novo a construir, que incerteza sobra depois do campo 5. Número sozinho é palpite com dígito.
+- [ ] Essa frase justifica o número **contra o vizinho**: por que este é 3 e aquele é 1. Dois tickets com o mesmo número no mesmo projeto custam o mesmo trabalho, ou um dos dois está errado.
 - [ ] A entrega cabe em um PR revisável.
 - [ ] Se há risco: rollout, kill switch e métrica de sucesso estão escritos.
 - [ ] Se toca dado pessoal ou texto de UI: LGPD e i18n resolvidos no campo 12.
