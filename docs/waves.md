@@ -3,8 +3,9 @@
 Fluxo de execução em ondas: um projeto é quebrado em tickets, os tickets viram prompts de
 agentes autônomos, e as ondas avançam pela frontier do grafo de dependências.
 
-Esta página cobre, por enquanto, apenas o **contrato de ticket** — a fundação do fluxo. As
-demais etapas entram na Fase 3.
+Esta página cobre o **contrato de ticket** — a fundação do fluxo — e o **grafo de
+dependências** que gera o plano de ondas. O disparo das ondas (worktree e agente por ticket)
+ainda não existe: hoje o plano sai, e quem dispara é o humano.
 
 ## Contrato de ticket
 
@@ -69,3 +70,87 @@ contra o contrato, apontando os campos que faltam.
 Nada gerado a partir de um ticket leva assinatura de IA — commit, PR, comentário. Sem
 `Co-Authored-By`, sem "Generated with", sem marca equivalente. Isso inverte a recomendação da
 skill de origem do fluxo; a regra local vence.
+
+## Grafo de dependências e plano de ondas
+
+### Onde mora cada peça
+
+| Artefato | Papel |
+|---|---|
+| `scripts/waves/tickets-linear.mjs` | Lê um projeto do Linear via CLI `orca linear` e emite o formato normalizado. Somente leitura |
+| `scripts/waves/graph.mjs` | `planWaves()` — função pura que transforma tickets em ondas. Traz um wrapper stdin/stdout para o pipeline |
+| `.claude/skills/wave-orchestration/SKILL.md` | Como montar o grafo, como apresentar o plano e as regras invioláveis da onda |
+| `.claude/commands/wave-plan.md` | `/wave-plan` — roda o pipeline e imprime a tabela de ondas |
+
+### Duas extensões do formato normalizado
+
+Além dos oito campos já descritos acima, o leitor emite dois campos que o grafo precisa:
+
+- `statusType` — o `type` do estado no tracker (Linear usa `completed`). É o sinal confiável de
+  "mergeado"; o nome do estado é livre e varia por time.
+- `external` — `true` quando o ticket não pertence ao projeto e só está no registro porque
+  alguém depende dele.
+
+### Como o grafo decide a onda
+
+- Nós são tickets, arestas são `blockedBy`. `onda(t) = max(onda dos bloqueadores) + 1`; sem
+  bloqueador aberto, onda 1.
+- Ticket já mergeado (`statusType: completed`, ou status `done`/`merged`/`completed`) é **onda
+  0** e satisfaz quem depende dele.
+- **Bloqueador externo ainda aberto: o dependente não recebe onda.** Ele sai em `blocked` com
+  `reason: external` e o detalhe `blocked externally by <ID> (<status>)`. Isso não é "onda
+  alta" — é ticket que não entra no plano. Quem depende desse dependente também fica de fora,
+  com `reason: upstream` e a causa raiz preservada.
+- Externo cujo status não pôde ser lido conta como **aberto**. O leitor avisa no stderr e
+  mantém o id no registro.
+- **Fan-in** (2+ bloqueadores) vem marcado com `fanIn: true` e a lista `waitingOn`: o ticket só
+  começa quando todos mergearem.
+- **Ciclo** é detectado (Tarjan iterativo, sem recursão) e reportado com os nós envolvidos; os
+  nós do ciclo não recebem onda.
+- **`blockedBy` apontando para id inexistente** sai em `badData` e o ticket não é agendado.
+  Ignorar em silêncio produziria uma onda 1 falsa.
+- A ordem de entrada não muda o resultado: ids são ordenados por `key` (comparação numérica,
+  `ENG-2` antes de `ENG-10`) antes de qualquer cálculo.
+
+### Pipeline
+
+```bash
+node ~/.claude/harness/scripts/waves/tickets-linear.mjs "<projeto>" --json > /tmp/wave-tickets.json
+node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
+```
+
+**Os dois passos são separados de propósito.** Num pipe direto, o código de saída do leitor
+some e uma falha dele chega ao planejador como entrada vazia — o modo de falha que faz um plano
+de ondas mentir. O `graph.mjs` recusa stdin vazia em vez de imprimir um plano de zero ondas.
+
+### Falha honesta
+
+`tickets-linear.mjs` nunca emite array vazio como sucesso. Códigos de saída:
+
+| Código | Situação |
+|---|---|
+| 2 | Uso errado (sem projeto, flag desconhecida) |
+| 3 | CLI `orca` não encontrada (respeita `ORCA_CLI_COMMAND`) |
+| 4 | App Orca fora do ar ou runtime inalcançável |
+| 5 | Orca rodando, mas Linear não conectado |
+| 6 | Projeto não encontrado, ou o texto casa com mais de um |
+| 7 | Erro do `orca` (código e mensagem do envelope repassados) |
+
+Também falha, em vez de truncar, quando o Linear devolve leitura parcial, `workspaceErrors`, ou
+mais páginas de issues do que o cursor consegue percorrer.
+
+`graph.mjs` sai com 2 para entrada inutilizável e com **3 quando o plano está incompleto**
+(ciclo ou id inexistente) — o plano é impresso, mas não é executável.
+
+### Testes
+
+`node --test <diretório>` não funciona no Node instalado (24.15): o diretório é resolvido como
+módulo e o runner nem chega a rodar. Passe os arquivos:
+
+```bash
+node --test scripts/waves/graph.test.mjs scripts/waves/tickets-linear.test.mjs
+```
+
+O grafo é coberto por fixtures — caminho simples, fan-in, ciclo de 2 e de 3 nós, auto-bloqueio,
+bloqueador inexistente, externo aberto, externo já mergeado, órfão, conjunto vazio e
+determinismo com a entrada embaralhada.
