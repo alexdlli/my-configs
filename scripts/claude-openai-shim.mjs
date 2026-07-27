@@ -40,6 +40,7 @@ const TIMEOUT_MS = Number(process.env.SHIM_TIMEOUT_MS || 120000);
 const DEBUG = !!process.env.SHIM_DEBUG;
 
 const EXIT_LISTEN_FAILED = 1;
+const MAX_BODY_BYTES = 50 * 1024 * 1024;
 
 function log(...a) {
   if (DEBUG) console.error('[shim]', ...a);
@@ -142,14 +143,25 @@ function oaiError(res, status, message) {
   send(res, status, { error: { message, type: 'shim_error', code: status } });
 }
 
+function httpError(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
+    let overflowed = false;
     req.on('data', (c) => {
+      if (overflowed) return;
       data += c;
-      if (data.length > 50 * 1024 * 1024) {
-        reject(new Error('request body too large'));
-        req.destroy();
+      if (data.length > MAX_BODY_BYTES) {
+        overflowed = true;
+        // Stop buffering but leave the socket alive, so the caller's 413 has a
+        // chance to reach the client instead of a bare connection reset.
+        req.pause();
+        reject(httpError(413, 'request body too large'));
       }
     });
     req.on('end', () => resolve(data));
@@ -174,8 +186,9 @@ async function handleRequest(req, res) {
     let payload;
     try {
       payload = JSON.parse((await readBody(req)) || '{}');
-    } catch {
-      oaiError(res, 400, 'invalid JSON body');
+    } catch (e) {
+      // A rejected read already knows its status; only a parse error is a 400.
+      oaiError(res, e.status ?? 400, e.status ? e.message : 'invalid JSON body');
       return;
     }
     const model = payload.model || DEFAULT_MODEL;
