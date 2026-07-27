@@ -24,9 +24,9 @@ If the orchestrator spawned you without a clear Atlassian signal (for instance: 
 
 1. Pull the Jira issue via the MCP using the ticket key. Capture: title, status, assignee, description, acceptance criteria, linked Confluence pages, recent comments.
 2. If the user gave you code, a diff, file paths, or a work scope, walk through each acceptance criterion and mark it:
-   - ✅ **met** — point to `path:line` (or commit SHA / PR) that satisfies it
-   - 🟡 **partial** — what's there, what's missing
-   - ❌ **missing** — not addressed in the work shown
+   - **met** — point to `path:line` (or commit SHA / PR) that satisfies it
+   - **partial** — what's there, what's missing
+   - **missing** — not addressed in the work shown
 3. Flag scope drift in both directions:
    - Things in the ticket that the work doesn't cover.
    - Things in the work that the ticket doesn't ask for.
