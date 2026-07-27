@@ -21,9 +21,23 @@ When you run `node scripts/install.mjs`, it:
 2. Deep-merges harness keys into `~/.claude/settings.json`:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
-   - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision)
-   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd)
+   - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision — see the measured limits below)
+   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the same three commands as the deny list, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
+
+### What `permissions.deny` guarantees under `--dangerously-skip-permissions`
+
+Measured on **Claude Code 2.1.220**, Node 24.15.0, macOS, **2026-07-27**, against a throwaway `$HOME` — never the real `~/.claude`.
+
+**The deny list survives the bypass.** All four denied commands stayed blocked with `--dangerously-skip-permissions` on, across two settings layers and both ways of turning the bypass on. The promise above holds in the scenario it was written for: the autonomous agent with nobody watching the terminal.
+
+**But `deny` is string matching, and the bypass removes the approval gate that used to be its backstop.** `Bash(gh pr merge *)` blocks `gh pr merge 3`; it never sees `bash -c "gh pr merge 3"`. Measured with a canary entry: under the bypass the wrapped form *ran*, while the same wrapped command without the bypass stopped at `This command requires approval`. The wrapper was being caught by the permission prompt, not by the deny list — so turning the prompt off is what exposes it.
+
+**The `guard-destructive` hook closes that hole.** A `PreToolUse` hook on `Bash` returning `permissionDecision: "deny"` is still evaluated under the bypass (measured, not inferred), and this one blocks the literal *and* the wrapped form of all three commands. What it deliberately does not catch, and why, is in [`guard-destructive.md`](guard-destructive.md).
+
+**Not measured:** subagent context, `deny` declared at user scope, and managed/policy settings. The first is the gap that matters — a session starts in `orchestrator` and delegates, so most of what an agent executes runs in a subagent.
+
+Both layers live in the client, so both end at whoever controls the client. **Branch protection on GitHub remains the only guarantee that does not depend on this machine.**
 
 ### Why skills are linked one by one
 
