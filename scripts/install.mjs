@@ -3,8 +3,8 @@
 //
 // Symlinks ~/.claude/{agents,hooks} into the harness checkout, and deep-merges
 // a managed slice of ~/.claude/settings.json (agent, permissions.allow, and
-// the UserPromptSubmit/PreCompact hooks) without disturbing keys the user
-// owns (theme, enabledPlugins, extraKnownMarketplaces, ...).
+// the SessionStart/UserPromptSubmit/PreCompact hooks) without disturbing keys
+// the user owns (theme, enabledPlugins, extraKnownMarketplaces, ...).
 //
 // Usage:
 //   node scripts/install.mjs                # install or refresh
@@ -31,7 +31,7 @@ const TARGET_DIR = path.join(HOME, '.claude');
 const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
 const SYMLINK_ITEMS = ['agents', 'hooks'];
-const MANAGED_HOOK_EVENTS = ['UserPromptSubmit', 'PreCompact'];
+const MANAGED_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreCompact'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
 
 function usage() {
@@ -50,9 +50,9 @@ What gets installed:
   ~/.claude/agents   → symlink to <harness>/.claude/agents
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
   ~/.claude/settings.json deep-merged: adds agent, permissions.allow entries,
-                     and UserPromptSubmit/PreCompact hooks. All other keys
-                     (theme, enabledPlugins, extraKnownMarketplaces, ...) are
-                     left untouched.
+                     and SessionStart/UserPromptSubmit/PreCompact hooks. All
+                     other keys (theme, enabledPlugins, extraKnownMarketplaces,
+                     ...) are left untouched.
   ~/.claude/.my-configs-managed.json records exactly what was added so that
                      --uninstall can revert it without nuking user state.`);
 }

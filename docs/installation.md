@@ -18,7 +18,7 @@ When you run `node scripts/install.mjs`, it:
 2. Deep-merges harness keys into `~/.claude/settings.json`:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
-   - `hooks.UserPromptSubmit` and `hooks.PreCompact` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd)
+   - `hooks.SessionStart`, `hooks.UserPromptSubmit` and `hooks.PreCompact` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd)
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
 
 Other keys in your `~/.claude/settings.json` (`theme`, `enabledPlugins`, `extraKnownMarketplaces`, anything custom) are left untouched.
@@ -52,6 +52,20 @@ node scripts/install.mjs
 ```
 
 The installer is idempotent: running again refreshes the symlinks (no-op if already correct), re-runs the merge, and updates the metadata file.
+
+### Automatic update on session start
+
+`.claude/hooks/auto-update.mjs` runs as a `SessionStart` hook and keeps the checkout fresh for you. It is deliberately conservative:
+
+- At most one check every 6 hours (cache file under `~/Library/Caches/claude-setup/last-check`, plus a PID lock next to it).
+- Only when the harness is on `main` with a clean working tree; it uses `git pull --ff-only`.
+- Git runs non-interactively (`GIT_TERMINAL_PROMPT=0`, `ssh -oBatchMode=yes`), so a missing credential fails fast instead of hanging the session.
+- Every failure path exits 0 — the hook never blocks a session.
+- It never runs the installer. When the pulled diff touches `.claude/skills/` or `.claude/settings.json`, it prints a one-line reminder to run `node scripts/install.mjs` yourself.
+
+Force a check now (bypasses only the 6h throttle): `/sync-harness`, or `node .claude/hooks/auto-update.mjs --force`.
+
+Opt out per-machine: `export CLAUDE_SETUP_SKIP_AUTOUPDATE=1`. It also self-skips when `CI` is set.
 
 ## Uninstall
 
