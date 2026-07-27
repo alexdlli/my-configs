@@ -3,3 +3,6 @@
 
 # Installer backups created when re-installing the harness over an existing entry.
 .claude/*.backup-*
+
+# Timestamped backups left by the ai-memory setup (e.g. CLAUDE.md.bak-1782178186).
+*.bak-*
