@@ -41,17 +41,20 @@ If any of these is missing or out of date, tell me before proceeding.
 
 Every session starts in the `orchestrator` agent (set via `.claude/settings.json`). It decomposes tasks and delegates in parallel to specialists:
 
-| Agent          | Role                                          |
-|----------------|-----------------------------------------------|
-| `orchestrator` | Decomposition, parallel delegation, synthesis |
-| `explorer`     | Read-only research and discovery              |
-| `planner`      | Implementation strategy (read-only)           |
-| `implementer`  | Writes/edits code per a plan                  |
-| `reviewer`     | Code review, quality, security                |
-| `tester`       | Lint / typecheck / test / build               |
-| `pr-author`    | Drafts PRs from the current branch            |
-| `pr-reviewer`  | Reviews open GitHub PRs                       |
-| `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
+| Agent                   | Role                                          |
+|-------------------------|-----------------------------------------------|
+| `orchestrator`          | Decomposition, parallel delegation, synthesis |
+| `explorer`              | Read-only research and discovery              |
+| `planner`               | Implementation strategy (read-only)           |
+| `implementer`           | Writes/edits code per a plan                  |
+| `reviewer`              | Code review, quality, security                |
+| `tester`                | Lint / typecheck / test / build               |
+| `pr-author`             | Drafts PRs from the current branch            |
+| `pr-reviewer`           | Reviews open GitHub PRs                       |
+| `cavecrew-investigator` | Fast read-only locator (haiku, terse output)  |
+| `cavecrew-builder`      | Surgical 1-2 file edit                        |
+| `cavecrew-reviewer`     | Single-line review findings (haiku)           |
+| `atlassian`             | Confluence / Jira via the Atlassian Rovo MCP  |
 
 Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
 
