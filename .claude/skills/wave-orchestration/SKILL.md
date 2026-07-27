@@ -7,8 +7,10 @@ description: >-
   grafo desse projeto", ou ao orquestrar várias frentes com marcos de
   sincronização. Lê os tickets de uma de duas fontes — projeto no Linear via
   `orca linear`, ou GitHub Issues via `gh` — monta o grafo pelas relações reais
-  de bloqueio e apresenta as ondas ao humano. Hoje é somente leitura: o disparo
-  dos agentes é manual.
+  de bloqueio e apresenta as ondas ao humano. Também dispara **uma** onda por
+  vez em worktrees do Orca — um worktree e um agente por ticket — quando o
+  usuário pedir "dispara a onda 1", "roda essa onda", "abre os worktrees".
+  Nunca faz merge: isso é do humano.
 ---
 
 # Orquestração em ondas
@@ -17,8 +19,8 @@ Uma **onda** é o conjunto de tickets que pode ser tocado em paralelo porque
 todos os bloqueadores deles já estão mergeados. O paralelismo sai do grafo de
 dependências, não da vontade de ir rápido.
 
-Esta skill cobre **planejar**. O disparo automático ainda não existe — veja
-`## Dispatch` no fim.
+Esta skill cobre **planejar** (seções 1 e 2) e **disparar** uma onda de cada vez
+(seção `## Dispatch`). O que ela nunca cobre é fechar a onda: merge é humano.
 
 ## Pré-requisito: os tickets precisam declarar `blockedBy`
 
@@ -171,7 +173,305 @@ Valem desde já, antes mesmo de existir disparo automático.
 
 ## Dispatch
 
-O disparo automático das ondas (worktree por ticket, agente por ticket,
-movimentação de status) entra na próxima fase. **Hoje o disparo é manual**: esta
-skill produz o plano, e o humano escolhe o que começar. Não invente aqui um
-passo de criação de worktree ou de spawn de agente.
+Disparar uma onda é criar **um worktree por ticket** e colocar **um agente** em
+cada um. Planejar é barato; disparar toca o disco, gasta contexto de verdade e
+cada erro aqui custa a onda inteira.
+
+**Uma onda por vez.** O humano nomeia qual. Nunca dispare a onda seguinte junto,
+nem "as duas primeiras porque a segunda é pequena": a onda seguinte depende de
+**merge**, e merge é humano.
+
+### Onde o disparo é possível
+
+`node ~/.claude/hooks/session-context.mjs --json` traz o campo `dispatch`:
+
+| `host` | `dispatch` | O que fazer |
+|---|---|---|
+| `orca` | `available: true`, driver `orca-cli` | Siga esta seção |
+| `maestri` | `available: false` | Não existe adaptador de onda para o Maestri, e a CLI dele só existe como `$MAESTRI_CLI` dentro do terminal do app. Diga isso e pare |
+| `plain` | `available: false` | Sem gerenciador de worktree na sessão: entregue o plano e o humano dispara |
+
+Fora do Orca a entrega da skill continua sendo o **plano**. Não improvise
+substituto com `git worktree` na mão: o que o Orca dá aqui não é o checkout, é a
+linhagem, o terminal gerenciado e o vínculo com o ticket.
+
+### 0 — Resolver o contexto uma vez
+
+Os dois selectores usados em **todo** ticket da onda saem de uma chamada só:
+
+```bash
+WT=$(orca worktree current --json)
+[ "$(jq -r '.ok' <<<"$WT")" = true ] || { echo "orca worktree current falhou"; exit 1; }
+REPO_ID=$(jq -r '.result.worktree.repoId' <<<"$WT")
+PARENT=$(jq -r '.result.worktree.path' <<<"$WT")
+```
+
+O envelope tem `ok` no topo e os campos sob `result.worktree` — confira o `.ok`
+antes de ler o resto, porque envelope de erro não traz `worktree` e o `jq`
+devolveria `null` silenciosamente para os dois selectores.
+
+### 1 — `git fetch origin main` antes de cortar a onda
+
+**Esta é a regra que mais custa caro quando esquecida. Ela vale para toda onda
+depois da primeira, sem exceção.**
+
+```bash
+git fetch origin main
+git log origin/main --oneline -1
+```
+
+A segunda linha não é enfeite, é a **prova**. Compare o commit impresso com o
+merge do bloqueador que fechou a onda anterior. Se o merge não estiver ali,
+**pare**: o fetch não trouxe o que você acha que trouxe, e cortar agora produz
+worktree cego.
+
+Por que dói tanto: worktree cortado de uma `origin/main` velha não contém o
+código do bloqueador. O agente do ticket abre o arquivo que a spec manda ler,
+não encontra, e faz uma de duas coisas — reimplementa o que o irmão já entregou
+(conflito garantido no merge) ou trava dizendo que o ticket está errado. Nos
+dois casos a onda volta para a fila inteira, e o sintoma só aparece horas
+depois.
+
+Vale inclusive quando "acabei de dar fetch faz dois minutos": o merge do humano
+pode ter acontecido nesses dois minutos, e é exatamente por isso que a onda
+estava esperando.
+
+### 2 — Um worktree por ticket
+
+```bash
+orca worktree create \
+  --repo "id:$REPO_ID" \
+  --name w1-issue-3 \
+  --parent-worktree "path:$PARENT" \
+  --base-branch origin/main \
+  --issue 3 \
+  --agent claude \
+  --prompt "$(cat .wave/3/prompt.md)" \
+  --json
+```
+
+| Flag | Por quê |
+|---|---|
+| `--repo id:$REPO_ID` | Explícito. Sem ele o Orca infere o repo do cwd, e o cwd de um loop de N tickets não é confiável |
+| `--name` | Prefixo da onda + ticket (`w1-issue-3`). É o que a tabela da onda e o `orca worktree list` mostram |
+| `--parent-worktree path:$PARENT` | Linhagem: os worktrees da onda são **filhos** do worktree atual, não irmãos soltos |
+| `--base-branch origin/main` | O corte. Depende do passo 1 ter rodado |
+| `--issue <n>` / `--linear-issue <id\|url>` | Vincula o worktree ao ticket. GitHub usa `--issue`, Linear usa `--linear-issue` |
+| `--agent <id>` | Sobe o agente no **primeiro** terminal do worktree. Ids conhecidos: `claude`, `codex`, e os outros TUIs instalados |
+| `--prompt "$(cat ...)"` | Ver passo 3. Nunca inline |
+| `--setup` | `inherit` é o default. Passe `--setup run` quando o ticket precisa das deps instaladas para rodar teste |
+
+Não passe `--activate` num loop de N tickets: cada `--activate` rouba o foco do
+app e o humano perde o lugar N vezes.
+
+Com `--agent`, **não** crie um segundo terminal com o mesmo agente depois. O
+agente já está no primeiro terminal; um segundo é um agente duplicado no mesmo
+checkout, brigando pelos mesmos arquivos.
+
+### 3 — O prompt vai em ARQUIVO, sempre
+
+Escreva `.wave/<ticket>/prompt.md` e passe `--prompt "$(cat .wave/<ticket>/prompt.md)"`.
+**Nunca cole o markdown direto na linha de comando.**
+
+O prompt de um ticket bom tem vários KB de markdown: crase, `$`, `!`, aspas,
+bloco de código, comentário HTML. Inline, o shell come parte disso antes de o
+`orca` ver — e o modo de falha não é erro, é um prompt **truncado ou
+adulterado** que o agente obedece achando que está completo.
+
+O arquivo também é o que torna o disparo reexecutável: se o agente morrer, o
+prompt continua no disco e o reenvio é `orca terminal send --text "$(cat ...)"`.
+
+**O prompt precisa ser autocontido.** A spec inteira do ticket vai dentro dele —
+os 12 campos, ou o que existir deles. O agente do worktree não deve precisar
+reabrir o Linear nem o GitHub para saber o que construir: ele nasce sem
+contexto, e cada ida ao tracker é uma rodada perdida e um ponto onde ele pode
+ler o ticket errado.
+
+Se o ticket consome código de um irmão recém-mergeado, diga com todas as letras,
+dentro do prompt:
+
+```text
+`origin/main` já contém o leitor de issues do GitHub entregue em #12, em
+`scripts/waves/tickets-github.mjs`. REUSE — não reimplemente.
+```
+
+Sem essa frase o agente encontra o arquivo, não sabe se pode confiar nele, e
+reescreve por segurança.
+
+### 4 — Registrar a onda
+
+Uma linha por ticket, atualizada a cada create:
+
+```text
+| Ticket | Worktree id | Branch | Terminal handle | PR |
+```
+
+- **Worktree id** é o `.result.worktree.id` do create, no formato
+  `<repoId>::<path>`. Guarde **inteiro**; o `repoId` sozinho endereça o repo, não
+  o worktree.
+- **Terminal handle** sai de `.result.agentTerminalHandle`; runtimes antigos
+  devolvem só `.result.startupTerminal.handle`. Leia os dois:
+
+  ```bash
+  HANDLE=$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$CREATE")
+  ```
+
+  Handle vazio não é falha do create: recupere com
+  `orca terminal list --worktree "id:<worktreeId>" --json` e leia
+  `.result.terminals[].handle`. Handles são de escopo de runtime — se o Orca
+  reiniciar, o handle antigo morre e tem que ser readquirido pela mesma lista.
+
+Opcionalmente, mova a coluna do board com
+`orca worktree set --worktree "id:<worktreeId>" --workspace-status in-progress --json`
+(ids default: `todo`, `in-progress`, `in-review`, `completed`).
+
+### 5 — Reparent em pé, se a linhagem escapou
+
+Esqueceu o `--parent-worktree` num ticket? Não recrie o worktree e não mate o
+agente:
+
+```bash
+orca worktree set --worktree "branch:<branch>" --parent-worktree "path:$PARENT" --json
+```
+
+É metadado do Orca: não mexe no checkout, não mexe no git, não perturba o agente
+que já está trabalhando lá dentro.
+
+### O prompt padrão do worker
+
+Tudo abaixo vai **dentro** do `prompt.md` de todo ticket, junto com a spec. Não é
+enfeite: cada regra aqui saiu de uma sessão real que custou caro.
+
+```markdown
+# <ticket-id> — <título>
+
+## O que construir
+<a spec inteira do ticket: os 12 campos, ou o que existir deles>
+
+## Seu worktree
+Branch `<branch>`, cortada de `origin/main` em `<sha>`, em `<path>`.
+Trabalhe **só aqui**. Nunca commite em `main`, nunca toque no worktree de outro
+ticket. Merge e resolução de conflito não são seus.
+
+## `git stash` é PROIBIDO
+O stash é um ref **único, compartilhado por todas as worktrees do repo**. Um
+`git stash` seu pode engolir o trabalho não commitado de outro agente rodando em
+paralelo, e o `git stash pop` dele pode engolir o seu. Precisa guardar estado
+temporário? Commit `wip:` na sua própria branch. Ele é seu, é local, e some com
+um rebase.
+
+## Baseline antes de mexer
+Rode lint/test/build da área **antes** da primeira edição e guarde o resultado.
+Falha que já existia **não é sua**: reporte como pré-existente, com o comando e
+a saída, e siga. Não conserte sem autorização — isso é scope creep e some com a
+autoria do bug. E não trave por causa dela: baseline vermelho é contexto, não
+bloqueio.
+
+## Contrato antes do código
+Se um tester trabalha esta mesma unidade em paralelo, o contrato vive em
+`.wave/<ticket>/contract.md` e é escrito **antes** de qualquer código: assinatura
+e tipos do que cruza a fronteira, comportamento de erro, e a lista de cenários
+derivada dos acceptance criteria. Assinaturas, tipos e erros são seus; a lista
+de cenários é do tester. Mudou o contrato no meio? Edite o arquivo primeiro,
+depois o código, e avise. Contrato que só existe no seu código deixa a suíte
+paralela provando uma forma que não existe mais.
+
+## Achado fora do escopo: reporte, não conserte
+Bug que você tropeçou e não está no seu ticket vira linha no seu relatório e PR
+próprio. Uma exceção: é pré-requisito para a sua própria mudança ficar correta
+ou reversível — aí conserte e diga por que não dava para esperar.
+
+## Hipótese vai rotulada
+Qualquer coisa que você acredita mas não verificou sai prefixada com
+`HIPÓTESE:` e o teste que decide. Nunca como fato: quem lê seu relatório
+dispara outro agente em cima dele, e hipótese lida como achado vira código
+construído e depois revertido.
+
+## Verifique antes de reportar pronto
+Editar não é entregar. Rode lint, typecheck, teste e build que o **projeto**
+define (leia `package.json`, `Makefile`, `pyproject.toml` — não invente comando).
+Se qualquer passo falhar, corrija e **rode tudo de novo desde o começo**: um
+passo verde antes do conserto não vale depois dele.
+
+## Pronto é
+<critério verificável — comando + saída esperada, não "está funcionando">
+Teto de tentativas: <N>. Batendo o teto, **pare** e reporte o que aprendeu:
+o que tentou, o que cada tentativa produziu, e qual é a sua melhor hipótese.
+Insistir além disso queima contexto e produz código pior que nenhum.
+
+## Nada assinado como IA
+Sem `Co-Authored-By`, sem "Generated with", sem marca equivalente — em commit,
+PR, título, corpo ou comentário. O autor é o alexdlli.
+
+## Ao terminar
+Abra o PR contra `main` e **PARE**. Não faça merge, não peça para mergear, não
+mergeie "porque o CI ficou verde". Quem aperta merge é o humano.
+```
+
+### Agente não-default: Codex, ou um modelo específico
+
+`--agent <id>` escolhe **o agente, não o modelo**: ele não aceita `--model` nem
+`-c model_reasoning_effort=...`. Para isso o caminho é de dois passos — cria o
+worktree sem `--agent`, e sobe o CLI com o argv que você quer:
+
+```bash
+NEW=$(orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
+  --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 --json)
+WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
+
+orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
+  --command 'codex --model gpt-5.5 -c model_reasoning_effort="xhigh"' --json
+
+HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
+  | jq -r '.result.terminals[] | select(.title == "w1-issue-3") | .handle')
+
+orca terminal wait --terminal "$HANDLE" --for tui-idle --timeout-ms 60000 --json
+orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
+```
+
+O handle vem do `terminal list` filtrado pelo `--title` que você mesmo deu, e
+não do envelope do `terminal create`: o `--title` é seu, é estável, e é o que
+distingue o terminal do agente do shell de fallback no mesmo worktree.
+
+O `wait --for tui-idle` **não é opcional**: mandar texto para um TUI que ainda
+está subindo perde o prompt, e a perda é silenciosa — o terminal fica lá, vazio,
+parecendo um agente pensando. Sempre com `--timeout-ms`.
+
+Sem `--agent`, o create abre um shell de fallback quando o repo não tem terminal
+default configurado. Mire só no handle do agente; só feche o outro terminal
+depois que `orca terminal list` confirmar que ele é um shell sem uso.
+
+**Se o CLI local rejeitar o modelo, pare e mostre o erro exato** (`orca terminal
+read --terminal "$HANDLE"`). Não caia em outro modelo em silêncio: o humano
+pediu aquele modelo por um motivo, e um worker rodando o modelo errado entrega
+um resultado que ninguém consegue explicar depois.
+
+### Bypass de permissão: desligado por padrão
+
+`--dangerously-skip-permissions` **não** entra no comando do worker por padrão.
+
+Há uma questão em aberto — issue #2 em `alexdlli/my-configs` — sobre se o
+`permissions.deny` declarado em arquivo sobrevive ao bypass. Enquanto isso não
+for medido, ninguém sabe se `Bash(gh pr merge *)` continua negado numa sessão
+com bypass ligado. Se o humano pedir o bypass explicitamente, diga na hora, em
+uma frase: **ligar o bypass pode anular a garantia de "merge é sempre humano"**.
+A decisão é dele, e ela é registrada; não é sua para tomar sozinho.
+
+### O que o dispatch nunca faz
+
+- **Nunca mergeia.** `Bash(gh pr merge *)` está no `permissions.deny` do harness,
+  e isso é deterministicamente o certo. Não existe caminho nesta skill que tente
+  merge, nem instrução ao worker para mergear.
+- **Nunca dispara duas ondas.** Onda seguinte espera merge humano do que veio
+  antes, não aprovação e não CI verde.
+- **Nunca commita na `main`** nem edita o worktree de outro ticket.
+- **Nunca substitui um ticket ruim por adivinhação.** Ticket sem os campos que
+  viram prompt volta para `ticket-contract` antes de virar worktree.
+
+### Acompanhar a onda sem queimar contexto
+
+Polling gera saída enorme e repetida. Delegue ao agente **`wave-monitor`**
+(`model: haiku`, só `Read` e `Bash`): ele consulta o estado das branches da onda
+e devolve uma tabela compacta. Ele **reporta**; não conserta, não mergeia.
+
+`/wave-status` é a porta de entrada.
