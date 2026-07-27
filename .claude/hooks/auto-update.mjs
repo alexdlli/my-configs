@@ -154,7 +154,12 @@ async function main() {
 
     const oldSha = git('-C', harnessDir, 'rev-parse', 'HEAD').stdout.trim();
     const newSha = git('-C', harnessDir, 'rev-parse', 'origin/main').stdout.trim();
-    if (oldSha === newSha) {
+    // Differing shas are not enough: with unpushed local commits the tree is
+    // ahead, --ff-only no-ops, and reporting an "update" would be a lie.
+    const incomingCount = Number(
+      git('-C', harnessDir, 'rev-list', '--count', `${oldSha}..${newSha}`).stdout.trim()
+    );
+    if (!incomingCount) {
       if (force) {
         process.stdout.write(
           `claude-setup: already up-to-date (${oldSha.slice(0, 7)})\n`
@@ -186,15 +191,8 @@ async function main() {
       return;
     }
 
-    const count = git(
-      '-C',
-      harnessDir,
-      'rev-list',
-      '--count',
-      `${oldSha}..${newSha}`
-    ).stdout.trim();
     process.stdout.write(
-      `claude-setup updated: ${oldSha.slice(0, 7)}..${newSha.slice(0, 7)} (${count} commits)\n`
+      `claude-setup updated: ${oldSha.slice(0, 7)}..${newSha.slice(0, 7)} (${incomingCount} commits)\n`
     );
 
     if (touchesInstallerInputs(harnessDir, oldSha, newSha)) {
