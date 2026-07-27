@@ -293,6 +293,42 @@ pelos mesmos arquivos.
 Não passe `--activate` num loop de N tickets: cada `--activate` rouba o foco do
 app e o humano perde o lugar N vezes.
 
+### 2a — Marcar o worktree como worker, no comando seguinte
+
+**É este passo que impede o worker de mergear. Tirar ele reabre o buraco.**
+
+```bash
+WT_PATH=$(jq -r '.result.worktree.path' <<<"$CREATE")
+BRANCH=$(jq -r '.result.worktree.branch' <<<"$CREATE")
+mkdir -p "$WT_PATH/.wave"
+jq -n --arg ticket 3 --arg branch "$BRANCH" --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{ticket: $ticket, branch: $branch, createdAt: $createdAt}' > "$WT_PATH/.wave/worker.json"
+```
+
+O hook `guard-destructive` nega `gh pr merge` — literal e envelopado em
+`bash -c` — **quando acha esse marcador** subindo de `CLAUDE_PROJECT_DIR` e da
+cwd até a raiz do repo. Sem marcador ele fica calado e o comando cai no prompt
+de permissão normal, que é o que o Alex quer para a sessão dele e **não** é o que
+se quer num worker rodando com `--dangerously-skip-permissions`, onde não existe
+prompt para barrar nada. Ver [`../../../docs/guard-destructive.md`](../../../docs/guard-destructive.md).
+
+Três coisas que não podem mudar sem pensar:
+
+- **O conteúdo não é lido pelo guard, só a presença e o fato de ser JSON
+  válido.** Os campos são para o humano que abre o worktree e para o
+  `wave-monitor`. Marcador truncado ou não-JSON conta como "não sei" e o guard
+  nega o merge — é o lado seguro do erro.
+- **Nada de detectar worker pelo nome da pasta.** `w1-issue-3` é convenção deste
+  dispatch e vai mudar; marcador explícito é o contrato.
+- **`.wave/` é gitignorado**, então o marcador nunca entra num commit nem
+  aparece no `git status` do worker.
+
+Roda **imediatamente depois** do `create`, antes de qualquer outra coisa. O
+`--agent` já subiu o agente, então existe uma janela entre o worktree nascer e o
+marcador existir. Ela é inofensiva na prática — para mergear, o worker precisa
+antes ler o prompt, fazer o trabalho e abrir um PR, e nada disso acontece nos
+milissegundos do `jq` — mas não a alargue colocando outros comandos no meio.
+
 ### 2b — Caminho de exceção: dois passos, com verificação
 
 Só quando o `--agent` não expressa o que o ticket precisa: **agente não-default**
@@ -310,10 +346,20 @@ humano olhou.
 Daí a regra deste caminho: **verificação, não esperança.** Depois do `send`,
 confirme a submissão lendo o terminal.
 
+Aqui o marcador de worker (passo 2a) tem lugar melhor que no caminho padrão:
+como o agente só sobe no `terminal create`, escrevê-lo entre os dois comandos
+fecha a janela em vez de apenas encurtá-la.
+
 ```bash
 NEW=$(orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
   --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 --json)
 WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
+WT_PATH=$(jq -r '.result.worktree.path' <<<"$NEW")
+
+mkdir -p "$WT_PATH/.wave"
+jq -n --arg ticket 3 --arg branch "$(jq -r '.result.worktree.branch' <<<"$NEW")" \
+  --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{ticket: $ticket, branch: $branch, createdAt: $createdAt}' > "$WT_PATH/.wave/worker.json"
 
 TERM=$(orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
   --command 'codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.5' --json)
@@ -511,12 +557,12 @@ para você**: ausência de bloqueio não é permissão. Quem aperta merge é o h
 e o seu trabalho termina no PR aberto.
 ```
 
-A última seção não é redundância com o `permissions.deny` do harness. O deny
-sobrevive ao bypass (medido, issue #2), mas é casamento de string: barra
-`gh pr merge 3` e não enxerga `bash -c "gh pr merge 3"`. O hook
-`guard-destructive` fecha esse envelope, e esta instrução é a camada que não
-depende de nenhum dos dois. Não a encurte, não a resuma, não a mova para o fim
-de outro parágrafo.
+A última seção não é redundância com o guard. Desde a política **ask-then-merge**,
+`Bash(gh pr merge *)` **saiu** do `permissions.deny` — o coordenador pode mergear
+pedindo ao Alex no prompt de permissão — e quem barra o worker é só o hook
+`guard-destructive`, via o marcador do passo 2a. Uma camada a menos do lado do
+worker é exatamente por que esta instrução no prompt pesa mais do que pesava. Não
+a encurte, não a resuma, não a mova para o fim de outro parágrafo.
 
 ### Agente não-default: Codex, ou um modelo específico
 
@@ -554,21 +600,23 @@ de bypass no caminho padrão, e não existe flag de CLI para desligá-la ali:
 desligar num ticket é mexer no setting, ou cair no caminho de exceção 2b e montar
 o `--command` à mão.
 
-**A consequência, e é ela que muda o desenho do fluxo:** medido na issue #2 de
-`alexdlli/my-configs` (fechada), o `permissions.deny` declarado em arquivo
-continua valendo sob bypass — mas é casamento de string e não enxerga
-`bash -c "gh pr merge 3"`, e o hook `guard-destructive` existe justamente para
-barrar as duas formas. Ainda assim **as salvaguardas desta onda não podem
-depender só da camada de permissão**: "abra o PR e pare" tem que estar escrito,
-explícito e inequívoco, no prompt que todo worker recebe — e está, na seção
+**A consequência, e é ela que muda o desenho do fluxo:** sob bypass **não existe
+prompt de permissão** para barrar nada. Para o worker, o merge não é uma decisão
+adiada até alguém aprovar — ele simplesmente roda. Por isso o worker é o único
+contexto em que `gh pr merge` continua negado a seco, e por isso o marcador do
+passo 2a não é burocracia: sem ele o guard fica calado e, sem prompt atrás,
+"calado" quer dizer "executou". Ainda assim **as salvaguardas desta onda não
+podem depender só do guard**: "abra o PR e pare" tem que estar escrito, explícito
+e inequívoco, no prompt que todo worker recebe — e está, na seção
 `## Ao terminar` do template acima. O contexto de subagente, que é onde o worker
 executa quase tudo, não foi medido; o texto do prompt é o que não depende dele.
 
 ### O que o dispatch nunca faz
 
-- **Nunca mergeia.** `Bash(gh pr merge *)` está no `permissions.deny` do harness e
-  o hook `guard-destructive` pega até a forma envelopada — as duas camadas foram
-  medidas sob bypass. A instrução no prompt do worker continua lá mesmo assim,
+- **Nunca mergeia.** No worker, o hook `guard-destructive` nega `gh pr merge`
+  literal e envelopado, desde que o marcador do passo 2a exista — e é a única
+  camada automática que sobrou ali, porque `Bash(gh pr merge *)` saiu do
+  `permissions.deny`. A instrução no prompt do worker continua lá mesmo assim,
   por defesa em camadas. Não existe caminho nesta skill que tente merge, nem
   instrução ao worker para mergear.
 - **Nunca dispara duas ondas.** Onda seguinte espera merge humano do que veio
