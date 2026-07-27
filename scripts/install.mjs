@@ -32,6 +32,12 @@ const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
 const SYMLINK_ITEMS = ['agents', 'hooks', 'commands'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
+
+// ~/.claude/skills is shared ground: it holds skills from plugins and other
+// toolkits. Linking the directory itself would hide every one of them, so the
+// harness links one entry at a time and never displaces a name it does not own.
+const HARNESS_SKILLS_DIR = path.join(HARNESS_ROOT, '.claude', 'skills');
+const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
 const METADATA_VERSION = 2;
 
 // v1 metadata predates addedLinks. That installer only ever created these two
@@ -59,6 +65,10 @@ What gets installed:
   ~/.claude/agents   → symlink to <harness>/.claude/agents
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
   ~/.claude/commands → symlink to <harness>/.claude/commands
+  ~/.claude/skills/<name> → one symlink per entry in <harness>/.claude/skills.
+                     Never the directory itself: it is shared with skills from
+                     plugins and other toolkits. A name that already exists and
+                     is not ours is reported and skipped, never overwritten.
   ~/.claude/settings.json deep-merged: adds agent, permissions.allow entries,
                      and every hook event declared by the harness settings. All
                      other keys (theme, enabledPlugins, extraKnownMarketplaces,
@@ -394,6 +404,46 @@ async function linkHarnessDirs(dryRun) {
   return links;
 }
 
+async function harnessSkillNames() {
+  let entries;
+  try {
+    entries = await fs.readdir(HARNESS_SKILLS_DIR, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  }
+  return entries
+    .filter((entry) => !entry.name.startsWith('.'))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function linkSkills(dryRun) {
+  const names = await harnessSkillNames();
+  if (names.length === 0) return [];
+
+  if (!existsSync(TARGET_SKILLS_DIR)) {
+    if (dryRun) {
+      console.log(`→ would create ${TARGET_SKILLS_DIR}`);
+    } else {
+      await fs.mkdir(TARGET_SKILLS_DIR, { recursive: true });
+      console.log(`✓ created ${TARGET_SKILLS_DIR}`);
+    }
+  }
+
+  const links = [];
+  for (const name of names) {
+    const link = await ensureLink(
+      path.join(TARGET_SKILLS_DIR, name),
+      path.join(HARNESS_SKILLS_DIR, name),
+      dryRun,
+      CONFLICT_SKIP,
+    );
+    if (link) links.push(link);
+  }
+  return links;
+}
+
 async function writeSettingsAtomic(merged) {
   const tmpPath = path.join(TARGET_DIR, '.settings.json.tmp');
   if (existsSync(SETTINGS_PATH)) {
@@ -414,7 +464,10 @@ async function runInstall(opts) {
 
   await ensureTargetDir(opts.dryRun);
 
-  const links = await linkHarnessDirs(opts.dryRun);
+  const links = [
+    ...(await linkHarnessDirs(opts.dryRun)),
+    ...(await linkSkills(opts.dryRun)),
+  ];
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
   const harnessSettings = await readJsonOrEmpty(
