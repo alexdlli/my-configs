@@ -61,6 +61,18 @@ node scripts/install.mjs --uninstall
 
 Removes the two symlinks. Reads `~/.claude/.my-configs-managed.json` and reverts ONLY the keys/permissions/hooks that the installer added — your `theme`, plugins, and unrelated permissions stay intact. Deletes the metadata file at the end.
 
+## Optional: ai-memory (long-term memory)
+
+Separate from the agent harness, [ai-memory](https://github.com/akitaonrails/ai-memory) gives every coding agent a shared, git-versioned markdown wiki so context survives across sessions and across agents. The default `claude-sub` provider routes ai-memory's LLM work through a local `claude -p` shim so it uses your Claude subscription (sanctioned CLI path). Prerequisites: Docker Desktop, the `claude` CLI logged into your subscription, and no `ANTHROPIC_API_KEY` exported.
+
+```bash
+node scripts/setup-ai-memory.mjs --dry-run    # preview
+node scripts/setup-ai-memory.mjs              # claude-sub (default)
+# or: --provider anthropic | local | none
+```
+
+Full walkthrough, provider table, the in-flux subscription-policy caveat, and multi-machine sync: [`integrations/ai-memory.md`](integrations/ai-memory.md).
+
 ## Platform support
 
 macOS only. Windows is not supported (`process.platform === 'win32'` exits with a friendly message). PRs welcome.

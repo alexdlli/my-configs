@@ -56,7 +56,9 @@ Removes the symlinks and reverts only the keys the installer added to `~/.claude
 ├── hooks/               # orchestrator reminder + preserve-orchestrator
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
-└── install.mjs          # installer (symlink + merge + uninstall)
+├── install.mjs          # installer (symlink + merge + uninstall)
+├── setup-ai-memory.mjs  # one-shot ai-memory (long-term memory) setup
+└── claude-openai-shim.mjs  # OpenAI-compat shim over `claude -p` (subscription)
 docs/
 ├── agent-system.md      # full agent reference
 └── installation.md      # detailed install + troubleshooting
@@ -76,3 +78,4 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 - macOS-only. Windows users: PRs welcome.
 - Re-running the installer creates `~/.claude/settings.json.backup-<ts>` snapshots; clean up with `rm ~/.claude/*.backup-*` once you're confident.
 - EcoTokens (optional Rust output filter): see [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md).
+- ai-memory (long-term cross-agent memory wiki + Hermes auto-improve): `node scripts/setup-ai-memory.mjs` — default `claude-sub` provider uses your Claude subscription via a local `claude -p` shim. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
