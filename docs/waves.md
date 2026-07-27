@@ -3,9 +3,10 @@
 Fluxo de execução em ondas: um projeto é quebrado em tickets, os tickets viram prompts de
 agentes autônomos, e as ondas avançam pela frontier do grafo de dependências.
 
-Esta página cobre o **contrato de ticket** — a fundação do fluxo — e o **grafo de
-dependências** que gera o plano de ondas. O disparo das ondas (worktree e agente por ticket)
-ainda não existe: hoje o plano sai, e quem dispara é o humano.
+Esta página cobre o **contrato de ticket** — a fundação do fluxo —, o **grafo de
+dependências** que gera o plano de ondas, e o **dispatch**: um worktree e um agente por
+ticket, uma onda por vez. O que continua sendo do humano é o merge, e é ele que libera a
+onda seguinte.
 
 ## Contrato de ticket
 
@@ -298,3 +299,105 @@ está incompleto.
 
 Dependência nativa de issue é GA no `gh` 2.95: sem header de preview e sem escopo além do `repo`.
 Custo medido: 1 ponto de GraphQL por 100 issues.
+
+## Dispatch de onda
+
+### Onde mora cada peça
+
+| Artefato | Papel |
+|---|---|
+| `.claude/skills/wave-orchestration/SKILL.md`, seção `## Dispatch` | Procedimento completo: resolução de contexto, corte de `origin/main`, criação de worktree, prompt do worker, agente não-default, bypass |
+| `.claude/commands/wave-run.md` | `/wave-run` — dispara **uma** onda |
+| `.claude/commands/wave-status.md` | `/wave-status` — delega a leitura de estado ao `wave-monitor` |
+| `.claude/agents/wave-monitor.md` | Agente `haiku`, `Read` + `Bash`, que devolve o estado das branches da onda em uma tabela. Reporta; não conserta, não mergeia |
+| `.claude/hooks/lib/context.mjs` | Campo `dispatch` da detecção de sessão: em qual host o disparo é possível |
+
+### Onde o disparo é possível
+
+`node ~/.claude/hooks/session-context.mjs --json` traz `dispatch`, derivado só do host — a
+função continua pura, não sonda CLI nenhuma e não executa nada:
+
+| `host` | `dispatch.available` | `driver` |
+|---|---|---|
+| `orca` | `true` | `orca-cli` |
+| `maestri` | `false` | `null` — não existe adaptador de onda para o Maestri, e a CLI dele só existe como `$MAESTRI_CLI` dentro do terminal do app |
+| `plain` | `false` | `null` — sem gerenciador de worktree; o disparo é manual |
+
+Fora do Orca a entrega continua sendo o plano. Improvisar com `git worktree` na mão perde o
+que o Orca dá aqui: linhagem, terminal gerenciado e vínculo com o ticket.
+
+### As quatro decisões que custaram caro
+
+**1. `git fetch origin main` antes de cortar qualquer onda depois da primeira, verificado com
+`git log origin/main --oneline -1`.** Worktree cortado de uma `origin/main` velha não contém o
+código do bloqueador. O agente abre o arquivo que a spec manda ler, não encontra, e ou
+reimplementa o que o irmão já entregou — conflito garantido no merge — ou trava dizendo que o
+ticket está errado. O `git log` é a prova, não enfeite: se o merge do bloqueador não estiver no
+commit impresso, o fetch não trouxe o que parecia ter trazido.
+
+**2. O prompt vai em arquivo (`.wave/<ticket>/prompt.md`), passado por
+`--text "$(cat ...)"`.** Markdown de vários KB colado inline é comido pelo escaping do shell, e
+o modo de falha não é erro: é um prompt truncado que o agente obedece achando que está
+completo. O arquivo também torna o disparo reexecutável — se o agente morrer, o reenvio é um
+`orca terminal send`.
+
+O prompt precisa ser **autocontido**: a spec inteira do ticket dentro dele. O worker nasce sem
+contexto, e cada ida ao tracker é uma rodada perdida e um ponto onde ele pode ler o ticket
+errado. Quando o ticket consome código de um irmão recém-mergeado, isso vai escrito com todas
+as letras ("`origin/main` já contém X de #N — REUSE, não reimplemente"); sem a frase, o agente
+acha o arquivo, não sabe se pode confiar nele, e reescreve por segurança.
+
+**3. `git stash` é proibido para o worker.** O stash é um ref único compartilhado por todas as
+worktrees do repo: um `git stash` de um agente pode engolir o trabalho não commitado de outro
+rodando em paralelo. Estado temporário vira commit `wip:` na própria branch.
+
+**4. Baseline antes de editar.** O worker captura lint/test/build da área antes da primeira
+edição. Falha pré-existente não é dele: reporta como pré-existente e segue. Consertar sem
+autorização é scope creep e apaga a autoria do bug; travar por causa dela é pior ainda.
+
+### Bypass de permissão: ligado por padrão
+
+O worker roda com `--dangerously-skip-permissions`. O motivo é operacional: numa onda de N
+worktrees ninguém está olhando o terminal de cada agente, e agente parado num prompt de
+permissão é agente bloqueado descoberto horas depois. Desligar é **opt-out**, por pedido
+explícito.
+
+A consequência muda o desenho: não se pode assumir que o `permissions.deny` declarado em
+arquivo sobrevive ao bypass — a questão está aberta (issue #2 em `alexdlli/my-configs`) e, até
+ser medida, o pressuposto é o pior caso. Por isso **a garantia de "merge é sempre humano" mora
+no prompt do worker**, não na camada de permissão: o "abra o PR contra `main` e PARE, você não
+faz merge nunca — mesmo que o comando esteja disponível" é texto explícito no template, e é ele
+que conta. `Bash(gh pr merge *)` no `permissions.deny` continua lá; é bônus, não a garantia.
+
+Como `--agent <id>` não aceita argv extra, o caminho padrão do dispatch é de dois passos:
+
+```bash
+orca worktree create --repo "id:<repoId>" --name "w1-issue-3" \
+  --parent-worktree "path:<parent>" --base-branch origin/main --issue 3 --json
+orca terminal create --worktree "id:<worktreeId>" --title "w1-issue-3" \
+  --command 'claude --dangerously-skip-permissions' --json
+orca terminal wait --terminal "<handle>" --for tui-idle --timeout-ms 60000 --json
+orca terminal send --terminal "<handle>" --text "$(cat .wave/3/prompt.md)" --enter --json
+```
+
+O `wait` não é opcional — texto mandado a um TUI que ainda está subindo é perdido em silêncio.
+O handle sai de `orca terminal list --worktree "id:<worktreeId>" --json` filtrado pelo
+`--title`, que é estável porque é você que o define. O caminho curto (`--agent` + `--prompt`,
+um comando só) fica para quando o bypass está desligado naquele ticket.
+
+### Acompanhamento
+
+Polling de N branches gera saída enorme e repetida, e ela fica no contexto da thread que menos
+pode gastá-lo. Daí o `wave-monitor` ser um agente separado em `haiku`: ele consulta, comprime e
+morre com o volume. Ele reutiliza `scripts/waves/pr-state.mjs`, que já separa run cancelado por
+force-push (`RUNNING` com `reason: superseded-by-newer-commit` — o agente se autocorrigiu) de
+build vermelho de verdade.
+
+Exit code de `pr-state.mjs` é sobre a **consulta**, nunca sobre o CI. Exit 5 numa branch de onda
+quase sempre significa "PR ainda não existe", não falha — `git ls-remote --heads origin <branch>`
+distingue "não deu push" de "deu push, sem PR".
+
+### O que o dispatch nunca faz
+
+Merge (nem comando, nem instrução ao worker), duas ondas de uma vez, commit na `main`, edição
+no worktree de outro ticket, ou worktree a partir de ticket que não passou pelo contrato.
