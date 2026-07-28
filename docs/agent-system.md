@@ -1,6 +1,6 @@
 # Agent System
 
-This harness ships an orchestrator + <!-- docs-count:specialists -->14 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + <!-- docs-count:specialists -->15 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
@@ -17,12 +17,13 @@ This harness ships an orchestrator + <!-- docs-count:specialists -->14 specialis
 | `pr-triage`    | Classifies a PR's open feedback threads from `threads.json`; recommends, never applies | Read, Grep, Glob             | inherit | —                |
 | `wave-monitor` | Reports the state of a wave's branches as one compact table; never fixes, never merges | Read, Bash                  | haiku   | —                |
 | `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | inherit | atlas            |
+| `qa`           | Runs the change and produces the artifact that proves it (screenshot, integration test, command output) | Read, Grep, Glob, Bash, `mcp__argent__*` | inherit | —                |
 | `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
 | `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | inherit | — (caveman)      |
 | `cavecrew-reviewer`     | Single-line, severity-tagged findings              | Read, Grep, Bash                       | haiku   | — (caveman)      |
 | `atlassian`    | Confluence search, Jira lookups, task validation | Read, `mcp__atlassian__*`                        | inherit | —                |
 
-`atlassian` is the only agent with MCP access, and it needs the Atlassian Rovo MCP server configured in the session (this repo's installer does not manage MCP servers). Without it the agent is inert.
+`atlassian` and `qa` are the only agents with MCP access, and each depends on a server this repo's installer does not manage: the Atlassian Rovo MCP for `atlassian`, argent for `qa`. Without the server, `atlassian` is inert entirely; `qa` loses only the device half — it can still run a CLI or an endpoint through `Bash`.
 
 Inspiration credit: [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — a non-Claude (OpenCode + Oh My OpenAgent) configuration that uses Greek-mythology personas for specialized agents. We adopted the *idea*, not the implementation; this harness uses Claude Code's official subagents mechanism.
 
@@ -32,7 +33,7 @@ The orchestrator runs as the main session. When you give it a task, it:
 
 1. Decides whether the task is trivial (does it itself) or composite (delegates).
 2. For composite tasks, identifies independent subtasks and spawns subagents **in parallel** — multiple `Agent` calls in the same response.
-3. Sequences dependent steps (e.g. `planner` → `implementer` → `reviewer` + `tester`).
+3. Sequences dependent steps (e.g. `planner` → `implementer` → `reviewer` + `tester`, plus `qa` whenever the change is something that can be run).
 4. Synthesizes results into a single answer.
 
 There is no router config to maintain. Routing is description-based: each subagent's `description:` frontmatter is what Claude reads when deciding who to spawn. Edit a description, and routing behavior changes.
@@ -47,7 +48,7 @@ Subagents inherit the parent session's permission mode. You don't need to config
 | Accept-edits      | implementer and tester edit without prompts. Full pipeline runs cleanly. |
 | Default           | Subagents prompt for permission per tool, like the parent.          |
 
-Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`wave-monitor`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `orca linear create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision. `wave-monitor` is the same shape from the other side: its `Bash` exists to query `pr-state.mjs`, `git` and `gh`, and the one command that would end a wave on its own — `gh pr merge` — is held back by two layers, not one. `permissions.deny` blocks the literal command as a string and does survive `--dangerously-skip-permissions`, but it never sees the wrapped form: under the bypass, `bash -c "gh pr merge 3"` has no approval prompt left to catch it. What closes the wrapper is the `PreToolUse` hook `.claude/hooks/guard-destructive.mjs`, which is still evaluated under the bypass. Both facts were measured rather than assumed — [`docs/guard-destructive.md`](docs/guard-destructive.md) carries the table. Both layers also run in the client, so "merge stays human" holds exactly as long as the worker runs this client; the guarantee that doesn't depend on it is branch protection on GitHub.
+Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`wave-monitor`/`qa`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. `qa` is the widest of them: it runs the product under test through `Bash` and drives a simulator or a browser through `mcp__argent__*`, and still cannot edit a line of the repo — a flow that fails goes back to `implementer` as a finding, never as a patch. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `orca linear create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision. `wave-monitor` is the same shape from the other side: its `Bash` exists to query `pr-state.mjs`, `git` and `gh`, and the one command that would end a wave on its own — `gh pr merge` — is held back by two layers, not one. `permissions.deny` blocks the literal command as a string and does survive `--dangerously-skip-permissions`, but it never sees the wrapped form: under the bypass, `bash -c "gh pr merge 3"` has no approval prompt left to catch it. What closes the wrapper is the `PreToolUse` hook `.claude/hooks/guard-destructive.mjs`, which is still evaluated under the bypass. Both facts were measured rather than assumed — [`docs/guard-destructive.md`](docs/guard-destructive.md) carries the table. Both layers also run in the client, so "merge stays human" holds exactly as long as the worker runs this client; the guarantee that doesn't depend on it is branch protection on GitHub.
 
 `pr-triage` goes one step further and has no `Bash` at all. The thread bodies it reads are untrusted input — anyone who can comment on a PR writes text that lands in its context, and review comments routinely contain "run this" or "apply this patch". Denying it every writing and executing tool is what makes prompt injection through a comment a non-event: the worst a malicious comment can achieve is a wrong recommendation, which a human reads before anything happens.
 

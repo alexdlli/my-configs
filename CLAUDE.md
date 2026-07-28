@@ -54,6 +54,7 @@ Every session starts in the `orchestrator` agent (set via `.claude/settings.json
 | `implementer`           | Writes/edits code per a plan                  |
 | `reviewer`              | Code review, quality, security                |
 | `tester`                | Lint / typecheck / test / build               |
+| `qa`                    | Runs the change and produces the proof artifact (screenshot, test, command output) |
 | `pr-author`             | Drafts PRs from the current branch            |
 | `pr-reviewer`           | Reviews open GitHub PRs                       |
 | `pr-triage`             | Classifies PR feedback threads; never applies, never posts |
