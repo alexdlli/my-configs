@@ -15,6 +15,7 @@ Notes for working on this harness. It's small on purpose — settings, agents, h
 docs/
   agent-system.md      # agents, skills, slash commands
   installation.md      # install, flags, conflicts, troubleshooting
+  usage.md             # driving the harness day to day
   contributing.md      # this file
   waves.md             # ticket contract, dependency graph, wave plan
   integrations/        # orca.md, maestri.md, ecotokens.md, ai-memory.md

@@ -78,6 +78,7 @@ scripts/
 docs/
 ├── agent-system.md      # full agent, skill and command reference
 ├── installation.md      # detailed install + troubleshooting
+├── usage.md             # driving the harness day to day
 ├── contributing.md      # conventions for working on this harness
 ├── waves.md             # ticket contract, dependency graph, wave plan
 ├── guard-destructive.md # the PreToolUse guard: the three permission layers,
