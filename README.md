@@ -25,7 +25,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 
 Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force` and `git commit --no-verify` — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
-The harness ships <!-- docs-count:skills -->five skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting` — and the <!-- docs-count:commands -->seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+The harness ships <!-- docs-count:skills -->six skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
 ## Install
 
@@ -66,7 +66,8 @@ Removes only the links this installer created (matched by recorded target) and r
 ├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan
 │                        # /wave-run /wave-status /pr-babysit
 ├── skills/              # ticket-contract, orca-linear, adversarial-review,
-│                        # wave-orchestration, pr-babysitting — linked one by one
+│                        # wave-orchestration, pr-babysitting,
+│                        # maestri-orchestration — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)

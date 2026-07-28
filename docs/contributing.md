@@ -126,7 +126,7 @@ Three limits, all deliberate:
 
 - A count written **without** a marker is invisible to the test. Add the marker when you write the count; there is no way to find an unmarked one without regex-guessing at prose, which is what makes this class of test untrustworthy.
 - Markers inside fenced code blocks are ignored, so an example like the one above is never a live claim.
-- `.claude/skills` is exempt from the reverse "this path is not on disk" check. `~/.claude/skills` is shared ground: docs there legitimately point at a skill installed outside this repo (`to-tickets`) or at a planned destination (`maestri-orchestration`). The other five directories are owned by the harness alone, so a path into them that does not resolve is a real broken reference.
+- `.claude/skills` is exempt from the reverse "this path is not on disk" check. `~/.claude/skills` is shared ground: docs there legitimately point at a skill installed outside this repo — `to-tickets` and `to-spec` come from elsewhere, and `maestri-orchestration` references the `maestri`, `maestri-manager`, `maestri-routines` and `maestri-workspace` skills the Maestri app installs. The other five directories are owned by the harness alone, so a path into them that does not resolve is a real broken reference.
 
 ## Running the tests
 
