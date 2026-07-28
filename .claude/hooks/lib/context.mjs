@@ -30,10 +30,11 @@ const ORCA_WORKTREE_SEPARATOR = '::';
 
 const DISPATCH_REASON_ORCA =
   'orca worktree create --agent: one worktree per ticket, agent launched in its first terminal';
-// Maestri exports its CLI only as $MAESTRI_CLI inside the app's own terminal, so
-// nothing outside it can spawn a wave — and no wave adapter targets it yet either.
+// Maestri has the wave topology natively (a floor is a git-isolated clone) but no
+// driver: its CLI exists only as $MAESTRI_CLI inside the app's own terminal, so
+// nothing outside it can spawn the wave.
 const DISPATCH_REASON_MAESTRI =
-  'no wave adapter for Maestri yet, and its CLI exists only as $MAESTRI_CLI inside the app terminal';
+  'no automatic wave driver for Maestri — dispatch by hand from the app terminal: $MAESTRI_CLI floor create per ticket, then recruit --floor';
 const DISPATCH_REASON_PLAIN = 'no worktree manager in this session — the human dispatches by hand';
 
 const WORK_DIR_NAME = 'work';

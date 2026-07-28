@@ -20,8 +20,11 @@ node ~/.claude/hooks/session-context.mjs --json
 ```
 
 `dispatch.available: true` (driver `orca-cli`) → siga. `false` → diga o
-`dispatch.reason` e **pare**: no Maestri não existe adaptador de onda, e num
-terminal comum o disparo é manual. Não improvise com `git worktree` na mão.
+`dispatch.reason` e **pare este comando**: ele automatiza o Orca e nada mais. Num
+terminal comum o disparo é manual. No Maestri também é manual, mas existe — um
+`floor create` por ticket e um `recruit --floor` em cada, pela skill
+`maestri-orchestration`, que diz como confirmar que o floor saiu isolado. Em
+nenhum dos dois se improvisa com `git worktree` na mão.
 
 ## 2. Corte de `origin/main` atualizada
 

@@ -320,11 +320,13 @@ função continua pura, não sonda CLI nenhuma e não executa nada:
 | `host` | `dispatch.available` | `driver` |
 |---|---|---|
 | `orca` | `true` | `orca-cli` |
-| `maestri` | `false` | `null` — não existe adaptador de onda para o Maestri, e a CLI dele só existe como `$MAESTRI_CLI` dentro do terminal do app |
+| `maestri` | `false` | `null` — não existe **driver automático**; a topologia existe (`floor create` + `recruit --floor`) e o disparo é manual, de dentro do terminal do app |
 | `plain` | `false` | `null` — sem gerenciador de worktree; o disparo é manual |
 
-Fora do Orca a entrega continua sendo o plano. Improvisar com `git worktree` na mão perde o
-que o Orca dá aqui: linhagem, terminal gerenciado e vínculo com o ticket.
+Fora do Orca e do Maestri a entrega continua sendo o plano. Improvisar com `git worktree` na
+mão perde o que o Orca dá aqui: linhagem, terminal gerenciado e vínculo com o ticket. No
+Maestri o floor não é improviso — é isolamento nativo —, mas pode sair simples e compartilhar
+o diretório; a skill `maestri-orchestration` diz como distinguir e o que fazer quando saiu.
 
 ### As quatro decisões que custaram caro
 

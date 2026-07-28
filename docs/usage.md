@@ -16,8 +16,8 @@ O host é detectado por variável de ambiente, nunca por processo ou socket aber
 
 | Host | Detectado por | O que muda |
 |---|---|---|
-| Orca | `ORCA_TERMINAL_HANDLE` ou `TERM_PROGRAM=Orca` | Único com **dispatch de onda** (`dispatch.driver: orca-cli`): um worktree e um agente por ticket. O caminho do worktree e o repo id saem de graça da env |
-| Maestri | `MAESTRI_TERMINAL_ID` | Injeta o aviso de que `maestri` **não está no PATH** em zsh: toda invocação vai por `"$MAESTRI_CLI"`. **Sem dispatch** — o adaptador de onda para o Maestri não existe |
+| Orca | `ORCA_TERMINAL_HANDLE` ou `TERM_PROGRAM=Orca` | Único com **dispatch de onda automático** (`dispatch.driver: orca-cli`): um worktree e um agente por ticket. O caminho do worktree e o repo id saem de graça da env |
+| Maestri | `MAESTRI_TERMINAL_ID` | Injeta o aviso de que `maestri` **não está no PATH** em zsh: toda invocação vai por `"$MAESTRI_CLI"`. **Sem dispatch automático** — o driver não existe, mas a onda tem topologia nativa (`floor create` + `recruit --floor`) e dispara à mão |
 | Terminal comum | nenhuma das duas | Tudo menos o dispatch. `/wave-plan` imprime o plano e o humano abre os worktrees na mão |
 
 Agentes, skills, comandos e hooks são idênticos nos três. Só o dispatch depende do host.
