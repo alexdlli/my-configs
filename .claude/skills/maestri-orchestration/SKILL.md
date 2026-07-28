@@ -142,6 +142,12 @@ progresso deixa de ser lida.
   reinicia). O próprio `help` do `dismiss` manda usar `--replace` *"so its notes
   and portals stay wired"*: `dismiss` apaga o nó, e nota ligada só àquele recruta
   fica órfã — só o Alex reconecta, na mão, no app.
+- **Mas `--replace` não se combina com `--floor`** — e a topologia de onda daqui é
+  toda `--floor`. Literal: *"--replace keeps the teammate's node in place and can't
+  be combined with --floor. Recruit a fresh teammate with --floor if you need one
+  there."* Numa frente isolada a troca de agente é recrutar um **novo** no mesmo
+  floor, e aí o nó antigo continua em pé com as conexões dele: religue a nota no
+  novo antes de dispensar o antigo, ou o `dismiss` deixa a órfã do item acima.
 - **Nome de preset e de role se listam, não se adivinham:** `"$MAESTRI_CLI"
   preset list` e `role list`. `recruit` aceita `[--preset P] [--role R] [--floor
   F] [--command C] [--dir PATH]`; `--command` existe e leva o argv inteiro do
