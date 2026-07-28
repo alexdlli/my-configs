@@ -328,7 +328,7 @@ mão perde o que o Orca dá aqui: linhagem, terminal gerenciado e vínculo com o
 Maestri o floor não é improviso — é isolamento nativo —, mas pode sair simples e compartilhar
 o diretório; a skill `maestri-orchestration` diz como distinguir e o que fazer quando saiu.
 
-### As quatro decisões que custaram caro
+### As cinco decisões que custaram caro
 
 **1. `git fetch origin main` antes de cortar qualquer onda depois da primeira, verificado com
 `git log origin/main --oneline -1`.** Worktree cortado de uma `origin/main` velha não contém o
@@ -368,6 +368,23 @@ duas formas pega o que está no `.gitignore` — no fluxo de ondas,
 **4. Baseline antes de editar.** O worker captura lint/test/build da área antes da primeira
 edição. Falha pré-existente não é dele: reporta como pré-existente e segue. Consertar sem
 autorização é scope creep e apaga a autoria do bug; travar por causa dela é pior ainda.
+
+**5. O PR se vincula ao ticket, escrito pelo worker na abertura do PR.** A onda 1 mergeou cinco
+PRs e deixou as issues #4, #5 e #6 abertas: os corpos de PR não traziam palavra-chave de
+fechamento, e só as #1 e #3 fecharam (L-014 em [`lessons.md`](lessons.md)). Trabalho entregue com
+ticket aberto envenena o plano seguinte — `/wave-plan` lê o ticket, não a `main`, e lista como
+pendente o que já foi entregue. O momento é o da abertura do PR porque é o único em que o
+contexto do ticket ainda está de pé; depois do merge ninguém volta para amarrar. No **GitHub
+Issues** o vínculo é a palavra-chave no **corpo** do PR (`Closes #<n>`; `close`/`closes`/`closed`,
+`fix`/`fixes`/`fixed` e `resolve`/`resolves`/`resolved` valem igual, caixa alta e dois-pontos
+opcionais), que fecha a issue **no merge** — no título não conta, issue de outro repo vai
+qualificada (`Closes owner/repo#<n>`), cada issue quer a sintaxe repetida (`Closes #10, closes
+#11`, porque `Closes #10, #11` fecha só a #10), e nada disso é interpretado se o PR não mirar a
+branch default. No **Linear** não existe palavra-chave: são `orca linear attach --current --url
+<url-do-pr>` e `orca linear status set --current --to "<estado>"`, com o nome exato do workflow
+state saindo de `orca linear team states --team <key>` em vez de chute. Mover o ticket para
+revisão, onde a fonte tiver esse estado, é do worker e é na mesma hora. Não há guard, deny nem CI
+que perceba a falta do vínculo: o texto do prompt é a camada única.
 
 ### Bypass de permissão: ligado por padrão
 

@@ -75,6 +75,15 @@ o PR contra `main` e PARE, você não faz merge nunca" do template. O
 `guard-destructive` cobre até a forma envelopada — o texto do prompt é a terceira
 camada, não a única.
 
+Confira também que o `prompt.md` manda **vincular o PR ao ticket na abertura**:
+no GitHub, a palavra-chave no corpo do PR (`Closes #<n>`, repetida por issue);
+no Linear, `orca linear attach --current` mais
+`orca linear status set --current --to "<estado>"`. Aqui não há camada nenhuma
+atrás do texto — nem deny, nem guard, nem CI enxerga PR sem referência ao
+ticket. A onda 1 mergeou cinco PRs e deixou três issues abertas exatamente
+assim, e plano de ondas seguinte lê ticket aberto como trabalho pendente. A
+forma exata está na seção `## Ao terminar` do template.
+
 O prompt vai **em arquivo**, nunca colado inline: markdown de vários KB quebra no
 escaping do shell, e o modo de falha é um prompt truncado que o agente obedece
 como se estivesse completo. Se o ticket consome código de um irmão recém-mergeado,

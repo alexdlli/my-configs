@@ -649,7 +649,37 @@ Sem `Co-Authored-By`, sem "Generated with", sem marca equivalente — em commit,
 PR, título, corpo ou comentário. O autor é o alexdlli.
 
 ## Ao terminar
-Abra o PR contra `main` e **PARE**.
+Abra o PR contra `main`, **vincule o PR ao ticket** e **PARE**.
+
+**O vínculo é escrito na abertura do PR, por você** — não depois, não pelo
+coordenador, não pelo humano que aperta merge. É a única hora em que quem tem o
+contexto do ticket ainda está de pé. Sem ele o trabalho entra na `main` e o
+ticket continua aberto, e o próximo plano de ondas lista como pendente o que já
+foi entregue.
+
+**Ticket no GitHub Issues:** a palavra-chave de fechamento vai no **corpo** do
+PR — `Closes #<n>` —, e quem fecha a issue é o **merge**. Valem `close`,
+`closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` e `resolved`,
+com caixa alta e dois-pontos opcionais (`CLOSES: #10`). Três detalhes custam o
+fechamento inteiro: no **título** não conta, só na descrição; issue de outro
+repo vai qualificada, `Closes owner/repo#<n>`; e cada issue quer a sintaxe
+repetida — `Closes #10, closes #11`, porque `Closes #10, #11` fecha só a #10.
+Nada disso é interpretado se o PR não mirar a branch **default** do repo: contra
+outra branch a palavra-chave é ignorada e nem link ela cria.
+
+**Ticket no Linear:** não existe palavra-chave — `Closes ENG-123` no corpo não
+fecha nada. O vínculo são dois comandos, na mesma hora:
+`orca linear attach --current --url <url-do-pr> --title "PR" --json` anexa o PR
+ao issue, e `orca linear status set --current --to "<estado>" --json` move o
+status. `--current` usa o issue que o Orca linkou a esta worktree, então não há
+id para errar. O `--to` quer o **nome exato do workflow state do time**, que
+varia por workspace: liste com `orca linear team states --team <key> --json` em
+vez de chutar `"In Review"`. `orca` ausente ou Linear desconectado não vira
+palpite: deixe o ticket sem vínculo e **diga isso no relatório**.
+
+**Mover o ticket para revisão também é seu, na abertura do PR**, quando a fonte
+tiver esse estado. No Linear é o `status set` acima; no GitHub Issues não existe
+estado de revisão, e o PR vinculado é o próprio sinal.
 
 **Você não faz merge. Nunca.** Não rode `gh pr merge`, não mergeie pela UI, não
 peça a outro agente que mergeie, não mergeie "porque o CI ficou verde" nem
@@ -665,6 +695,17 @@ pedindo ao Alex no prompt de permissão — e quem barra o worker é só o hook
 worker é exatamente por que esta instrução no prompt pesa mais do que pesava. Não
 a encurte, não a resuma, não a mova para o fim de outro parágrafo.
 
+O vínculo com o ticket, na mesma seção, tem camada nenhuma atrás dele: não há
+guard, permissão nem CI que perceba um PR que não referencia o ticket. A onda 1
+mediu o preço — cinco PRs mergeados, e as issues #4, #5 e #6 continuaram abertas
+porque só dois corpos de PR traziam a palavra-chave (L-014 em
+[`docs/lessons.md`](../../../docs/lessons.md)). Ele está escrito em **três
+lugares**: a seção `## Ao terminar` do template acima (a única que o worker de
+fato lê), a conferência do `prompt.md` em `.claude/commands/wave-run.md`, que é
+o que o coordenador checa antes de disparar, e o item 5 de "As cinco decisões
+que custaram caro" em `docs/waves.md`, para quem lê o fluxo de fora. Mesma regra
+de propagação do `git stash` abaixo, e pelo mesmo motivo.
+
 A seção `git stash` do template duplica de propósito o item 6 das regras
 invioláveis: o worker recebe o prompt como arquivo e não carrega esta skill, de
 modo que ali a regra precisa estar escrita por inteiro — proibição nominal de
@@ -675,7 +716,7 @@ modo que ali a regra precisa estar escrita por inteiro — proibição nominal d
 completo (`refs/stash` no git dir comum, e os quatro refs que de fato são
 por-worktree). Ela está escrita em
 **três lugares**: o item 6 desta skill, a seção do template acima (a única que o
-worker de fato lê) e o item 3 de "As quatro decisões que custaram caro", em
+worker de fato lê) e o item 3 de "As cinco decisões que custaram caro", em
 `docs/waves.md`, que a enuncia para quem lê o fluxo de fora. Mudou a regra no
 item 6? Propague para os outros dois — cópia que diverge em silêncio é pior que
 cópia nenhuma.
