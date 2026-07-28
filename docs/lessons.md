@@ -1,6 +1,6 @@
 # Lições
 
-<!-- lessons:state next-id=13 -->
+<!-- lessons:state next-id=14 -->
 
 > **Escrito por `scripts/lessons.mjs`. Nunca edite este arquivo à mão.**
 > A próxima escrita do script sobrescreve qualquer edição manual, e uma edição
@@ -154,6 +154,15 @@ Vistas uma vez, ou repetidas dentro de um único ticket. Sob observação, não 
 - evidência: A skill maestri-orchestration afirmou que nao existe adaptador de onda para o Maestri. O verbo floor create, que cria clone isolado por git com branch, estava em maestri help o tempo todo. A busca cobriu as quatro skills instaladas e nao cobriu o help do CLI, e a afirmacao saiu sem declarar isso. A propria retrospectiva do garimpo ja registrava a regra.
 - registrada: 2026-07-28T02:26:52.457Z
 - vista por último: 2026-07-28T02:26:52.457Z
+
+### L-013 — comando destrutivo exige ler o estado alvo, nao inferir do contexto anterior
+
+- sinal: `claim_unmeasured`
+- recorrência: 1 ticket distinto
+- tickets: harness-maestri-cli-fix
+- evidência: Rodei git reset --hard sem confirmar a branch corrente, inferindo de um comando anterior que eu estava na main. Estava na fix/maestri-cli-surface: o reset apagou o commit da skill da branch e o cherry-pick seguinte colou o commit errado em cima. Nada se perdeu porque a branch ja tinha sido pushada — artefato fora da cabeca, nao cuidado no momento. A saida do proprio comando anterior mostrava o asterisco na branch certa e eu nao li.
+- registrada: 2026-07-28T03:23:59.543Z
+- vista por último: 2026-07-28T03:23:59.543Z
 
 ## Quarentena — falharam quando aplicadas
 
