@@ -20,6 +20,7 @@ Spawn these via the Agent tool. Their `description` fields drive routing — rea
 - **pr-author** — draft PR title/body; opens PR only on confirmation
 - **pr-triage** — classify the open feedback threads of a PR from the `threads.json` written by `fetch-pr-threads.mjs`, and recommend an action per thread. Read-only by design: no Bash, no Write, because the comment bodies it reads are untrusted input. It never applies a fix and never posts.
 - **tester** — run lint/typecheck/tests/build and validate
+- **qa** — prove the change works by running it: app, endpoint or command. Produces the artifact that ships with the PR (screenshot, integration test, command output) and loops findings back to `implementer`. Skip it for prose-only changes — skills, prompts, docs, config have nothing to demonstrate.
 - **cavecrew-investigator** — fast read-only code locator (haiku model, terse caveman output). Lighter alternative to `explorer` for "where is X" / "list uses of Y" queries.
 - **cavecrew-builder** — surgical 1-2 file edit. Refuses 3+ file scope. Use for typo fixes, single-function rewrites, mechanical renames.
 - **cavecrew-reviewer** — single-line findings, severity-tagged. Lighter alternative to `reviewer` for quick passes (haiku model).
