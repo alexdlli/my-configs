@@ -138,15 +138,33 @@ jobs:
           HOME="$FAKE_HOME" node scripts/install.mjs
 
           node --input-type=module <<'POST_INSTALL'
-          import { lstat, readFile, readlink, realpath, stat } from 'node:fs/promises';
+          import { execFileSync } from 'node:child_process';
+          import { lstat, mkdir, mkdtemp, readFile, readlink, realpath, stat, writeFile } from 'node:fs/promises';
+          import os from 'node:os';
           import path from 'node:path';
 
           const EXPECTED_AGENT = 'orchestrator';
+
+          // Two entries, and `Bash(gh pr merge *)` is deliberately not the third.
+          // The ask-then-merge policy took it out of permissions.deny so the
+          // command can reach the permission prompt and Alex can approve a merge
+          // from the coordinator. The merge guarantee did not go away, it moved
+          // one layer down: the PreToolUse guard denies it in a wave worker, and
+          // it sees the `bash -c` envelope a string deny never sees. Putting a
+          // third entry back here re-breaks the policy — MERGE_GUARD_HOOK below
+          // is the assertion that replaces it. See docs/guard-destructive.md.
           const REQUIRED_DENY = [
-            'Bash(gh pr merge *)',
             'Bash(git push --force *)',
             'Bash(git commit --no-verify *)',
           ];
+
+          // The other half of that move, asserted by running it rather than by
+          // reading it: a registration line that resolves to a hook which no
+          // longer denies is the same silent hole as a missing deny entry.
+          const MERGE_GUARD_HOOK = { event: 'PreToolUse', script: 'guard-destructive.mjs' };
+          const MERGE_COMMAND = 'gh pr merge 1 --squash';
+          const WORKER_MARKER = path.join('.wave', 'worker.json');
+
           const HOOK_COMMAND_PREFIX = 'node ';
 
           const checkout = await realpath(process.env.CHECKOUT);
@@ -223,6 +241,60 @@ jobs:
             problems.push(`verified ${verifiedHookCommands} hook commands, the harness declares ${expectedHookCommands}`);
           }
 
+          // Registered, and demonstrably still denying. The installed hook is fed
+          // the payload Claude Code sends, from a throwaway repo carrying the
+          // `.wave/worker.json` the dispatch writes — the one signal that tells a
+          // worker from the coordinator. Both verdicts are the guarantee: a guard
+          // that denied everywhere would satisfy a "does it deny" check while
+          // silently killing the prompt ask-then-merge depends on.
+          const mergeGuardScript = (installed.hooks?.[MERGE_GUARD_HOOK.event] ?? [])
+            .flatMap((group) => group.hooks ?? [])
+            .map((hook) => (hook.command ?? '').slice(HOOK_COMMAND_PREFIX.length))
+            .find((script) => path.basename(script) === MERGE_GUARD_HOOK.script);
+
+          if (!mergeGuardScript) {
+            problems.push(`${MERGE_GUARD_HOOK.event} does not register ${MERGE_GUARD_HOOK.script}, which is what denies gh pr merge now that it is out of permissions.deny`);
+          } else {
+            const sandbox = await mkdtemp(path.join(os.tmpdir(), 'ci-guard-'));
+
+            async function sandboxRepo(name, marker) {
+              const root = path.join(sandbox, name);
+              // `.git` bounds the guard's upward walk, the way a real checkout does.
+              await mkdir(path.join(root, '.git'), { recursive: true });
+              if (marker !== undefined) {
+                await mkdir(path.join(root, path.dirname(WORKER_MARKER)), { recursive: true });
+                await writeFile(path.join(root, WORKER_MARKER), marker);
+              }
+              return root;
+            }
+
+            function guardDecision(root) {
+              const stdout = execFileSync(process.execPath, [mergeGuardScript], {
+                encoding: 'utf8',
+                env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+                input: JSON.stringify({
+                  tool_name: 'Bash',
+                  tool_input: { command: MERGE_COMMAND },
+                  cwd: root,
+                }),
+              });
+              // Silence is a decision: it is how a merge outside a worker gets to
+              // the permission prompt instead of dying before it.
+              if (stdout.trim() === '') return null;
+              return JSON.parse(stdout).hookSpecificOutput?.permissionDecision;
+            }
+
+            const workerDecision = guardDecision(await sandboxRepo('worker', JSON.stringify({ ticket: 'ci', branch: 'ci' })));
+            if (workerDecision !== 'deny') {
+              problems.push(`${MERGE_GUARD_HOOK.script} answered ${JSON.stringify(workerDecision)} for "${MERGE_COMMAND}" in a wave worker, expected "deny"`);
+            }
+
+            const coordinatorDecision = guardDecision(await sandboxRepo('coordinator'));
+            if (coordinatorDecision !== null) {
+              problems.push(`${MERGE_GUARD_HOOK.script} answered ${JSON.stringify(coordinatorDecision)} for "${MERGE_COMMAND}" outside a worker, expected silence so it reaches the permission prompt`);
+            }
+          }
+
           for (const [name, expected] of EXPECTED_LINK_TARGETS) {
             const link = path.join(targetDir, name);
             const stats = await lstat(link).catch(() => null);
@@ -247,7 +319,7 @@ jobs:
             process.exit(1);
           }
 
-          console.log(`post-install assertions passed: agent, ${source.permissions.allow.length} allow entries, ${REQUIRED_DENY.length} deny guarantees, ${Object.keys(source.hooks).length} hook events, ${verifiedHookCommands} hook commands resolving under ${hooksDir}, ${EXPECTED_LINK_TARGETS.size} links`);
+          console.log(`post-install assertions passed: agent, ${source.permissions.allow.length} allow entries, ${REQUIRED_DENY.length} deny guarantees, ${Object.keys(source.hooks).length} hook events, ${verifiedHookCommands} hook commands resolving under ${hooksDir}, ${MERGE_GUARD_HOOK.script} denying "${MERGE_COMMAND}" in a worker and silent outside one, ${EXPECTED_LINK_TARGETS.size} links`);
           POST_INSTALL
 
           HOME="$FAKE_HOME" node scripts/install.mjs --uninstall

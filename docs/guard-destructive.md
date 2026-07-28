@@ -279,3 +279,16 @@ reais em `mkdtemp`: worktree com marcador, marcador truncado, marcador ilegivel,
 da raiz do repo, e o caso do worker que deu `cd` para fora. Os tres vereditos — `worker`,
 `other`, `indeterminate` — tem teste cada um, porque confundir `indeterminate` com `other` e
 exatamente o bug que liberaria um merge.
+
+### O CI nao afirma a garantia, ele a executa
+
+O step de install de `.github/workflows/ci.yml` instala o harness num `$HOME` descartavel, confere
+que `guard-destructive.mjs` esta registrado no `PreToolUse` do `settings.json` **instalado**, e
+entao roda **o hook instalado** com um payload de `gh pr merge` em dois repos de mentira — um com
+`.wave/worker.json`, outro sem — exigindo `permissionDecision: "deny"` no primeiro e **silencio** no
+segundo.
+
+Isso substitui a assercao antiga de que `Bash(gh pr merge *)` estava no `deny`, que virou falsa com
+a ask-then-merge e deixava o CI vermelho. A garantia mudou de camada e a verificacao mecanica foi
+junto: os dois vereditos sao checados porque um guard que negasse em todo contexto passaria num
+teste de "ele nega?" enquanto matava o prompt de permissao em que a politica se apoia.
