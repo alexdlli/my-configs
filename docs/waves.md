@@ -62,10 +62,10 @@ O tracker é detectado por `node ~/.claude/hooks/session-context.mjs --json` (ca
 e `trackerSource`), nunca adivinhado pelo nome do repo. Os sinais de ambiente que alimentam
 essa detecção estão em [`integrations/orca.md`](integrations/orca.md).
 
-**Assimetria deliberada entre trackers:** Linear (pessoal) tem leitura e escrita, via CLI
-`orca linear` — é onde os tickets pessoais nascem. Jira (trabalho) é **somente leitura**, via
-o agente `atlassian`: lá os tickets chegam prontos, e o papel do fluxo é normalizar e auditar
-contra o contrato, apontando os campos que faltam.
+**Assimetria deliberada entre trackers:** Linear (pessoal) e GitHub Issues têm leitura e
+escrita — o primeiro via CLI `orca linear`, o segundo via CLI `gh`; é onde os tickets nascem.
+Jira (trabalho) é **somente leitura**, via o agente `atlassian`: lá os tickets chegam prontos,
+e o papel do fluxo é normalizar e auditar contra o contrato, apontando os campos que faltam.
 
 ### Autoria
 
