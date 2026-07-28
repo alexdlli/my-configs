@@ -1,6 +1,6 @@
 # Lições
 
-<!-- lessons:state next-id=10 -->
+<!-- lessons:state next-id=12 -->
 
 > **Escrito por `scripts/lessons.mjs`. Nunca edite este arquivo à mão.**
 > A próxima escrita do script sobrescreve qualquer edição manual, e uma edição
@@ -127,6 +127,24 @@ Vistas uma vez, ou repetidas dentro de um único ticket. Sob observação, não 
 - evidência: PR 11, Warning: o item 6 mudou o mecanismo do stash e as duas cópias não acompanharam; a regra nova de propagação falhou no próprio primeiro uso
 - registrada: 2026-07-28T01:35:08.920Z
 - vista por último: 2026-07-28T01:35:08.920Z
+
+### L-010 — verbo de CLI citado em documento de processo tem que ser conferido contra a ferramenta instalada antes de virar instrucao
+
+- sinal: `claim_unmeasured`
+- recorrência: 1 ticket distinto
+- tickets: harness-maestri-port
+- evidência: O persona do Maestro instruia 'maestri reassign' por meses. O verbo nao existe: o real e 'maestri role assign Nome Role'. Conferido contra as quatro skills instaladas do Maestri durante o port. Seis outros comandos citados pelo persona (/goal /loop /schedule /usage /workflows /handoff) tambem nao aparecem em nenhuma delas.
+- registrada: 2026-07-28T02:18:30.515Z
+- vista por último: 2026-07-28T02:18:30.515Z
+
+### L-011 — identificador de exemplo em documentacao colide com o namespace real do repo conforme ele cresce
+
+- sinal: `fixture_unreal`
+- recorrência: 1 ticket distinto
+- tickets: pr-7
+- evidência: O exemplo do marcador em pm.md usa #12. Uma lente calculou 5 numeros de folga e previu que ao passar de #12 a copia vazada viraria aresta legivel sem aviso. O repo chegou em #12 no mesmo dia. Nao explodiu porque #12 saiu PR e nao issue, e a guarda de PR pegou — sorte com camadas, nao desenho.
+- registrada: 2026-07-28T02:18:30.546Z
+- vista por último: 2026-07-28T02:18:30.546Z
 
 ## Quarentena — falharam quando aplicadas
 
