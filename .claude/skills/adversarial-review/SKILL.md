@@ -31,6 +31,8 @@ dois for preservada; todo o protocolo abaixo existe para protegê-la.
    garantir que nenhum dos dois viu o resultado do outro.
 5. **Confronte os dois laudos** (ver "Leitura do resultado").
 6. **Reporte ao humano** no formato de saída do fim deste arquivo.
+7. **Achado que vira conserto entra num ciclo com teto** — ver "Teto de iteração
+   por achado". O protocolo não termina em "os revisores não acharam mais nada".
 
 ### O que cada revisor recebe
 
@@ -180,6 +182,31 @@ custou a produzir.
 reporta junto a **cobertura**: que arquivos leu e o que a lente não alcança. Laudo
 limpo sem cobertura declarada é laudo vazio.
 
+## Teto de iteração por achado
+
+**`TETO_POR_ACHADO = 3`** — três ciclos correção → re-verificação para o mesmo
+achado, e o terceiro é o último. O ciclo revisão → correção → re-revisão não tem
+critério de parada próprio: "os revisores não acharam mais nada" é ilimitado por
+construção, e cada volta custa uma lente inteira. O teto é o critério que falta.
+
+**O teto é por achado, não por PR.** Cada achado carrega o próprio contador, e a
+re-verificação que só toca o achado A não gasta nada do orçamento do B. Contar por
+PR faria o quinto achado de um laudo de cinco nascer sem orçamento nenhum — que é
+como um teto vira desculpa para não consertar.
+
+**Bater o teto não é falha do agente.** É o resultado esperado quando o achado
+depende de uma decisão que não é dele: requisito ambíguo, dois consertos válidos
+com custos diferentes, causa raiz fora do diff. Esta frase precisa estar escrita —
+sem ela o agente insiste até o contexto acabar para não "falhar", que é exatamente
+o gasto que o teto existe para cortar.
+
+**Escalar entrega o que se aprendeu em cada tentativa, não "não consegui".** Uma
+linha por tentativa: o que mudou, o que a re-verificação produziu, e por que a
+hipótese caiu. Fecha com a melhor hipótese viva e a medição ou leitura que a
+decide — o rótulo **HIPÓTESE** da seção "Exija número" vale igual aqui. Três
+tentativas descartadas com evidência entregam mais a quem decide do que o conserto
+que não veio.
+
 ## Formato de saída
 
 ```
@@ -191,6 +218,10 @@ limpo sem cobertura declarada é laudo vazio.
 
 ## Divergente (decisão do humano)
 - `path:line` — o que a lente A afirma; o que a lente B afirma; o trecho em disputa.
+
+## Escalado (bateu o teto — decisão do humano)
+- `path:line` — achado, uma linha por tentativa com o que ela produziu, e a hipótese viva com o que a decide.
+- (vazio na primeira passada: só existe achado escalado depois de um ciclo de correção.)
 
 ## Isolado (uma lente só)
 - `path:line` — achado, e por qual lente.

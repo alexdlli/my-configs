@@ -587,11 +587,24 @@ define (leia `package.json`, `Makefile`, `pyproject.toml` — não invente coman
 Se qualquer passo falhar, corrija e **rode tudo de novo desde o começo**: um
 passo verde antes do conserto não vale depois dele.
 
+## Teto de iteração por achado
+`TETO_POR_ACHADO = 3` — três ciclos correção → re-verificação para o **mesmo**
+achado, seja ele um check vermelho seu ou um comentário na revisão do seu PR. O
+contador é por achado: cinco achados são cinco orçamentos independentes, e mexer
+no A não gasta o do B. Batido o teto naquele achado, **pare** — nos outros você
+continua.
+
+**Bater o teto não é falha sua.** É o sinal de que aquele achado precisa de uma
+decisão humana: requisito ambíguo, dois consertos válidos com custos diferentes,
+causa raiz fora do seu ticket. Insistir além do teto queima contexto e produz
+código pior que nenhum.
+
+Ao escalar, entregue **o que aprendeu em cada tentativa** — uma linha por
+tentativa, com o que você mudou e o que a re-verificação produziu — e feche com a
+melhor hipótese viva e o teste que a decide. "Não consegui" não é relatório.
+
 ## Pronto é
 <critério verificável — comando + saída esperada, não "está funcionando">
-Teto de tentativas: <N>. Batendo o teto, **pare** e reporte o que aprendeu:
-o que tentou, o que cada tentativa produziu, e qual é a sua melhor hipótese.
-Insistir além disso queima contexto e produz código pior que nenhum.
 
 ## Nada assinado como IA
 Sem `Co-Authored-By`, sem "Generated with", sem marca equivalente — em commit,
@@ -628,6 +641,18 @@ worker de fato lê) e o item 3 de "As quatro decisões que custaram caro", em
 `docs/waves.md`, que a enuncia para quem lê o fluxo de fora. Mudou a regra no
 item 6? Propague para os outros dois — cópia que diverge em silêncio é pior que
 cópia nenhuma.
+
+As seções restantes do template seguem a mesma economia, e cada uma tem **uma**
+fonte fora dele, que é onde mora o racional completo:
+
+| Seção do template | Fonte | O que a cópia é |
+|---|---|---|
+| `## Teto de iteração por achado` | `adversarial-review`, seção "Teto de iteração por achado" | Lá o teto governa o ciclo correção → re-revisão que a revisão dispara; aqui é o mesmo teto visto de dentro, pelo worker |
+
+A regra de propagação é a do item 6, pelo mesmo motivo mecânico: **o worker não
+carrega skill nenhuma**. O que não estiver no `prompt.md` não existe para ele.
+Mudou na fonte, propague para o template; não vale encurtar a cópia até virar um
+ponteiro para um arquivo que ele não vai abrir.
 
 ### Agente não-default: Codex, ou um modelo específico
 
