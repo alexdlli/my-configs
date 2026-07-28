@@ -201,9 +201,46 @@ Os três valores, e nenhum outro:
 
 `demonstrável` é a resposta preferida sempre que couber: o print, o teste passando e o app
 rodando mostram a coisa funcionando, em vez de mostrarem que alguém pensou nela. Na execução,
-quem produz o artefato é o agente `qa`. `prosa` é resposta legítima — este harness é quase
+quem demonstra o artefato é o agente `qa` — o sensor da seção seguinte é do autor e vem
+antes. `prosa` é resposta legítima — este harness é quase
 todo prosa — mas é a cara: antes de aceitá-la, confira se o ticket é mesmo prosa e não uma
 mudança demonstrável mal descrita.
+
+### O sensor de discriminação: o artefato tem que saber falhar
+
+Artefato que passa mas não sabe reprovar não prova nada. Teste verde que continua verde com o
+comportamento quebrado mede que alguém escreveu um teste, não que a entrega funciona. Por isso
+o sensor é do **autor** e roda **antes** de ele reportar pronto — não da revisão, depois.
+
+O lugar importa mais que a técnica. Na onda 1 deste repo, 6 Criticals saíram da revisão e 5
+eram evitáveis na geração; o do PR #10 apareceu porque uma lente inteira rodou mutação sobre o
+diff, e o autor teria achado o mesmo em segundos. A técnica estava certa e no lugar errado.
+
+O que o sensor é, por valor declarado:
+
+| Valor | Sensor |
+|---|---|
+| `demonstrável` | 1 a 3 mutações de comportamento na implementação nova — ≥5 em caminho crítico (dinheiro, autenticação, integridade de dado) — com os testes que cobrem o trecho ficando **vermelhos** |
+| `prosa` | Rodar a própria verificação contra o exemplo que o ticket acabou de escrever |
+| `mecânico` | Nada a discriminar: não há comportamento novo, e o diff mais o CI verde são o artefato inteiro |
+
+**O estado mutado é descartável e nunca é a árvore de trabalho:** `git archive` para um
+`mktemp -d`, ou cópia da árvore quando a suíte precisa das dependências instaladas. O
+`archive` só leva o que está rastreado e commitado — sobre trabalho não commitado ele produz
+uma árvore sem a entrega dentro, e o sensor passa medindo o vazio. `git stash` não é
+alternativa: é proibido em repo com mais de uma worktree ativa (`wave-orchestration`, item 6
+das regras invioláveis).
+
+**Mutante sobrevivente é tarefa de conserto, não observação.** Teste que passa com o
+comportamento quebrado não é cobertura: a asserção fraca vira conserto e o sensor roda de novo.
+O ticket não fecha com sensor fraco. E a saída entra no PR como **evidência** — qual mutação,
+em que `path:line`, e qual teste morreu com ela; "rodei mutação e está tudo certo" é afirmação.
+
+A linha de `prosa` não é consolo para o ticket que não dá para demonstrar: é a mesma exigência
+com outra ferramenta, e este harness é quase todo prosa. A seção "Campo 9 no GitHub" já a
+aplica num ponto — rodar o parser real contra os corpos antes de publicar. O precedente do que
+custa não aplicá-la é o PR #7 deste repo, cujos quatro checks de verificação, escritos ao lado
+do exemplo, só pegavam a forma cross-repo de um marcador vazado.
 
 Por que dentro do campo 8 e não um 13º campo: o artefato é o que prova o acceptance criteria,
 que é exatamente o que o campo 8 já carrega, e renumerar o contrato invalidaria toda

@@ -587,6 +587,38 @@ define (leia `package.json`, `Makefile`, `pyproject.toml` — não invente coman
 Se qualquer passo falhar, corrija e **rode tudo de novo desde o começo**: um
 passo verde antes do conserto não vale depois dele.
 
+## Sensor de discriminação: prove que a sua verificação sabe falhar
+Suíte verde só vale se ela ficar vermelha quando o comportamento quebra. Antes de
+reportar pronto, **prove isso** — não afirme.
+
+Tem teste? Injete de 1 a 3 mutações de comportamento na **sua** implementação (≥5
+em caminho crítico: dinheiro, autenticação, integridade de dado). Inverta uma
+condição, troque um valor de retorno, mude um limite de laço, remova um efeito
+colateral que a spec exige. Rode os testes que cobrem o trecho mutado e mostre
+cada mutação ficando **vermelha**.
+
+**O estado é descartável, e nunca é o seu worktree.** Materialize o HEAD da sua
+branch fora da árvore de trabalho e mute lá:
+`D=$(mktemp -d) && git archive HEAD | tar -x -C "$D"`. O `archive` leva só o que
+está **rastreado e commitado**, e daí duas consequências: commite antes
+(`git add -A && git commit -m "wip: ..."`), senão você muta uma árvore sem o seu
+trabalho dentro e o sensor mede o vazio em silêncio; e copie a árvore em vez de
+arquivá-la quando a suíte precisar das dependências instaladas. `git stash` não é
+alternativa: é proibido, pelo motivo da seção acima.
+
+Não tem o que rodar (skill, prompt, doc, config)? O equivalente é **rodar a sua
+própria verificação contra o exemplo que você acabou de escrever**. Check escrito
+três linhas abaixo de um exemplo que ele não pega é a falha exata que este
+parágrafo existe para impedir.
+
+**Mutante sobrevivente é tarefa de conserto, não observação.** Teste que passa com
+o comportamento quebrado não é cobertura: reforce a asserção e rode o sensor de
+novo. Seu ticket não fecha com sensor fraco.
+
+A saída do sensor vai no corpo do PR como **evidência**: qual mutação, em que
+`path:line`, e qual teste morreu com ela. "Rodei mutação e está tudo certo" é
+afirmação, não evidência.
+
 ## Teto de iteração por achado
 `TETO_POR_ACHADO = 3` — três ciclos correção → re-verificação para o **mesmo**
 achado, seja ele um check vermelho seu ou um comentário na revisão do seu PR. O
@@ -647,6 +679,7 @@ fonte fora dele, que é onde mora o racional completo:
 
 | Seção do template | Fonte | O que a cópia é |
 |---|---|---|
+| `## Sensor de discriminação` | `ticket-contract`, seção "O sensor de discriminação" | Lá o sensor é definido como parte do artefato de prova que o ticket declara; aqui é a instrução operacional de quem executa |
 | `## Teto de iteração por achado` | `adversarial-review`, seção "Teto de iteração por achado" | Lá o teto governa o ciclo correção → re-revisão que a revisão dispara; aqui é o mesmo teto visto de dentro, pelo worker |
 
 A regra de propagação é a do item 6, pelo mesmo motivo mecânico: **o worker não
