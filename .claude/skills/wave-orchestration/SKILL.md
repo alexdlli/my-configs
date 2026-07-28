@@ -170,6 +170,35 @@ Valem desde já, antes mesmo de existir disparo automático.
    equivalente. O autor é o usuário.
 5. **Uma onda só fecha quando o humano diz que fechou.** Ticket em review não é
    ticket mergeado, e a onda seguinte depende de merge, não de aprovação.
+6. **`git stash` é PROIBIDO dentro de uma worktree.** Vale igual para `git
+   stash pop` e `git stash apply`. `refs/stash` mora no git dir comum e é um
+   ref único do repositório, compartilhado por todas as worktrees — os refs
+   por-worktree são `HEAD`, `refs/bisect`, `refs/worktree` e `refs/rewritten`,
+   e `refs/stash` não está entre eles. O seu stash cai na mesma pilha do agente
+   ao lado, e o `pop` dele leva o trabalho não commitado da outra frente.
+   Estado temporário vai em **commit na própria branch da worktree**, na forma
+   completa `git add -A && git commit -m "wip: ..."` — é local e reescrevível
+   antes do PR, e só assim guarda staged, não staged e arquivo novo, menos o que
+   está no `.gitignore`. O `add -A` é o que torna a frase verdadeira:
+   `commit -m` sozinho leva **só** o que está staged, e `commit -am` deixa o
+   arquivo novo não rastreado para trás.
+   Não quer commit? `git add -A && git diff --staged --binary > <arquivo>.patch`
+   fora da árvore, com a mesma ressalva do `.gitignore`: no fluxo de ondas,
+   `.wave/<ticket>/contract.md` fica de fora e precisa de cópia à parte. O
+   `add -A` não é enfeite: `git diff` sozinho omite o que já está staged e sai
+   **vazio** para arquivo novo não rastreado, de modo que o patch parece salvo e
+   o trabalho some — o mesmo modo de falha silencioso que esta regra existe para
+   impedir. O `--binary` também não: sem ele, arquivo binário novo vira só
+   `Binary files ... differ` e o `git apply` sai **exit 1** sem aplicar nada do
+   patch, levando junto o arquivo de texto que estava no mesmo patch. E o patch
+   salva sem limpar: a árvore fica suja, tudo staged, e quem foi buscar árvore
+   limpa (rebase, pull, build) não terminou. O round trip é salvar, limpar com
+   `git reset --hard` e restaurar com `git apply <arquivo>.patch`. Duas
+   ressalvas: o índice **não** volta — o que estava staged volta não staged e
+   arquivo novo volta como `??` —, e o `reset --hard` é destrutivo justamente
+   por causa do `add -A`, que pôs os arquivos novos no índice para o reset
+   apagar; patch ruim aí é trabalho perdido. Vale em qualquer repo com mais de
+   uma worktree ativa, não só no fluxo de ondas.
 
 ## Dispatch
 
@@ -498,11 +527,32 @@ Trabalhe **só aqui**. Nunca commite em `main`, nunca toque no worktree de outro
 ticket. Merge e resolução de conflito não são seus.
 
 ## `git stash` é PROIBIDO
-O stash é um ref **único, compartilhado por todas as worktrees do repo**. Um
-`git stash` seu pode engolir o trabalho não commitado de outro agente rodando em
-paralelo, e o `git stash pop` dele pode engolir o seu. Precisa guardar estado
-temporário? Commit `wip:` na sua própria branch. Ele é seu, é local, e some com
-um rebase.
+O stash é um ref **único, compartilhado por todas as worktrees do repo**. O seu
+`git stash` só empilha; quem engole trabalho é o `pop`: ele pega `stash@{0}`,
+que pode ser de outro agente rodando em paralelo, aplica na **sua** árvore e
+descarta a entrada — a outra frente fica limpa e sem o trabalho dela, e o `pop`
+dela leva o seu pelo mesmo caminho. Precisa guardar estado temporário?
+`git add -A && git commit -m "wip: ..."` na sua própria branch — é a saída
+primária, e nessa forma guarda staged, não staged e arquivo novo; `commit -m`
+sozinho leva só o staged e `commit -am` deixa o arquivo novo não rastreado para
+trás. Não pega o que está no `.gitignore`, e `.wave/<ticket>/contract.md` está,
+então copie o contrato à parte. Ele é seu, é local, e some com um rebase.
+
+Vale igual para você: `git stash pop` e `git stash apply` também são proibidos.
+`git stash list` mostra a pilha do repo inteiro, não a sua — um stash que
+aparece ali pode ser de outra frente, e o seu `pop` leva o trabalho dela. Não
+quer nem o commit `wip:`?
+`git add -A && git diff --staged --binary > <arquivo>.patch` fora da árvore
+guarda o mesmo estado sem tocar em ref nenhum, com a mesma ressalva do
+`.gitignore`. Use essa forma exata: `git diff` sozinho omite o que já está
+staged e sai vazio para arquivo novo não rastreado, e sem `--binary` um binário
+novo faz o `git apply` recusar o patch inteiro — o patch parece salvo e o
+trabalho some. Ele salva e deixa a árvore suja, tudo staged: se você foi buscar
+árvore limpa (rebase, pull, build), o round trip é `git reset --hard` depois de
+gerar o patch e `git apply <arquivo>.patch` para voltar. O índice não volta —
+staged volta não staged, arquivo novo volta como `??` — e o `reset --hard` apaga
+os arquivos novos que o `add -A` acabou de indexar: patch ruim aí é trabalho
+perdido.
 
 ## Baseline antes de mexer
 Rode lint/test/build da área **antes** da primeira edição e guarde o resultado.
@@ -563,6 +613,21 @@ pedindo ao Alex no prompt de permissão — e quem barra o worker é só o hook
 `guard-destructive`, via o marcador do passo 2a. Uma camada a menos do lado do
 worker é exatamente por que esta instrução no prompt pesa mais do que pesava. Não
 a encurte, não a resuma, não a mova para o fim de outro parágrafo.
+
+A seção `git stash` do template duplica de propósito o item 6 das regras
+invioláveis: o worker recebe o prompt como arquivo e não carrega esta skill, de
+modo que ali a regra precisa estar escrita por inteiro — proibição nominal de
+`stash`, `pop` e `apply`, o commit `wip:` como saída primária na forma completa
+(`git add -A && git commit -m "wip: ..."`) e o patch também na forma completa
+(`git add -A && git diff --staged --binary`), com o round trip que o devolve. A
+**fonte** da regra é o item 6, o único lugar onde mora o motivo mecânico
+completo (`refs/stash` no git dir comum, e os quatro refs que de fato são
+por-worktree). Ela está escrita em
+**três lugares**: o item 6 desta skill, a seção do template acima (a única que o
+worker de fato lê) e o item 3 de "As quatro decisões que custaram caro", em
+`docs/waves.md`, que a enuncia para quem lê o fluxo de fora. Mudou a regra no
+item 6? Propague para os outros dois — cópia que diverge em silêncio é pior que
+cópia nenhuma.
 
 ### Agente não-default: Codex, ou um modelo específico
 

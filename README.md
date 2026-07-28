@@ -70,7 +70,8 @@ Removes only the links this installer created (matched by recorded target) and r
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
-├── waves/               # ticket graph + wave plan + PR state/threads readers (+ tests)
+├── waves/               # ticket graph + wave plan + shared gh access +
+│                        # PR state/threads readers (+ tests)
 ├── setup-ai-memory.mjs  # one-shot ai-memory (long-term memory) setup
 ├── verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
 ├── backup-ai-memory.mjs # ai-memory volume backup, rotation + daily LaunchAgent
