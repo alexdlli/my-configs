@@ -347,9 +347,21 @@ errado. Quando o ticket consome código de um irmão recém-mergeado, isso vai e
 as letras ("`origin/main` já contém X de #N — REUSE, não reimplemente"); sem a frase, o agente
 acha o arquivo, não sabe se pode confiar nele, e reescreve por segurança.
 
-**3. `git stash` é proibido para o worker.** O stash é um ref único compartilhado por todas as
-worktrees do repo: um `git stash` de um agente pode engolir o trabalho não commitado de outro
-rodando em paralelo. Estado temporário vira commit `wip:` na própria branch.
+**3. `git stash` é proibido em qualquer repo com mais de uma worktree ativa, não só para o
+worker.** Vale igual para `git stash pop` e `git stash apply`. O stash é um ref único
+compartilhado por todas as worktrees do repo: o `git stash` de um agente só empilha, mas o `pop`
+pega `stash@{0}` — que pode ser de outra frente —, aplica na árvore de quem chamou e descarta a
+entrada, deixando a outra worktree limpa e sem o trabalho dela. Estado temporário vira
+`git add -A && git commit -m "wip: ..."` na própria branch, a forma que guarda staged, não
+staged e arquivo novo (`commit -m` leva só o staged, `commit -am` deixa o arquivo novo não
+rastreado para trás); quem não quer commit usa
+`git add -A && git diff --staged --binary > <arquivo>.patch` fora da árvore — `git diff` sozinho
+omite o que está staged e sai vazio para arquivo novo, e sem `--binary` um binário novo faz o
+`git apply` recusar o patch inteiro. O patch salva e deixa a árvore suja: o round trip é
+`git reset --hard` para limpar — que apaga os arquivos novos que o `add -A` indexou — e
+`git apply <arquivo>.patch` para voltar, restaurando o conteúdo mas não o índice. Nenhuma das
+duas formas pega o que está no `.gitignore` — no fluxo de ondas,
+`.wave/<ticket>/contract.md`.
 
 **4. Baseline antes de editar.** O worker captura lint/test/build da área antes da primeira
 edição. Falha pré-existente não é dele: reporta como pré-existente e segue. Consertar sem
