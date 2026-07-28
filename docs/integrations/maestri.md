@@ -2,13 +2,15 @@
 
 ## Status
 
-Este é o **documento de origem** do persona de Tech Lead/Maestro. Hoje o texto no fim desta página é **colado à mão** no terminal do Maestri, a cada sessão de orquestração: ele não existe em disco em nenhum outro lugar — nem como skill, nem como agente, nem em `~/.claude/skills`.
+Este é o **documento de origem** do persona de Tech Lead/Maestro, e segue sendo a cópia canônica do texto: correção no persona se escreve aqui primeiro.
 
-O destino previsto é `.claude/skills/maestri-orchestration/SKILL.md`, ativada pela detecção `host === 'maestri'` de `.claude/hooks/lib/context.mjs` (`MAESTRI_TERMINAL_ID` presente → host `maestri`, com `cliPath` em `hostDetail`). Enquanto o port não acontece, esta página é a cópia canônica: correção no persona se escreve aqui primeiro.
+**O port aconteceu.** A skill vive em `.claude/skills/maestri-orchestration/SKILL.md`, ativada pela detecção `host === 'maestri'` de `.claude/hooks/lib/context.mjs` (`MAESTRI_TERMINAL_ID` presente → host `maestri`, com `cliPath` em `hostDetail`). Colar o persona no terminal a cada sessão deixou de ser necessário.
 
-## Correções conhecidas, a aplicar no port
+A skill **não** é uma cópia do texto abaixo. Ela escreve só o que é específico do Maestri e referencia, por nome de skill e de seção, tudo o que já tem dona em outro lugar — decisão tomada porque cópia que diverge em silêncio foi o defeito recorrente deste harness. A tabela de estado adiante diz onde cada regra do persona foi parar.
 
-Três defeitos já medidos. Nenhum deles está corrigido no texto abaixo — o persona é preservado como está —, então aplicá-los é trabalho do port.
+## Correções conhecidas
+
+Três defeitos já medidos. O texto do persona é **preservado como está** e não os corrige; quem os aplica é a skill.
 
 ### 1. `maestri` não está no PATH
 
@@ -26,29 +28,48 @@ O persona cita `/to-prd`, `/to-issues` e `/prototype`. As instaladas são **`to-
 
 Além do rename, `/to-issues` foi **superseded** pela skill `ticket-contract` deste harness, que cobre 12 campos contra os 4 de `to-tickets`. No port, o fluxo de planejamento termina em `ticket-contract`, não em `to-issues`.
 
-### 3. `--dangerously-skip-permissions` contra `permissions.deny`
+### 3. `--dangerously-skip-permissions` contra `permissions.deny` — resolvido
 
-O persona manda recrutar todo agente com `--dangerously-skip-permissions`. O harness instala um `permissions.deny` com `Bash(gh pr merge *)`, `Bash(git push --force *)` e `Bash(git commit --no-verify *)`, que é a garantia determinística de que **merge é sempre humano**.
+O persona manda recrutar todo agente com `--dangerously-skip-permissions`, e a pergunta em aberto era se o `permissions.deny` do harness sobrevivia ao bypass. Sobrevive (issue #2 em `alexdlli/my-configs`, fechada) — mas é casamento de string, então barra `gh pr merge 3` e não `bash -c "gh pr merge 3"`.
 
-Foi medido (issue #2 em `alexdlli/my-configs`, fechada): o deny **sobrevive** ao bypass. Só que é casamento de string — barra `gh pr merge 3`, não `bash -c "gh pr merge 3"` — e quem fecha esse vão é o hook `PreToolUse` `guard-destructive` (ver [`../guard-destructive.md`](../guard-destructive.md)). A instrução no **prompt do worker** continua escrita mesmo assim: defesa em camadas, e o contexto de subagente não foi medido. O Alex decidiu manter o bypass ligado por padrão — recruit parado num prompt de permissão é recruit bloqueado, e ninguém está olhando o terminal dele.
+**O desfecho não é mais esse, e é este o ponto que estava desatualizado aqui.** Pela política **ask-then-merge**, `Bash(gh pr merge *)` **saiu** do `permissions.deny`; `Bash(git push --force *)` e `Bash(git commit --no-verify *)` continuam lá e continuam negados em todo contexto. Quem barra merge hoje é o hook `PreToolUse` `guard-destructive`, que nega **em worker de onda** — reconhecido pelo marcador `.wave/worker.json` — e fica **calado** em qualquer outro contexto, deixando o comando cair no prompt de permissão para o Alex decidir. O CI não afirma a garantia, ele a **executa**: roda o hook instalado com um payload de `gh pr merge` em dois repos de mentira, um com marcador e outro sem, e exige negação no primeiro e silêncio no segundo. Camadas e medições em [`../guard-destructive.md`](../guard-destructive.md).
 
-## O que já subiu para as skills compartilhadas
+Para o Maestri a consequência é que o bypass ficou **mais** caro do que quando esta seção foi escrita: um recruta do Maestri não é worker de onda, então o guard se cala para ele — e sob bypass não existe prompt atrás, de modo que "calado" quer dizer "executou". A única camada que sobra do lado do recruta é a instrução escrita no role dele, e é por isso que a skill do port exige essa frase explícita. O Alex mantém o bypass ligado por padrão: recruta parado num prompt de permissão é recruta bloqueado, e ninguém está olhando o terminal dele.
 
-Parte do persona vale nos dois ambientes (Maestri e Claude Code puro) e está sendo extraída para valer de verdade. Estado:
+## Onde cada regra do persona foi parar
 
-| Regra do persona | Estado |
+Parte do persona vale nos dois ambientes (Maestri e Claude Code puro) e mora nas skills compartilhadas; o resto é específico do Maestri e mora na skill do port. Nada está escrito nos dois lugares — é o que esta tabela existe para manter verdadeiro.
+
+| Regra do persona | Onde mora hoje |
 |---|---|
-| Freio da revisão adversarial: reportar só o que afeta correção ou o requisito declarado | na skill `adversarial-review`, seção "Freio de escopo: o que não entra no laudo" — o port **inverteu o ponto de aplicação**: o persona manda instruir os revisores no spawn, a skill aplica o freio na consolidação dos dois laudos, porque passá-lo no spawn contamina as duas lentes com o mesmo critério de corte |
-| Proibição de `git stash` em worktree (o stash é um ref único compartilhado) | na skill `wave-orchestration`, item 6 das "Regras invioláveis" (fonte), na seção `git stash` do prompt do worker e no item 3 de "As quatro decisões que custaram caro" em `docs/waves.md` |
-| Tabela de tipo de loop (exploratório / goal / time-based / proativo) | nomeada, não especificada |
-| "Verificação é skill, não opinião" | nomeada, não especificada |
-| "Melhore o sistema, não só o caso" | nomeada, não especificada |
+| Freio da revisão adversarial: reportar só o que afeta correção ou o requisito declarado | `adversarial-review`, "Freio de escopo: o que não entra no laudo" — o port **inverteu o ponto de aplicação**: o persona manda instruir os revisores no spawn, a skill aplica o freio na consolidação dos dois laudos, porque passá-lo no spawn contamina as duas lentes com o mesmo critério de corte |
+| Proibição de `git stash` em worktree (o stash é um ref único compartilhado) | `wave-orchestration`, item 6 das "Regras invioláveis" (fonte), a seção `git stash` do prompt do worker, e o item 3 de "As quatro decisões que custaram caro" em `docs/waves.md` |
+| Cap de tentativas por objetivo delegado | `adversarial-review`, "Teto de iteração por achado" (`TETO_POR_ACHADO = 3`), e a seção de mesmo nome no prompt do worker de `wave-orchestration` |
+| "Verificação é skill, não opinião" | `ticket-contract`, "O sensor de discriminação: o artefato tem que saber falhar" — o port **moveu o momento**: o sensor é do autor e roda antes de ele reportar pronto, não da revisão depois |
+| "Melhore o sistema, não só o caso" | virou mecanismo determinístico em `scripts/lessons.mjs` + [`../lessons.md`](../lessons.md): o achado só vira guidance depois de recorrer em 2 tickets distintos, e a escrituração é do script, não de um prompt |
+| Baseline antes de mexer, achado fora de escopo, hipótese rotulada, verificar antes de reportar pronto | `wave-orchestration`, "O prompt padrão do worker" |
+| Pulso obrigatório em todas as frentes | `orchestrator.md`, `PULSO_DE_COORDENACAO` (fonte do intervalo e do motivo); a skill do port diz só o que muda no Maestri — o pulso é `"$MAESTRI_CLI" ask`, não leitura de terminal |
+| Instrução curta no despacho, conteúdo longo fora da mensagem | `orchestrator.md`, "Despacho: instrução curta, conteúdo longo em arquivo"; no Maestri o veículo é a nota, e a armadilha de paste que o justifica está na skill do port |
+| `"$MAESTRI_CLI"`, protocolo das "Team Context" / "Todo for Alex", verbos de recruta, ausência de dispatch | `maestri-orchestration` — é o que sobrou de genuinamente específico |
+| Tabela de tipo de loop (exploratório / goal / time-based / proativo) | **não migrada**: depende de `/goal` e `/loop`, que não aparecem em skill instalada nenhuma. Ver a seção seguinte |
 
-As três últimas não estão escritas em lugar nenhum — nem skill, nem issue, nem doc. Existem só como linha do texto abaixo.
+## O que do persona não casou com as skills instaladas
+
+Levantado contra as skills que o app do Maestri instala em `~/.claude/skills` (`maestri`, `maestri-manager`, `maestri-routines`, `maestri-workspace`). O port **não propagou** nada desta lista, para não fixar em skill um comando que ninguém confirmou:
+
+| Item do persona | Situação |
+|---|---|
+| `/goal`, `/loop`, `/schedule`, `/usage`, `/workflows`, `/handoff` | não documentados em nenhuma das quatro skills. Podem ser comandos do app; não são verificáveis pela superfície instalada |
+| `/prototype` | não existe entre as skills instaladas — `to-spec` e `to-tickets` existem |
+| `maestri reassign` | não existe. O verbo real é `maestri role assign "Nome" "Role"` (ou `--none`) |
+| Escada de modelo (fable / opus / sonnet) via `--command` | `maestri-manager` documenta `--preset` como o caminho e marca `--command` como quase nunca necessário. Os nomes de modelo não são verificáveis por aqui |
+| "Deixe o terminal do recruta não selecionado, senão o Maestri não detecta conclusão" | não documentado em skill nenhuma. Pode ser verdade e não foi medido |
+
+O que **casou** e a skill usa: `list`, `ask`, `ask --batch`, `check`, `note create/read/write/edit`, `recruit` (com `--preset`, `--role`, `--floor`, `--replace`), `role create/assign/edit`, `connect`, `dismiss`, `routine create` e `floor create`.
 
 ## O persona
 
-Preservado como está: é o material de origem, não uma reescrita. As correções da seção anterior **não** estão aplicadas aqui.
+Preservado como está: é o material de origem, não uma reescrita. As correções acima **não** estão aplicadas aqui — quem as aplica é `maestri-orchestration`. Editar este bloco para "arrumá-lo" destrói a única cópia do que o persona dizia antes do port.
 
 Uma única alteração na transcrição: o formato original da nota "Todo for Alex" usava emoji de status nas linhas de status, removidos aqui porque este repo proíbe emoji em arquivo. O port não deve reintroduzi-los.
 

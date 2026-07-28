@@ -102,7 +102,7 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 | Integration | What it gives you | Doc |
 |-------------|-------------------|-----|
 | Orca / Maestri | Terminal-host and account detection at session start, and the `orca linear` tracker path the wave pipeline reads from | [`docs/integrations/orca.md`](docs/integrations/orca.md) |
-| Maestri persona | Canonical copy of the Tech Lead / Maestro orchestration persona pasted into a Maestri terminal, its three measured defects, and what the port to a skill still owes | [`docs/integrations/maestri.md`](docs/integrations/maestri.md) |
+| Maestri persona | Canonical copy of the Tech Lead / Maestro orchestration persona, its three measured defects, and the map of where each of its rules ended up now that it is ported to the `maestri-orchestration` skill | [`docs/integrations/maestri.md`](docs/integrations/maestri.md) |
 | EcoTokens | Optional Rust output filter | [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md) |
 | ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. `node scripts/setup-ai-memory.mjs`; the default `claude-sub` provider uses your Claude subscription through a local `claude -p` shim | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |
 
