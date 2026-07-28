@@ -1,6 +1,6 @@
 # Lições
 
-<!-- lessons:state next-id=14 -->
+<!-- lessons:state next-id=15 -->
 
 > **Escrito por `scripts/lessons.mjs`. Nunca edite este arquivo à mão.**
 > A próxima escrita do script sobrescreve qualquer edição manual, e uma edição
@@ -163,6 +163,15 @@ Vistas uma vez, ou repetidas dentro de um único ticket. Sob observação, não 
 - evidência: Rodei git reset --hard sem confirmar a branch corrente, inferindo de um comando anterior que eu estava na main. Estava na fix/maestri-cli-surface: o reset apagou o commit da skill da branch e o cherry-pick seguinte colou o commit errado em cima. Nada se perdeu porque a branch ja tinha sido pushada — artefato fora da cabeca, nao cuidado no momento. A saida do proprio comando anterior mostrava o asterisco na branch certa e eu nao li.
 - registrada: 2026-07-28T03:23:59.543Z
 - vista por último: 2026-07-28T03:23:59.543Z
+
+### L-014 — prompt do worker precisa mandar vincular o PR ao ticket, senao entrega mergeada deixa ticket aberto
+
+- sinal: `guidance_drift`
+- recorrência: 1 ticket distinto
+- tickets: harness-wave-1
+- evidência: Onda 1: cinco PRs mergeados, mas as issues 4, 5 e 6 continuaram abertas porque os corpos de PR nao tinham palavra-chave de fechamento. As issues 1 e 3 fecharam. O prompt padrao do worker manda abrir PR contra main e parar, e nao menciona o vinculo com o ticket.
+- registrada: 2026-07-28T13:41:07.655Z
+- vista por último: 2026-07-28T13:41:07.655Z
 
 ## Quarentena — falharam quando aplicadas
 
