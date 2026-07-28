@@ -1,6 +1,6 @@
 # Lições
 
-<!-- lessons:state next-id=12 -->
+<!-- lessons:state next-id=13 -->
 
 > **Escrito por `scripts/lessons.mjs`. Nunca edite este arquivo à mão.**
 > A próxima escrita do script sobrescreve qualquer edição manual, e uma edição
@@ -145,6 +145,15 @@ Vistas uma vez, ou repetidas dentro de um único ticket. Sob observação, não 
 - evidência: O exemplo do marcador em pm.md usa #12. Uma lente calculou 5 numeros de folga e previu que ao passar de #12 a copia vazada viraria aresta legivel sem aviso. O repo chegou em #12 no mesmo dia. Nao explodiu porque #12 saiu PR e nao issue, e a guarda de PR pegou — sorte com camadas, nao desenho.
 - registrada: 2026-07-28T02:18:30.546Z
 - vista por último: 2026-07-28T02:18:30.546Z
+
+### L-012 — afirmacao de ausencia precisa declarar onde se procurou, senao e afirmacao vazia
+
+- sinal: `claim_unmeasured`
+- recorrência: 1 ticket distinto
+- tickets: harness-maestri-port
+- evidência: A skill maestri-orchestration afirmou que nao existe adaptador de onda para o Maestri. O verbo floor create, que cria clone isolado por git com branch, estava em maestri help o tempo todo. A busca cobriu as quatro skills instaladas e nao cobriu o help do CLI, e a afirmacao saiu sem declarar isso. A propria retrospectiva do garimpo ja registrava a regra.
+- registrada: 2026-07-28T02:26:52.457Z
+- vista por último: 2026-07-28T02:26:52.457Z
 
 ## Quarentena — falharam quando aplicadas
 
