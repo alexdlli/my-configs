@@ -31,15 +31,27 @@ const GRAPHQL_THREAD_ID = 'PRRT_1';
 
 const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
+const MAX_BODY_CHARS = 20000;
+
+const ISSUE_COMMENT_BODY = 'issue comment body';
+const REVIEW_BODY = 'review body';
+const ROOT_BODY = 'root body';
+const REPLY_BODY = 'reply body';
+
+const BOT_LOGIN_WITHOUT_SUFFIX = 'copilot-like';
+const BOT_LOGIN_WITH_SUFFIX = 'bot-x[bot]';
+
 const ghUser = (login) => ({ login, type: 'User' });
+const ghBotUser = (login) => ({ login, type: 'Bot' });
 
 function ghIssueComment(id, overrides = {}) {
+  const createdAt = overrides.created_at ?? EARLY_AT;
   return {
     id,
     user: ghUser(AUTHOR),
     body: `issue comment ${id}`,
-    created_at: EARLY_AT,
-    updated_at: EARLY_AT,
+    created_at: createdAt,
+    updated_at: createdAt,
     html_url: `${PR_URL}#issuecomment-${id}`,
     ...overrides,
   };
@@ -58,12 +70,13 @@ function ghReview(id, overrides = {}) {
 }
 
 function ghInlineComment(id, overrides = {}) {
+  const createdAt = overrides.created_at ?? EARLY_AT;
   return {
     id,
     user: ghUser(AUTHOR),
     body: `inline comment ${id}`,
-    created_at: EARLY_AT,
-    updated_at: EARLY_AT,
+    created_at: createdAt,
+    updated_at: createdAt,
     html_url: `${PR_URL}#discussion_r${id}`,
     path: ANCHOR_PATH,
     line: ANCHOR_LINE,
@@ -71,7 +84,6 @@ function ghInlineComment(id, overrides = {}) {
     original_line: ANCHOR_ORIGINAL_LINE,
     side: ANCHOR_SIDE,
     diff_hunk: ANCHOR_DIFF_HUNK,
-    in_reply_to_id: null,
     ...overrides,
   };
 }
@@ -180,6 +192,26 @@ test('an inline reply lands under its root instead of becoming a thread of its o
   assert.equal(threads[0].replies[0].createdAt, MIDDLE_AT);
 });
 
+test('with two roots on the page a reply joins its own root and leaves the other empty', () => {
+  const threads = buildThreads({
+    inlineComments: [
+      ghInlineComment(1),
+      ghInlineComment(2),
+      ghInlineComment(3, { in_reply_to_id: 2, created_at: MIDDLE_AT }),
+    ],
+  });
+  assert.equal(threads.length, 2);
+  assert.deepEqual(
+    threads.map((thread) => thread.id),
+    [`${SURFACE_INLINE}:1`, `${SURFACE_INLINE}:2`],
+  );
+  assert.deepEqual(threads[0].replies, []);
+  assert.deepEqual(
+    threads[1].replies.map((reply) => reply.id),
+    [3],
+  );
+});
+
 test('a three-level reply chain collapses onto the root', () => {
   const threads = buildThreads({
     inlineComments: [
@@ -221,6 +253,71 @@ test('an empty CHANGES_REQUESTED review is kept because the verdict is the conte
   assert.equal(threads[0].surface, SURFACE_REVIEW);
   assert.equal(threads[0].reviewState, 'CHANGES_REQUESTED');
   assert.equal(threads[0].createdAt, EARLY_AT);
+});
+
+test('an issue-comment thread carries the comment body and its permalink', () => {
+  const threads = buildThreads({
+    issueComments: [ghIssueComment(1, { body: ISSUE_COMMENT_BODY })],
+  });
+  assert.equal(threads[0].body, ISSUE_COMMENT_BODY);
+  assert.equal(threads[0].url, `${PR_URL}#issuecomment-1`);
+});
+
+test('a review thread carries the review body and its permalink', () => {
+  const threads = buildThreads({ reviews: [ghReview(2, { body: REVIEW_BODY })] });
+  assert.equal(threads[0].body, REVIEW_BODY);
+  assert.equal(threads[0].url, `${PR_URL}#pullrequestreview-2`);
+});
+
+test('an inline thread carries the body and permalink of its root and of its reply', () => {
+  const threads = buildThreads({
+    inlineComments: [
+      ghInlineComment(3, { body: ROOT_BODY }),
+      ghInlineComment(4, { in_reply_to_id: 3, created_at: MIDDLE_AT, body: REPLY_BODY }),
+    ],
+  });
+  assert.equal(threads[0].body, ROOT_BODY);
+  assert.equal(threads[0].url, `${PR_URL}#discussion_r3`);
+  assert.equal(threads[0].replies[0].body, REPLY_BODY);
+  assert.equal(threads[0].replies[0].url, `${PR_URL}#discussion_r4`);
+});
+
+test('a body past the clamp is cut to the limit and flagged as truncated', () => {
+  const threads = buildThreads({
+    issueComments: [ghIssueComment(1, { body: 'x'.repeat(MAX_BODY_CHARS + 1) })],
+  });
+  assert.equal(threads[0].body.length, MAX_BODY_CHARS);
+  assert.equal(threads[0].bodyTruncated, true);
+});
+
+test('a body exactly at the clamp is kept whole and not flagged', () => {
+  const threads = buildThreads({
+    issueComments: [ghIssueComment(1, { body: 'x'.repeat(MAX_BODY_CHARS) })],
+  });
+  assert.equal(threads[0].body.length, MAX_BODY_CHARS);
+  assert.equal(threads[0].bodyTruncated, false);
+});
+
+test('a Bot account is flagged even when the login has no [bot] suffix', () => {
+  const threads = buildThreads({
+    issueComments: [ghIssueComment(1, { user: ghBotUser(BOT_LOGIN_WITHOUT_SUFFIX) })],
+  });
+  assert.equal(threads[0].author, BOT_LOGIN_WITHOUT_SUFFIX);
+  assert.equal(threads[0].authorIsBot, true);
+});
+
+test('a [bot] login is flagged even when the account type says User', () => {
+  const threads = buildThreads({
+    issueComments: [ghIssueComment(1, { user: ghUser(BOT_LOGIN_WITH_SUFFIX) })],
+  });
+  assert.equal(threads[0].author, BOT_LOGIN_WITH_SUFFIX);
+  assert.equal(threads[0].authorIsBot, true);
+});
+
+test('a human author is not flagged as a bot', () => {
+  const threads = buildThreads({ issueComments: [ghIssueComment(1)] });
+  assert.equal(threads[0].author, AUTHOR);
+  assert.equal(threads[0].authorIsBot, false);
 });
 
 test('an inline thread carries the file position under camelCase names', () => {
@@ -273,6 +370,31 @@ test('a GraphQL resolution reaches the inline thread whose root it names', () =>
   assert.equal(threads[0].resolutionAvailable, true);
 });
 
+test('an open thread GraphQL answered for says false, which is not the same as unknown', () => {
+  const threads = buildThreads({
+    inlineComments: [ghInlineComment(1)],
+    resolutionByCommentId: new Map([
+      [1, { threadId: GRAPHQL_THREAD_ID, isResolved: false, isOutdated: false }],
+    ]),
+    resolutionAvailable: true,
+  });
+  assert.equal(threads.length, 1);
+  assert.equal(threads[0].resolved, false);
+  assert.equal(threads[0].outdated, false);
+  assert.equal(threads[0].resolutionAvailable, true);
+});
+
+test('resolutionAvailable follows the flag it is named after', () => {
+  const threads = buildThreads({
+    inlineComments: [ghInlineComment(1)],
+    resolutionByCommentId: new Map([
+      [1, { threadId: GRAPHQL_THREAD_ID, isResolved: true, isOutdated: false }],
+    ]),
+    resolutionAvailable: false,
+  });
+  assert.equal(threads[0].resolutionAvailable, false);
+});
+
 test('a thread the GraphQL answer never mentioned stays unknown', () => {
   const threads = buildThreads({
     inlineComments: [ghInlineComment(1)],
@@ -314,5 +436,32 @@ test('threads come out ordered by createdAt, ties broken by id', () => {
   assert.deepEqual(
     threads.map((thread) => thread.surface),
     [SURFACE_INLINE, SURFACE_ISSUE_COMMENT, SURFACE_ISSUE_COMMENT, SURFACE_ISSUE_COMMENT],
+  );
+});
+
+test('an edited comment sorts by when it was created, not by when it was edited', () => {
+  const threads = buildThreads({
+    issueComments: [
+      ghIssueComment(1, { created_at: EARLY_AT, updated_at: LATE_AT }),
+      ghIssueComment(2, { created_at: MIDDLE_AT }),
+    ],
+  });
+  assert.deepEqual(
+    threads.map((thread) => thread.id),
+    [`${SURFACE_ISSUE_COMMENT}:1`, `${SURFACE_ISSUE_COMMENT}:2`],
+  );
+  assert.equal(threads[0].updatedAt, LATE_AT);
+  assert.equal(threads[1].updatedAt, MIDDLE_AT);
+});
+
+test('the same id on two surfaces becomes two threads, one per surface prefix', () => {
+  const threads = buildThreads({
+    issueComments: [ghIssueComment(5)],
+    inlineComments: [ghInlineComment(5)],
+  });
+  assert.equal(threads.length, 2);
+  assert.deepEqual(
+    threads.map((thread) => thread.id),
+    [`${SURFACE_INLINE}:5`, `${SURFACE_ISSUE_COMMENT}:5`],
   );
 });
