@@ -22,7 +22,7 @@ docs/
 scripts/
   install.mjs          # symlink + merge installer
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
-  waves/               # wave pipeline: tickets-linear, tickets-github, graph, pr-state, fetch-pr-threads
+  waves/               # wave pipeline: tickets-linear, tickets-github, graph, gh, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
   verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
   backup-ai-memory.mjs # volume backup + rotation + LaunchAgent
@@ -139,6 +139,8 @@ node --test '.claude/hooks/lib/*.test.mjs'
 Both forms are validated. Quoting hands the glob to Node's own matcher instead of the shell; unquoted, the shell expands it first. Either works.
 
 **Never pass a directory to `node --test`.** On the Node in use here (24.15.0) it is broken for *any* directory: the positional is resolved by the CJS loader as a module and the runner never starts. The failure is not obvious — instead of erroring out, it reports the directory path itself as a single failing test named `scripts/waves`, with the message `'test failed'` and a plausible duration. So a suite that never ran looks like a suite that ran and failed. This has already cost two people time. Pass a glob or explicit file paths.
+
+Every push to `main` and every pull request runs `.github/workflows/ci.yml` — `node --check` on every `.mjs` in the tree, the three globs above, and one install/uninstall cycle against a throwaway `$HOME`.
 
 ## Commit rules
 

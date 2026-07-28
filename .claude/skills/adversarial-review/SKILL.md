@@ -31,6 +31,8 @@ dois for preservada; todo o protocolo abaixo existe para protegê-la.
    garantir que nenhum dos dois viu o resultado do outro.
 5. **Confronte os dois laudos** (ver "Leitura do resultado").
 6. **Reporte ao humano** no formato de saída do fim deste arquivo.
+7. **Achado que vira conserto entra num ciclo com teto** — ver "Teto de iteração
+   por achado". O protocolo não termina em "os revisores não acharam mais nada".
 
 ### O que cada revisor recebe
 
@@ -106,6 +108,65 @@ o código deveria existir, não como corrigi-lo. Deleção é correção válida
 costuma ser a mais barata — reescrever o miolo de algo que não deveria estar lá é
 trabalho caro para preservar um erro.
 
+## Freio de escopo: o que não entra no laudo
+
+**Teste de admissão.** Antes de entrar no laudo, cada achado passa por quatro
+portas — basta abrir uma. Ele afeta:
+
+1. a **correção** do código do diff, presente ou futura;
+2. o **requisito declarado** — aquele que o passo 1 mandou copiar literalmente;
+3. o **raio de dano da mudança** — o achado tem de mudar o raio, não basta vir de
+   uma das quatro lentes de dano (segurança, integridade de dados e
+   reversibilidade, ativação no dado real, regressão): passa "o input novo chega
+   ao `exec()` preexistente"; não passa "MD5 num checksum que não é de
+   segurança";
+4. uma **regra de forma do repo verificável nominalmente** (existe ou não, sem
+   julgamento): assinatura de IA no commit (`Co-Authored-By: Claude`) no repo
+   cujo `CLAUDE.md` a proíbe, regra inviolável da onda. Bullet de julgamento
+   estrutural ("sem duplicação desnecessária", "estrutura clara") **não abre esta
+   porta** — volta às portas 1 a 3.
+
+Se nenhuma das quatro abre, **o achado não entra na lista de achados** — só o par
+convergente tem sobrevida, abaixo.
+
+**Porta em dúvida se resolve lendo o código citado, nunca cortando.** Se depois
+de ler a porta continua indecisa, o achado entra rotulado **HIPÓTESE**, com a
+leitura que o decide.
+
+**Manutenibilidade e Operação continuam valendo**, pela porta 1 e no eixo da
+correção **futura** — o freio corta o achado, não a lente:
+
+- Manutenibilidade passa "o próximo a mexer precisa reconstruir o raciocínio"
+  sobre o diff; não passa "poderia ser mais genérico" nem preferência de estilo.
+- Operação passa "o caminho de erro novo falha sem registrar qual registro
+  falhou"; não passa "o formato deste log podia ser melhor".
+
+**Deleção passa**: propor que o código não deveria existir (seção acima) é achado
+de correção — o freio corta trabalho a mais, não a menos. **Achado não medido
+entra rotulado HIPÓTESE, não cortado**, se abriria porta sob a hipótese.
+
+**O eixo do rótulo é causação, nunca localização nem menção pelo requisito.**
+Bloqueia o achado que a mudança cria ou ativa — input novo chegando a sink
+antigo, chamador antigo que passa a depender do contrato novo —, mesmo com a
+linha citada fora do diff e com o requisito calado sobre o assunto. Sai no bloco
+**não bloqueante** só o que **existiria igual sem a mudança** (o bug preexistente
+encontrado de passagem), nunca descartado; a exceção é a suíte vermelha por
+motivo alheio ao diff, **primeiro achado do relatório** ("Baseline primeiro"), no
+slot do topo do formato.
+
+**A admissão roda depois do pareamento, sobre o par, e nunca corta só uma das
+duas cópias.** Par que não abre porta nenhuma, ou que existiria igual sem a
+mudança, sai no bloco **não bloqueante**, não entre os bloqueantes: convergência
+protege o par de ser mutilado, não promove a bloqueante o que não abriu porta.
+Nada cortado some em silêncio — o freio decide admissão, nunca quem tem razão:
+discordância sobre achado admitido vai ao humano ("Divergência"), e o que caiu
+vai listado na cobertura, uma linha por achado e sem proposta de conserto, com a
+porta que faltou — registro, não um segundo laudo.
+
+**O freio se aplica na consolidação dos dois laudos, nunca no prompt de cada
+revisor**: quem aplica é quem confronta os laudos no passo 5. Passá-lo no spawn
+contamina as duas lentes com o mesmo critério de corte.
+
 ## Leitura do resultado
 
 **Convergência** — os dois chegaram ao mesmo achado por caminhos diferentes:
@@ -121,20 +182,57 @@ custou a produzir.
 reporta junto a **cobertura**: que arquivos leu e o que a lente não alcança. Laudo
 limpo sem cobertura declarada é laudo vazio.
 
+## Teto de iteração por achado
+
+**`TETO_POR_ACHADO = 3`** — três ciclos correção → re-verificação para o mesmo
+achado, e o terceiro é o último. O ciclo revisão → correção → re-revisão não tem
+critério de parada próprio: "os revisores não acharam mais nada" é ilimitado por
+construção, e cada volta custa uma lente inteira. O teto é o critério que falta.
+
+**O teto é por achado, não por PR.** Cada achado carrega o próprio contador, e a
+re-verificação que só toca o achado A não gasta nada do orçamento do B. Contar por
+PR faria o quinto achado de um laudo de cinco nascer sem orçamento nenhum — que é
+como um teto vira desculpa para não consertar.
+
+**Bater o teto não é falha do agente.** É o resultado esperado quando o achado
+depende de uma decisão que não é dele: requisito ambíguo, dois consertos válidos
+com custos diferentes, causa raiz fora do diff. Esta frase precisa estar escrita —
+sem ela o agente insiste até o contexto acabar para não "falhar", que é exatamente
+o gasto que o teto existe para cortar.
+
+**Escalar entrega o que se aprendeu em cada tentativa, não "não consegui".** Uma
+linha por tentativa: o que mudou, o que a re-verificação produziu, e por que a
+hipótese caiu. Fecha com a melhor hipótese viva e a medição ou leitura que a
+decide — o rótulo **HIPÓTESE** da seção "Exija número" vale igual aqui. Três
+tentativas descartadas com evidência entregam mais a quem decide do que o conserto
+que não veio.
+
 ## Formato de saída
 
 ```
+## Baseline (se vermelho por motivo alheio ao diff)
+- o que quebra, desde quando, e que a mudança em revisão não é responsável.
+
 ## Convergente (as duas lentes — prioridade)
 - `path:line` — achado. Como cada lente chegou nele.
 
 ## Divergente (decisão do humano)
 - `path:line` — o que a lente A afirma; o que a lente B afirma; o trecho em disputa.
 
+## Escalado (bateu o teto — decisão do humano)
+- `path:line` — achado, uma linha por tentativa com o que ela produziu, e a hipótese viva com o que a decide.
+- (vazio na primeira passada: só existe achado escalado depois de um ciclo de correção.)
+
 ## Isolado (uma lente só)
 - `path:line` — achado, e por qual lente.
+
+## Não bloqueante
+- `path:line` — existiria igual sem a mudança: achado real que a mudança não cria nem ativa, e por qual lente.
+- `path:line` — par convergente que não abriu nenhuma das quatro portas do freio.
 
 ## Cobertura
 - Lente A: o que olhou, o que não olhou.
 - Lente B: o que olhou, o que não olhou.
 - Baseline: estado da suíte antes da revisão.
+- Freio de escopo: uma linha por achado cortado — `path:line`, o achado em até dez palavras, e a porta que ele não abriu. Sem proposta de conserto: é registro, não recomendação.
 ```

@@ -50,18 +50,43 @@ single issue, and match the parser exactly.
 - **Estimate** is the `est:<n>` label (`est:3`, `est: 0.5`, `EST:2`; decimals fine). The
   label must exist first — `gh label create`. No label means `estimate: null` in the plan;
   two `est:` labels with different values are bad data, not a silent pick.
-- **`blockedBy`** is the union of the issue's native dependency (`gh issue edit
-  --add-blocked-by`) and the anchored body marker. Numbers only exist after creation, so
-  publish blockers first, collect the numbers, then declare the edge on the dependents.
-- **The marker is an HTML comment and the reader finds it in ANY issue body.** Never paste
-  it into a ticket that merely talks about the convention — that creates a phantom edge to
-  whatever issue your example names. Never emit it empty either: a ticket with no blocker
+- **`blockedBy`** is the union of two sources, deduplicated: the issue's native dependency
+  and the anchored body marker. Numbers only exist after creation, so publish the blockers
+  first, collect their numbers, then declare each edge by writing the marker into the body
+  of the dependent — never into the blocker's. Wiring the native relation with
+  `gh issue edit --add-blocked-by` is optional and comes later: the reader unions and dedups
+  the two sources, so the marker alone already produces the edge.
+- **The marker is an HTML comment and the reader finds it in ANY issue body.** Spelled out
+  in full — safe here, because the reader parses issue bodies and never this file — it is
+  `<!-- blocked-by: #12, owner/repo#34 -->`. The short form `#12` assumes the target repo;
+  a blocker living in another repo needs `owner/repo#12`. Never paste that literal into a
+  ticket that merely talks about the convention — that creates a phantom edge to whatever
+  issue your example names. Backticks and fenced blocks neutralize nothing: the reader runs
+  a regex over raw text and never parses markdown, so a marker inside a code span produces
+  the same edge as one in prose. Never emit it empty either: a ticket with no blocker
   carries no marker at all and says so in prose in field 9. Both rules, plus the two safe
   ways to quote the syntax, are in `ticket-contract` under "Campo 9 no GitHub".
 - **Verify before reporting done.** Run
-  `node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> <slice>`
-  over the slice you created: exit 0, and the edges visible in the table. Exit 8 means the
-  bodies you wrote are malformed — fix the body, don't recreate the issues.
+  `node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>]`
+  over the slice you created, and require five things, not one:
+  1. exit 0;
+  2. every edge you declared visible in the table;
+  3. no edge in the table that you did not declare — compare the two sets and require them
+     equal, not merely overlapping;
+  4. no `! could not read external blocker` line on stderr;
+  5. every `external` row in the table matching a cross-repo blocker you declared on
+     purpose.
+
+  Check 3 is the one that closes the hole, because it is the only one that sees a leaked
+  marker in both of its shapes. Exit 0 does not: an unreadable external blocker is not bad
+  data, so it only warns on stderr, prints as an `external` row with status `?`, and still
+  exits 0. Checks 4 and 5 do not either: a row is `external` only because that blocker sits
+  outside the slice you read, so a leaked `#12` resolving to an issue *inside* the slice
+  lands as an ordinary edge — no warning, no `external` row, nothing on screen telling it
+  apart from a legitimate one. Both shapes are almost always a marker literal that leaked
+  into an issue body: the external one leaves the dependent unschedulable in every wave
+  plan, the in-scope one leaves it waiting on an issue it has nothing to do with. Exit 8
+  means the bodies you wrote are malformed — fix the body, don't recreate the issues.
 
 Writing to a tracker or to GitHub is not pre-approved in `.claude/settings.json`. Expect a
 permission prompt on every create, and never work around it.
