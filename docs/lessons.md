@@ -39,7 +39,16 @@
 
 Corroboradas em tickets distintos. É seguro aplicar.
 
-_nenhuma_
+### L-009 — mudar uma regra exige atualizar todas as cópias dela no mesmo commit
+
+- sinal: `guidance_drift`
+- recorrência: 3 tickets distintos
+- tickets: pr-11, harness-maestri-port, harness-ask-then-merge
+- evidência: PR 11, Warning: o item 6 mudou o mecanismo do stash e as duas cópias não acompanharam; a regra nova de propagação falhou no próprio primeiro uso
+- evidência: A skill maestri-orchestration foi corrigida contra o help do CLI e sete arquivos ficaram afirmando a versao antiga: context.mjs:35-36, wave-orchestration:220, wave-run.md:22-23, waves.md:323, usage.md:20, agent-system.md:66, contributing.md:129. O usage.md e justamente o doc que o Alex le.
+- evidência: A politica ask-then-merge tirou gh pr merge do permissions.deny e nove arquivos continuaram afirmando que o deny cobre merge. Um deles era executavel — o REQUIRED_DENY do CI — e derrubou a main ate ser corrigido.
+- registrada: 2026-07-28T01:35:08.920Z
+- vista por último: 2026-07-28T03:21:36.128Z
 
 ## Candidatas — NÃO carregar como guidance ainda
 
@@ -118,15 +127,6 @@ Vistas uma vez, ou repetidas dentro de um único ticket. Sob observação, não 
 - evidência: PR 11, Critical 1: a issue dizia 'bug preexistente encontrado de passagem' e o texto virou 'localizado fora do diff', o que suprime a lente de Regressão inteira
 - registrada: 2026-07-28T01:35:08.892Z
 - vista por último: 2026-07-28T01:35:08.892Z
-
-### L-009 — mudar uma regra exige atualizar todas as cópias dela no mesmo commit
-
-- sinal: `guidance_drift`
-- recorrência: 1 ticket distinto
-- tickets: pr-11
-- evidência: PR 11, Warning: o item 6 mudou o mecanismo do stash e as duas cópias não acompanharam; a regra nova de propagação falhou no próprio primeiro uso
-- registrada: 2026-07-28T01:35:08.920Z
-- vista por último: 2026-07-28T01:35:08.920Z
 
 ### L-010 — verbo de CLI citado em documento de processo tem que ser conferido contra a ferramenta instalada antes de virar instrucao
 
