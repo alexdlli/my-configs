@@ -324,12 +324,19 @@ allowlist.
   (troca de user agent). Skill `maestri-portal`.
 - **Simulador:** `portal devices` lista os dispositivos com runtime, estado de
   boot e qual portal já ocupa cada um; `portal create --simulator UDID` abre um.
-  Valem os mesmos verbos, em pixels do device, mais botão de hardware e
-  `launch "com.bundle.id"`. Skill `maestri-portal-devices`.
+  Valem os mesmos verbos, mais botão de hardware e `launch "com.bundle.id"`.
+  Coordenada de árvore e de `info` vem em **screen points, não pixels** — num
+  device 3x confundir os dois erra o toque por um fator 3. Skill
+  `maestri-portal-devices`.
 
 Duas regras que não mudam de ambiente. **Coordenada não sai de screenshot:**
 `snapshot` devolve ref e é por ref que se clica, a mesma descoberta-antes-do-toque
-que o `qa` aplica no argent — e quando o `snapshot` do simulador vem como imagem
-em vez de árvore, o conserto é `portal launch` do bundle, não adivinhar pixel. E
-**artefato que existiu só no terminal não é artefato:** o screenshot vai para
-disco ou para uma nota, legendado com o passo que ele prova.
+que o `qa` aplica no argent. Quando o `snapshot` do simulador vem **imagem em vez
+de árvore**, a linha `accessibility:` do header nomeia o motivo, e o conserto é
+`portal launch` do bundle — que traz o app para debaixo do Maestri e devolve a
+árvore. A regra tem **exceção documentada**: nesse modo se toca por pixel lido da
+imagem devolvida, que vem capturada na resolução que o toque espera
+(`maestri-portal-devices`). Exceção com marcador próprio e resolução casada — não
+é licença para adivinhar pixel quando a árvore existe. E **artefato que existiu só
+no terminal não é artefato:** o screenshot vai para disco ou para uma nota,
+legendado com o passo que ele prova.
