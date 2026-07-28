@@ -118,11 +118,12 @@ test('an Orca session advertises wave dispatch through the orca CLI', () => {
   assert.match(ctx.dispatch.reason, /--agent/);
 });
 
-test('a Maestri session reports dispatch unavailable and names the missing adapter', () => {
+test('a Maestri session reports no automatic driver but names the manual dispatch', () => {
   const ctx = detectContext(maestriEnv, OUTSIDE_WORK_CWD);
   assert.equal(ctx.dispatch.available, false);
   assert.equal(ctx.dispatch.driver, null);
   assert.match(ctx.dispatch.reason, /MAESTRI_CLI/);
+  assert.match(ctx.dispatch.reason, /floor/);
 });
 
 test('a plain terminal reports dispatch unavailable and manual', () => {

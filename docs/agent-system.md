@@ -63,7 +63,7 @@ Skills are procedure documents Claude loads on demand. Routing works like it doe
 | `adversarial-review` | Reviewing a diff through two independent lenses. Spawns `reviewer` twice in parallel, each with a distinct lens and fresh context, then confronts the two reports. |
 | `wave-orchestration` | Planning execution in waves from a ticket dependency graph: how to pick the source (Linear via `orca linear`, or GitHub Issues via `gh`), how to build the graph, how to present the plan, and the wave's non-negotiable rules. |
 | `pr-babysitting` | Driving an open PR to review-ready, tracking CI and feedback as two independent states. Uses `pr-state.mjs` and `fetch-pr-threads.mjs`, and delegates thread classification to `pr-triage`. |
-| `maestri-orchestration` | Orchestrating a team from inside a Maestri terminal. Deliberately narrow: it writes only what changes by being there — `"$MAESTRI_CLI"` instead of `maestri`, the fragile paste channel, the two shared notes, the recruit verbs, and the absence of any wave dispatch. Everything that holds in both environments is referenced by owner, never restated. |
+| `maestri-orchestration` | Orchestrating a team from inside a Maestri terminal. Deliberately narrow: it writes only what changes by being there — `"$MAESTRI_CLI"` instead of `maestri`, the fragile paste channel, the two shared notes, the recruit verbs, and the floor as the wave's isolation primitive — including how to tell an isolated floor from a degraded one, and what to do when it degraded. Everything that holds in both environments is referenced by owner, never restated. |
 
 ### Two different things are called a "contract"
 

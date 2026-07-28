@@ -175,25 +175,75 @@ agente dentro dele:
 "$MAESTRI_CLI" floor list                                # branch, caminho do clone, nós
 ```
 
-Três coisas mudam a decisão, todas do `help` e da skill `maestri-workspace`:
-`--branch` **falha se a branch já existe** (branch existente entra com
-`--existing-branch`); o clone só sai quando o workspace suporta isolamento (repo
-git em volume APFS) e, quando não suporta, sai um floor **simples, compartilhando
-o diretório** — a resposta diz qual dos dois veio, então leia-a antes de tratar a
-frente como isolada; e integrar a branch de um floor **não tem comando de CLI**, é
-o Alex na interface, o que casa com a política de merge do harness. Ainda existem
-`--no-git` (floor simples de propósito) e `--copy-ground` (começa com o layout do
-térreo).
+`--branch` **falha se a branch já existe**, e em duas formas diferentes:
+`' already exists.` (branch solta) e `' is already used by floor '` (a branch já é
+de outro floor). Numa onda de N tickets é o **segundo** `floor create` que descobre
+a segunda. Branch existente entra com `--existing-branch`. Integrar a branch de um
+floor **não tem comando de CLI**: é o Alex na interface, o que casa com a política
+de merge do harness. Ainda existem `--no-git` (floor simples de propósito) e
+`--copy-ground` (começa com o layout do térreo).
 
-**Nada disso foi executado.** É leitura do `help`: o primeiro `floor create` real
-confere o que o clone traz e onde ele fica **antes** de virar receita de onda.
+### O floor pode sair simples — e aí a frente não está isolada
+
+O clone só sai quando o workspace suporta: repo git **em volume APFS** e workspace
+**local**. Sem isso o `floor create` não falha — devolve um floor simples que
+**compartilha o diretório do térreo**. Isolamento é o default, não a garantia.
+
+Não julgue a resposta, **grepe**. Os marcadores são literais do binário do app:
+
+| Sensor | Isolado | Simples |
+|---|---|---|
+| `floor create` | `isolated clone at` | `without git isolation` |
+| `recruit --floor` | `isolated clone on branch '` | `on the ground level` |
+
+São dois porque respondem coisas diferentes: o primeiro diz o que o floor é, o
+segundo reafirma o isolamento **onde o agente foi de fato colocado**. O texto do
+floor simples ainda nomeia o motivo — `is not a git repository on an APFS volume`,
+`because remote workspaces can't host isolated clones`, `(no git isolation
+requested)` —, que é o que separa "consertável" de "esperado".
+
+**HIPÓTESE, não medida:** o floor degradado sai com **exit 0**, porque as strings
+de degradação vivem no bloco de sucesso e não no de erro — então `set -e` não pega
+e um script segue achando que isolou. Decide um `floor create` real em diretório
+não-APFS seguido de `echo $?`. Até lá o exit code não é sinal: leia o texto.
+
+**Veio simples? Não recrute assim mesmo.** Duas saídas, as mesmas de sempre:
+
+1. **Serializa** — as frentes que dividiriam o diretório viram uma fila num
+   recruta só, uma depois da outra, planejadas com `wave-orchestration` (seções 1
+   e 2) e disparadas à mão.
+2. **Leva a onda pro Orca**, onde o dispatch existe e é testado.
+
+**Nunca N recrutas sobre o mesmo diretório**: sem clone eles dividem os arquivos e
+o index do git — a condição que a regra inviolável 6 de `wave-orchestration` existe
+para evitar, aqui sem nem a árvore separada para amortecer.
+
+Duas armadilhas em volta disso:
+
+- **Manager remoto é recusado mesmo com o floor isolado.** O `recruit --floor`
+  responde *"The recruit would inherit that connection and couldn't reach the
+  clone. Recruit onto that floor from a local manager instead."* Onda isolada quer
+  manager local.
+- **`Floor management isn't ready yet. Try again in a moment, or pass --no-git for
+  a plain floor.`** é transitório — e o remédio que o próprio CLI sugere **destrói
+  o isolamento**. Nesse erro se repete o comando; nunca se aceita o `--no-git`.
+
+**`floor list` é a auditoria da onda**, não linha decorativa do bloco acima: dois
+floors com o **mesmo caminho** são duas frentes não isoladas — um sensor depois de
+criar todos, em vez de reler N respostas individuais.
+
+**Nada disso foi executado.** Os literais saíram do binário; o comportamento, não.
+O primeiro `floor create` real confere o que o clone traz e onde ele fica **antes**
+de virar receita de onda.
 
 O que continua não existindo é o **adaptador automático**: `session-context.mjs`
 responde `dispatch.available: false` no Maestri, e nenhum driver corta a onda
 inteira como o `orca-cli` corta (`wave-orchestration`, "Onde o disparo é
-possível"). O que muda é a conclusão — o disparo aqui é **manual e possível**: um
-`floor create` e um `recruit --floor` por ticket, instrução curta no `ask` e o
-requisito longo em nota. Planejamento e regras invioláveis seguem em
+possível"). O que muda é a conclusão — o disparo aqui é **manual e possível
+enquanto o floor sair isolado**: um `floor create` e um `recruit --floor` por
+ticket, os dois marcadores conferidos, instrução curta no `ask` e o requisito longo
+em nota. Saiu simples, valem as duas saídas acima. Planejamento e regras
+invioláveis seguem em
 `wave-orchestration` (seções 1 e 2); o que a onda ganha aqui é a topologia, não a
 automação.
 

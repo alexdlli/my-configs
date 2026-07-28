@@ -217,12 +217,18 @@ nem "as duas primeiras porque a segunda é pequena": a onda seguinte depende de
 | `host` | `dispatch` | O que fazer |
 |---|---|---|
 | `orca` | `available: true`, driver `orca-cli` | Siga esta seção |
-| `maestri` | `available: false` | Não existe adaptador de onda para o Maestri, e a CLI dele só existe como `$MAESTRI_CLI` dentro do terminal do app. Diga isso e pare |
+| `maestri` | `available: false`, sem driver | O adaptador **automático** não existe, mas a topologia sim: um `floor create` por ticket e um `recruit --floor` em cada. Disparo **manual**, de dentro do terminal do app, e só depois de confirmar na resposta que o floor saiu isolado (skill `maestri-orchestration`) |
 | `plain` | `available: false` | Sem gerenciador de worktree na sessão: entregue o plano e o humano dispara |
 
-Fora do Orca a entrega da skill continua sendo o **plano**. Não improvise
-substituto com `git worktree` na mão: o que o Orca dá aqui não é o checkout, é a
-linhagem, o terminal gerenciado e o vínculo com o ticket.
+Fora do Orca e do Maestri a entrega da skill continua sendo o **plano**. Não
+improvise substituto com `git worktree` na mão: o que o Orca dá aqui não é o
+checkout, é a linhagem, o terminal gerenciado e o vínculo com o ticket.
+
+No Maestri o floor **não** é improviso — é isolamento nativo, um clone por ticket.
+Mas ele pode sair **simples**, compartilhando o diretório do térreo, e aí a
+premissa desta skill (uma árvore por frente) deixa de valer: nesse caso serializa
+as frentes num agente só ou traz a onda pro Orca, nunca N agentes sobre o mesmo
+diretório. Como distinguir os dois é da `maestri-orchestration`.
 
 ### 0 — Resolver o contexto uma vez
 
