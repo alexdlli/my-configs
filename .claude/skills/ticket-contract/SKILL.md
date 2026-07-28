@@ -160,7 +160,8 @@ Por que este e não outro:
   lugares.
 
 Dentro de cada seção, prosa e bullets. Campo 7 em checkbox (`- [ ]`), uma condição por
-linha. Campo 8, um bullet por cenário, rotulado pelo tipo (caminho feliz, borda, falha).
+linha. Campo 8 abre com a linha `Artefato de prova:` — a seção seguinte é dona dela — e
+segue com um bullet por cenário, rotulado pelo tipo (caminho feliz, borda, falha).
 
 O custo desse formato é corpo de 100-130 linhas. Isso se paga nos campos 3 a 8, que carregam
 o trabalho — e não se paga em campo coberto pela declaração de perfil do projeto, que fica em
@@ -172,6 +173,44 @@ o trabalho — e não se paga em campo coberto pela declaração de perfil do pr
 Coberto pela declaração de perfil do projeto (`CLAUDE.md`, "Perfil de risco do projeto"): o
 repo não emite telemetria.
 ```
+
+## Artefato de prova
+
+Todo ticket declara **o que vai provar que a entrega funciona** — e declara na criação, não
+depois, na revisão. Quem escreve o ticket é quem sabe se aquilo é demonstrável, e a escolha
+determina o custo de revisar: demonstração é barata, análise não.
+
+A declaração é uma linha no campo 8, aberta pelo rótulo, para ser auditável em lote com
+`grep '^Artefato de prova:'`:
+
+```markdown
+## 8. Cenários de teste
+
+Artefato de prova: demonstrável — print da tela de checkout com o cupom aplicado e o total recalculado.
+
+- Caminho feliz: cupom válido aplicado sobre carrinho acima do mínimo.
+```
+
+Os três valores, e nenhum outro:
+
+| Valor | Quando | O que o ticket escreve |
+|---|---|---|
+| `demonstrável` | Tem UI, API ou CLI — dá para rodar e mostrar funcionando | O artefato concreto: qual tela sai no print, qual teste de integração, qual comando e qual saída |
+| `prosa` | Skill, prompt, doc, config — não há o que rodar | Nada a nomear. A revisão será por análise, que é o caminho caro |
+| `mecânico` | Movimentação pura: rename, mover arquivo, corrigir typo | Nada além do CI verde e do diff — não há comportamento novo a demonstrar |
+
+`demonstrável` é a resposta preferida sempre que couber: o print, o teste passando e o app
+rodando mostram a coisa funcionando, em vez de mostrarem que alguém pensou nela. Na execução,
+quem produz o artefato é o agente `qa`. `prosa` é resposta legítima — este harness é quase
+todo prosa — mas é a cara: antes de aceitá-la, confira se o ticket é mesmo prosa e não uma
+mudança demonstrável mal descrita.
+
+Por que dentro do campo 8 e não um 13º campo: o artefato é o que prova o acceptance criteria,
+que é exatamente o que o campo 8 já carrega, e renumerar o contrato invalidaria toda
+referência a "os 12 campos" no harness.
+
+O modelo de revisão que consome esse campo é da skill `adversarial-review`. Aqui só se declara
+o valor e, quando `demonstrável`, o artefato que o sustenta.
 
 ## Bom vs ruim nos quatro campos mais errados
 
@@ -276,6 +315,8 @@ soltar o agente.
 - [ ] Existe pelo menos um item explícito FORA do escopo.
 - [ ] Todo termo de domínio usado aparece definido no ticket ou é vocabulário do codebase.
 - [ ] Cada acceptance criterion é verificável sem interpretação (dois revisores dariam o mesmo veredito).
+- [ ] O campo 8 abre com a linha `Artefato de prova:` e um dos três valores.
+- [ ] Sendo `demonstrável`, essa linha **nomeia** o artefato. "Vou testar" não é artefato; "print da tela de checkout com o cupom aplicado" é. Ticket demonstrável sem artefato nomeado não está pronto.
 - [ ] Existe pelo menos um `path` concreto no campo 6, e ele existe no repo hoje.
 - [ ] Cada `blockedBy` tem uma frase dizendo **o que** este ticket consome do bloqueador.
 - [ ] Nenhum `blockedBy` foi inferido de ordem, numeração ou título.
