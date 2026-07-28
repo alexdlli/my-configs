@@ -2,12 +2,13 @@
 name: maestri-orchestration
 description: >-
   Orquestração de time dentro do Maestri: recrutar uma frente por recruta,
-  delegar por `"$MAESTRI_CLI" ask`, manter as notas compartilhadas e
-  desbloquear quem parou. Use quando a sessão roda num terminal do Maestri
-  (`host` `maestri` em `session-context.mjs`) e o pedido for montar um time,
-  tocar várias frentes em paralelo, "modo maestro", "recruta alguém", "delega
-  isso pro time". Escreve só o que muda por estar no Maestri; as regras de
-  execução moram nas skills que já são donas delas.
+  isolar cada uma num floor, delegar por `"$MAESTRI_CLI" ask`, manter as notas
+  compartilhadas, agendar o pulso com `routine` e provar a entrega num portal.
+  Use quando a sessão roda num terminal do Maestri (`host` `maestri` em
+  `session-context.mjs`) e o pedido for montar um time, tocar várias frentes em
+  paralelo, "modo maestro", "recruta alguém", "delega isso pro time". Escreve só
+  o que muda por estar no Maestri; as regras de execução moram nas skills que já
+  são donas delas.
 ---
 
 # Orquestração no Maestri
@@ -24,11 +25,13 @@ igual a `maestri`. Aí `hostDetail` traz `terminalId` (`MAESTRI_TERMINAL_ID`) e
 
 | Regra | Dona |
 |---|---|
+| Sintaxe completa de cada verbo — flags, ids curtos, o que é destrutivo | as skills que o app instala (`maestri`, `maestri-manager`, `maestri-routines`, `maestri-workspace`, `maestri-portal`, `maestri-portal-devices`) e `"$MAESTRI_CLI" help` |
 | Freio da revisão adversarial (só correção ou requisito declarado), aplicado na consolidação dos dois laudos | `adversarial-review`, "Freio de escopo: o que não entra no laudo" |
 | Teto de 3 iterações por achado, e o que escalar entrega | `adversarial-review`, "Teto de iteração por achado" |
 | `git stash` proibido com mais de uma árvore ativa | `wave-orchestration`, item 6 das "Regras invioláveis" |
 | Baseline antes de mexer, hipótese rotulada, achado fora de escopo vira PR próprio, verificar antes de reportar pronto | `wave-orchestration`, "O prompt padrão do worker" |
 | Verificação que sabe falhar (sensor de discriminação) | `ticket-contract`, "O sensor de discriminação" |
+| O que conta como prova de uma entrega, e que uma falha invalida a corrida inteira | agente `qa`; a linha `Artefato de prova:` do ticket é do `ticket-contract` |
 | "Melhore o sistema, não só o caso" | `scripts/lessons.mjs` e [`docs/lessons.md`](../../../docs/lessons.md): achado que recorre em 2 tickets distintos vira guidance carregada antes do código nascer |
 | Pulso de coordenação em todas as frentes, e por que 3 rodadas | `orchestrator.md`, `PULSO_DE_COORDENACAO` |
 | Instrução curta, conteúdo longo fora da mensagem | `orchestrator.md`, "Despacho: instrução curta, conteúdo longo em arquivo" |
@@ -52,6 +55,13 @@ terminal **não** vêm do ambiente — saem de `git`, da cwd e de
 na prática: a variável expande vazia e o comando roda no alvo errado. A exceção é
 o script de `routine --pre-run`, que recebe as próprias (skill `maestri-routines`).
 
+**A superfície citada aqui saiu de `"$MAESTRI_CLI" help`, lido num terminal
+real.** Verbo e flag daqui são portanto **documentados, não medidos**: ninguém
+rodou `floor create`, `routine create` ou `portal` neste harness, e cada seção
+marca isso onde importa. E antes de escrever que um verbo não existe, leia o
+`help` inteiro — foi a leitura que faltou quando esta skill afirmou que o Maestri
+não tinha isolamento (L-012 em [`docs/lessons.md`](../../../docs/lessons.md)).
+
 ## O canal é frágil: instrução curta, conteúdo longo em nota
 
 **Medido hoje em duas ferramentas.** Mensagem longa não é entregue: vira um bloco
@@ -70,6 +80,13 @@ A correção do persona é a certa, e aqui ela é inviolável:
 
 É o despacho do `orchestrator.md` com outro veículo: lá o conteúdo longo vai em
 arquivo, aqui vai na nota, que é o que o recruta alcança pela CLI.
+
+O segundo envio — o que só aperta Enter — tem verbo próprio:
+`"$MAESTRI_CLI" ask "Nome" --raw "\n"` escreve direto no terminal do recruta e
+devolve o texto resultante, sem reenviar a mensagem. Escapes, do `help`: `\n`
+Enter, `\t` Tab, `\e` ESC, `\xNN` byte (`\x03` = Ctrl-C, que é como se interrompe
+recruta preso), e tecla especial vai como sequência ESC (`\e[A` seta para cima,
+`\e[Z` Shift-Tab). Documentado; não medido contra o bloco travado.
 
 `ask` estourou o timeout? **Nunca reenvie às cegas** — `"$MAESTRI_CLI" check
 "Nome"` (skill `maestri`) diz se ele ainda está trabalhando.
@@ -104,26 +121,33 @@ fala com você, e é você que decide entre perguntar no chat e escalar à nota.
 O nome de uma nota é derivado da primeira linha dela: depois de escrever, rode
 `"$MAESTRI_CLI" list` para ver se ela foi renomeada (skill `maestri`).
 
+Bloqueio que não pode esperar o Alex voltar ao canvas: `"$MAESTRI_CLI" notify
+"mensagem"` (só Maestro) dispara notificação de sistema. É o **aviso**, não o
+canal — o conteúdo continua no chat ou na nota, e notificação que vira log de
+progresso deixa de ser lida.
+
 ## Recrutar, retargetar, dispensar
 
 `maestri-manager` é dona dos verbos e da regra de reusar antes de recrutar
 (`list` primeiro). O que é fácil errar vindo do persona:
 
 - **Não existe `maestri reassign`.** Trocar o papel de um recruta vivo é
-  `"$MAESTRI_CLI" role assign "Nome" "Role"`.
+  `"$MAESTRI_CLI" role assign "Nome" "Role"` — é este o verbo que o `help`
+  descreve como *"Reassign a recruit's role"*, e é daí que vem a confusão.
 - **Recruta inchado ou travado reinicia com `role assign "Nome" --none` e
   reatribuição.** Reatribuir o **mesmo** role é no-op e não reinicia o processo.
-- **Trocar o agente (Claude por Codex) é `recruit --replace`, nunca `dismiss` +
-  `recruit`.** `dismiss` apaga o nó, e nota ligada só àquele recruta fica órfã —
-  o que quebra o protocolo acima, e só o Alex reconecta, na mão, no app.
-- **Modelo por recruta:** o caminho documentado é `--preset` (veja
-  `"$MAESTRI_CLI" preset list`). `--command` aceita o argv inteiro, mas
-  `maestri-manager` o marca como quase nunca necessário — e nome de modelo se
-  confere antes de usar, nunca se cita de memória.
-- **Isolamento é nativo:** `"$MAESTRI_CLI" floor create "Nome" --branch <b>` cria
-  um clone do projeto numa branch própria, e `recruit --floor "Nome"` põe o agente
-  lá dentro sem você sair do seu floor (skill `maestri-workspace`). Integrar a
-  branch de um floor **não tem comando de CLI**: é o Alex, no app.
+- **Trocar o agente (Claude por Codex) é `recruit "Novo" --preset P --replace
+  "Antigo"`, nunca `dismiss` + `recruit`.** O `--replace` troca quem roda no
+  teammate **em pé**, mantendo conexões, posição e routines (o processo
+  reinicia). O próprio `help` do `dismiss` manda usar `--replace` *"so its notes
+  and portals stay wired"*: `dismiss` apaga o nó, e nota ligada só àquele recruta
+  fica órfã — só o Alex reconecta, na mão, no app.
+- **Nome de preset e de role se listam, não se adivinham:** `"$MAESTRI_CLI"
+  preset list` e `role list`. `recruit` aceita `[--preset P] [--role R] [--floor
+  F] [--command C] [--dir PATH]`; `--command` existe e leva o argv inteiro do
+  agente, mas o preset é o caminho documentado, e nome de modelo citado de
+  memória é exatamente como o persona antigo carregou um verbo inexistente por
+  meses.
 
 ### Bypass de permissão: aqui não sobra camada nenhuma
 
@@ -140,24 +164,116 @@ Logo, **a única camada do lado do recruta é o texto que você escreve no role
 dele**. Escreva, explícito: *"abra o PR contra `main` e PARE; você nunca mergeia,
 nem com CI verde, nem com review aprovado — quem aperta merge é o Alex"*.
 
+## Onda no Maestri: o floor é a primitiva
+
+O isolamento é nativo e tem o formato exato de uma onda — um clone por ticket, um
+agente dentro dele:
+
+```bash
+"$MAESTRI_CLI" floor create "t-12" --branch feat/t-12    # clone git-isolado, na branch
+"$MAESTRI_CLI" recruit "T-12" --preset P --floor "t-12"  # o recruta nasce lá dentro
+"$MAESTRI_CLI" floor list                                # branch, caminho do clone, nós
+```
+
+Três coisas mudam a decisão, todas do `help` e da skill `maestri-workspace`:
+`--branch` **falha se a branch já existe** (branch existente entra com
+`--existing-branch`); o clone só sai quando o workspace suporta isolamento (repo
+git em volume APFS) e, quando não suporta, sai um floor **simples, compartilhando
+o diretório** — a resposta diz qual dos dois veio, então leia-a antes de tratar a
+frente como isolada; e integrar a branch de um floor **não tem comando de CLI**, é
+o Alex na interface, o que casa com a política de merge do harness. Ainda existem
+`--no-git` (floor simples de propósito) e `--copy-ground` (começa com o layout do
+térreo).
+
+**Nada disso foi executado.** É leitura do `help`: o primeiro `floor create` real
+confere o que o clone traz e onde ele fica **antes** de virar receita de onda.
+
+O que continua não existindo é o **adaptador automático**: `session-context.mjs`
+responde `dispatch.available: false` no Maestri, e nenhum driver corta a onda
+inteira como o `orca-cli` corta (`wave-orchestration`, "Onde o disparo é
+possível"). O que muda é a conclusão — o disparo aqui é **manual e possível**: um
+`floor create` e um `recruit --floor` por ticket, instrução curta no `ask` e o
+requisito longo em nota. Planejamento e regras invioláveis seguem em
+`wave-orchestration` (seções 1 e 2); o que a onda ganha aqui é a topologia, não a
+automação.
+
 ## Pulso: o mesmo `PULSO_DE_COORDENACAO`, outro instrumento
 
 O pulso, o intervalo e o motivo dele são do `orchestrator.md`. No Maestri muda o
-**instrumento**: a varredura é `"$MAESTRI_CLI" ask` — ou `ask --batch`, que fala
-com várias frentes numa chamada e só retorna quando a mais lenta termina — e
-`check "Nome"` para ler estado sem gastar uma rodada do recruta. Não é leitura de
-terminal. Para não depender da sua memória, agende:
-`"$MAESTRI_CLI" routine create "Pulso" --command "..." --every 30m` (skill
-`maestri-routines`), calibrado pela taxa real de mudança da frente — pulso curto
-demais só queima token.
+**instrumento**, e ele não é leitura de terminal:
 
-## Não existe dispatch de onda no Maestri
+- `ask --batch '{"A": "prompt", "B": "prompt"}'` fala com **todas** as frentes em
+  paralelo e devolve um array JSON quando a última termina. É a varredura inteira
+  do `PULSO_DE_COORDENACAO` em **uma chamada**, não uma pergunta por recruta.
+- `check "Nome"` lê o terminal sem gastar uma rodada do recruta — é o que
+  responde "parou ou está trabalhando?".
 
-O campo `dispatch` do `session-context.mjs` vem `{available: false, driver: null}`
-aqui, com o motivo escrito nele: não há adaptador de onda para o Maestri, e a CLI
-só existe como `$MAESTRI_CLI` dentro do terminal do app. **Diga isso e não
-improvise um substituto.** As duas saídas honestas:
+### O pulso que sobrevive a você: `routine`
 
-1. Planejar com `wave-orchestration` (seções 1 e 2) e disparar à mão, uma frente
-   por recruta, com o conteúdo longo em nota.
-2. Rodar a onda no Orca, onde o dispatch existe e é testado.
+`routine create "Nome" --command "..." <agenda>` agenda um comando ou um prompt
+num terminal do canvas. Agendas, exatamente uma por routine: `--every 30m`,
+`--daily 09:00`, `--weekly mon,fri@09:00`, `--once "2026-06-20 15:00"`. Três
+opções mudam o desenho — `--terminal "Nome"` (em quem cai; omitido, cai em você),
+`--reminder` (notificação, sem terminal) e `--count N` / `--until DATE` (pulso que
+termina sozinho). `maestri-routines` é dona dos verbos e do resto das flags.
+
+**`--pre-run` é o que faz o pulso valer o token**: a saída dele entra onde o
+`--command` contiver `{{output}}`, então o dado chega junto com a pergunta em vez
+de o recruta ir buscá-lo.
+
+```bash
+"$MAESTRI_CLI" routine create "Pulso das frentes" --every 2h \
+  --pre-run "git -C /caminho/do/repo for-each-ref --format='%(refname:short) %(committerdate:relative)' refs/heads" \
+  --command "Estado das branches:\n{{output}}\nQual frente não se moveu desde o pulso anterior?"
+```
+
+Sem `{{output}}` no comando o script roda e a saída se perde. E **calibre o
+intervalo pela taxa real de mudança da frente**: frente rápida, pulso curto;
+frente longa, pulso espaçado. Pulso curto demais só queima token — e `--count` ou
+`--until` evita a routine que sobrevive à onda que ela acompanhava.
+
+## Tipo de laço: o que o recruta roda
+
+Cada recruta é uma sessão do Claude Code, então o laço não é verbo do Maestri — é
+o que você manda ele rodar dentro da sessão dele:
+
+| Trabalho | Laço | O que o recruta roda |
+|---|---|---|
+| Exploratório, decisão de design | Por turno | Prompt específico por `ask`; ele reporta e para |
+| Tem critério de pronto verificável | Por objetivo | `/goal <condição verificável>` (`/goal clear` encerra antes) |
+| Depende de sistema externo (PR, CI, fila) | Por tempo | `/loop <intervalo> <prompt ou /comando>`; para CI, `Monitor` (skill `pr-babysitting`) |
+| Recorrente e bem definido | Proativo | `"$MAESTRI_CLI" routine`, a seção acima |
+
+`/goal` e `/loop` são do **Claude Code**, não do Maestri — não aparecem no `help`
+dele. Conferidos por busca de string no binário instalado (2.1.220), onde `/loop`
+se descreve como *"Run a prompt or slash command on a recurring interval (e.g.
+`/loop 5m /foo`)"*; **nenhum dos dois foi executado**, e teto de tentativas não
+apareceu como sintaxe — o teto vai escrito dentro da própria condição.
+
+O que separa as duas últimas linhas é sobrevivência: laço é da sessão e morre com
+ela — medido aqui que `Monitor` não volta nem com `--resume` (`pr-babysitting`,
+"Monitorar sem queimar contexto"). `routine` é objeto do canvas, disparado pelo
+app de fora do recruta. Espera que pode durar mais que a sessão vira `routine`.
+
+## Portal: o instrumento de prova dentro do canvas
+
+O que conta como prova de uma entrega é do agente `qa`, e a linha `Artefato de
+prova:` do ticket é do `ticket-contract`. No Maestri muda o **instrumento**: em
+vez de argent ou de um MCP de Chrome, o produto roda num **portal** — nó do canvas
+dirigido pela mesma CLI, o que o põe dentro do `Bash` que o `qa` já tem no
+allowlist.
+
+- **Web:** `portal create URL ["Nome"] [--size WxH]`, e daí navegar, clicar,
+  preencher, screenshot, `resize W H` (viewport exato, QA responsivo) e `ua`
+  (troca de user agent). Skill `maestri-portal`.
+- **Simulador:** `portal devices` lista os dispositivos com runtime, estado de
+  boot e qual portal já ocupa cada um; `portal create --simulator UDID` abre um.
+  Valem os mesmos verbos, em pixels do device, mais botão de hardware e
+  `launch "com.bundle.id"`. Skill `maestri-portal-devices`.
+
+Duas regras que não mudam de ambiente. **Coordenada não sai de screenshot:**
+`snapshot` devolve ref e é por ref que se clica, a mesma descoberta-antes-do-toque
+que o `qa` aplica no argent — e quando o `snapshot` do simulador vem como imagem
+em vez de árvore, o conserto é `portal launch` do bundle, não adivinhar pixel. E
+**artefato que existiu só no terminal não é artefato:** o screenshot vai para
+disco ou para uma nota, legendado com o passo que ele prova.

@@ -8,6 +8,8 @@ Este é o **documento de origem** do persona de Tech Lead/Maestro, e segue sendo
 
 A skill **não** é uma cópia do texto abaixo. Ela escreve só o que é específico do Maestri e referencia, por nome de skill e de seção, tudo o que já tem dona em outro lugar — decisão tomada porque cópia que diverge em silêncio foi o defeito recorrente deste harness. A tabela de estado adiante diz onde cada regra do persona foi parar.
 
+**Segunda rodada de correção, com o `help` como fonte.** O primeiro port foi escrito sem um terminal do Maestri à mão: ele omitiu o que não pôde verificar e afirmou coisas que a saída de `"$MAESTRI_CLI" help` desmente — a principal delas, que o Maestri não tinha isolamento para dispatch de onda, quando `floor create` sempre esteve no help (L-012 em [`../lessons.md`](../lessons.md)). A skill foi reescrita em cima dessa leitura, e o que o help respondeu está na tabela "O que do persona não casou" adiante. **Nada disso foi executado** — é leitura de `help`, e a skill marca essa diferença onde ela muda a decisão.
+
 ## Correções conhecidas
 
 Três defeitos já medidos. O texto do persona é **preservado como está** e não os corrige; quem os aplica é a skill.
@@ -50,22 +52,24 @@ Parte do persona vale nos dois ambientes (Maestri e Claude Code puro) e mora nas
 | Baseline antes de mexer, achado fora de escopo, hipótese rotulada, verificar antes de reportar pronto | `wave-orchestration`, "O prompt padrão do worker" |
 | Pulso obrigatório em todas as frentes | `orchestrator.md`, `PULSO_DE_COORDENACAO` (fonte do intervalo e do motivo); a skill do port diz só o que muda no Maestri — o pulso é `"$MAESTRI_CLI" ask`, não leitura de terminal |
 | Instrução curta no despacho, conteúdo longo fora da mensagem | `orchestrator.md`, "Despacho: instrução curta, conteúdo longo em arquivo"; no Maestri o veículo é a nota, e a armadilha de paste que o justifica está na skill do port |
-| `"$MAESTRI_CLI"`, protocolo das "Team Context" / "Todo for Alex", verbos de recruta, ausência de dispatch | `maestri-orchestration` — é o que sobrou de genuinamente específico |
-| Tabela de tipo de loop (exploratório / goal / time-based / proativo) | **não migrada**: depende de `/goal` e `/loop`, que não aparecem em skill instalada nenhuma. Ver a seção seguinte |
+| `"$MAESTRI_CLI"`, protocolo das "Team Context" / "Todo for Alex", verbos de recruta, o floor como primitiva de onda, o portal como instrumento de prova | `maestri-orchestration` — é o que sobrou de genuinamente específico |
+| Tabela de tipo de loop (exploratório / goal / time-based / proativo) | **migrada, reescopada**: a coluna deixou de ser "verbo do Maestri" e passou a ser o que o recruta roda na sessão de Claude Code dele — `/goal` e `/loop` são de lá, e a linha proativa é `maestri routine`, o único laço que sobrevive ao fim da sessão. Ver a seção seguinte |
 
-## O que do persona não casou com as skills instaladas
+## O que do persona não casou
 
-Levantado contra as skills que o app do Maestri instala em `~/.claude/skills` (`maestri`, `maestri-manager`, `maestri-routines`, `maestri-workspace`). O port **não propagou** nada desta lista, para não fixar em skill um comando que ninguém confirmou:
+O primeiro levantamento cobriu só as skills que o app do Maestri instala em `~/.claude/skills` — e são seis, não quatro: `maestri`, `maestri-manager`, `maestri-portal`, `maestri-portal-devices`, `maestri-routines`, `maestri-workspace`. **A superfície canônica é `"$MAESTRI_CLI" help`**, lido num terminal real depois daquele levantamento, e ele responde a maior parte da lista. Onde a resposta veio de fora do help — do binário do Claude Code — está dito qual busca a produziu.
 
 | Item do persona | Situação |
 |---|---|
-| `/goal`, `/loop`, `/schedule`, `/usage`, `/workflows`, `/handoff` | não documentados em nenhuma das quatro skills. Podem ser comandos do app; não são verificáveis pela superfície instalada |
-| `/prototype` | não existe entre as skills instaladas — `to-spec` e `to-tickets` existem |
-| `maestri reassign` | não existe. O verbo real é `maestri role assign "Nome" "Role"` (ou `--none`) |
-| Escada de modelo (fable / opus / sonnet) via `--command` | `maestri-manager` documenta `--preset` como o caminho e marca `--command` como quase nunca necessário. Os nomes de modelo não são verificáveis por aqui |
-| "Deixe o terminal do recruta não selecionado, senão o Maestri não detecta conclusão" | não documentado em skill nenhuma. Pode ser verdade e não foi medido |
+| `/goal`, `/loop` | **existem, e são comandos do Claude Code**, não do Maestri: não aparecem no `help` do CLI, e cada recruta é uma sessão de Claude Code. Conferidos por busca de string no binário instalado (2.1.220), onde `/loop` se descreve como *"Run a prompt or slash command on a recurring interval (e.g. `/loop 5m /foo`)"* e `/goal` traz `<condition> to set one` e `clear to stop early`. É o que devolveu a tabela de tipo de loop à skill do port. Nenhum dos dois foi executado |
+| `/schedule` | desnecessário: `maestri routine` cobre o caso inteiro — `--every` / `--daily` / `--weekly` / `--once`, `--terminal`, `--reminder`, `--count`, `--until`, `--disabled`, e `--pre-run` cuja saída entra no `{{output}}` do comando |
+| `/usage`, `/workflows`, `/handoff` | seguem sem confirmação. Não estão no `help` do Maestri; a mesma busca no binário do Claude Code não achou `/handoff`, e achou `/usage` e `/workflows` só em contexto de URL ou sem texto de comando ao lado — evidência fraca, que não confirma nem nega |
+| `/prototype` | não existe entre as skills instaladas — `to-spec` e `to-tickets` existem — e a mesma busca no binário do Claude Code também não o achou |
+| `maestri reassign` | não existe. O verbo real é `maestri role assign "Nome" "Role"` (ou `--none`) — que o `help` descreve como *"Reassign a recruit's role"*, e é daí que a confusão nasceu |
+| Escada de modelo (fable / opus / sonnet) via `--command` | `--command` **existe** (`recruit` aceita `[--preset P] [--role R] [--floor F] [--command C] [--dir PATH]`), mas `--preset` é o caminho documentado e os nomes válidos se listam com `preset list` e `role list`. Nome de modelo continua não verificável por aqui — e é para não adivinhar que a skill manda listar |
+| "Deixe o terminal do recruta não selecionado, senão o Maestri não detecta conclusão" | não documentado em skill nenhuma nem no `help`. Pode ser verdade e não foi medido |
 
-O que **casou** e a skill usa: `list`, `ask`, `ask --batch`, `check`, `note create/read/write/edit`, `recruit` (com `--preset`, `--role`, `--floor`, `--replace`), `role create/assign/edit`, `connect`, `dismiss`, `routine create` e `floor create`.
+O que **casou** e a skill usa: `list`, `ask` (com `--batch` e `--raw`), `check`, `notify`, `note create/read/write/edit`, `recruit` (`--preset`, `--role`, `--floor`, `--command`, `--dir`, `--replace`), `role assign` e `role list`, `preset list`, `connect`, `dismiss`, `routine` (agendas, `--terminal`, `--reminder`, `--count`/`--until` e `--pre-run` com `{{output}}`), `floor create` / `floor list`, e a superfície de `portal` — web e simulador — como instrumento de prova.
 
 ## O persona
 
