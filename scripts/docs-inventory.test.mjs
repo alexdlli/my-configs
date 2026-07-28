@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +19,8 @@ const CONTRIBUTING = 'docs/contributing.md';
 const INSTALLATION = 'docs/installation.md';
 
 const ORCHESTRATOR_AGENT = 'orchestrator';
-const UNWALKED_DIRECTORIES = new Set(['.git', 'node_modules', '.wave']);
+const GIT_ENTRY = '.git';
+const UNWALKED_DIRECTORIES = new Set([GIT_ENTRY, 'node_modules', '.wave']);
 
 const COUNT_MARKER = /<!--\s*docs-count:([A-Za-z-]+)\s*-->[ \t]*(\S+)/g;
 const NUMBER_WORDS = [
@@ -85,12 +87,17 @@ function inventoryNames() {
   );
 }
 
-function markdownFilesUnder(dir) {
+function isSeparateCheckout(root, dir) {
+  return existsSync(join(root, dir, GIT_ENTRY));
+}
+
+function markdownFilesUnder(dir, root = REPO_ROOT) {
   const found = [];
-  for (const entry of readdirSync(join(REPO_ROOT, dir), { withFileTypes: true })) {
+  for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
     const path = dir === '.' ? entry.name : `${dir}/${entry.name}`;
     if (entry.isDirectory()) {
-      if (!UNWALKED_DIRECTORIES.has(entry.name)) found.push(...markdownFilesUnder(path));
+      if (UNWALKED_DIRECTORIES.has(entry.name) || isSeparateCheckout(root, path)) continue;
+      found.push(...markdownFilesUnder(path, root));
     } else if (entry.name.endsWith(MARKDOWN)) {
       found.push(path);
     }
@@ -173,6 +180,27 @@ test('a marker inside a fenced block is an example, not a claim', () => {
   const doc = ['prose', '```markdown', 'Plus <!-- docs-count:hooks -->nine hooks', '```', ''].join('\n');
   assert.deepEqual([...blankFencedBlocks(doc).matchAll(COUNT_MARKER)], []);
   assert.equal(blankFencedBlocks(doc).split('\n').length, doc.split('\n').length);
+});
+
+test('a nested checkout carries its own docs, so the walker does not enter it', () => {
+  const root = mkdtempSync(join(tmpdir(), 'docs-inventory-'));
+  try {
+    mkdirSync(join(root, 'docs'));
+    writeFileSync(join(root, 'docs', 'own.md'), 'Ships <!-- docs-count:agents -->one agent\n');
+
+    const worktree = join(root, 'w1-issue-9');
+    mkdirSync(worktree);
+    writeFileSync(join(worktree, GIT_ENTRY), 'gitdir: /elsewhere/.git/worktrees/w1-issue-9\n');
+    writeFileSync(join(worktree, 'stale.md'), 'Ships <!-- docs-count:agents -->four agents\n');
+
+    const clone = join(root, 'vendored');
+    mkdirSync(join(clone, GIT_ENTRY), { recursive: true });
+    writeFileSync(join(clone, 'stale.md'), 'Ships <!-- docs-count:agents -->nine agents\n');
+
+    assert.deepEqual(markdownFilesUnder('.', root), ['docs/own.md']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 for (const [key, inventory] of Object.entries(INVENTORIES)) {
