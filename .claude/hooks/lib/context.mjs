@@ -39,7 +39,7 @@ const DISPATCH_REASON_PLAIN = 'no worktree manager in this session — the human
 
 const WORK_DIR_NAME = 'work';
 const WORK_TRACKER = 'jira';
-const PERSONAL_TRACKER = 'linear';
+const PERSONAL_TRACKER = 'github';
 
 const TRACKER_SOURCE_CWD_WORK = 'cwd-work';
 const TRACKER_SOURCE_GIT_IDENTITY = 'git-identity';
@@ -166,7 +166,7 @@ function readDefaultGitEmail(env) {
 // Opt-in confirmation of the account behind a cwd, for the cases the cwd rule
 // cannot decide: it compares the identity git actually resolves against the
 // default one. A work repo cloned outside ~/work is detected here, and only
-// here can `linear` be asserted instead of guessed.
+// here can `github` be asserted instead of guessed.
 export function verifyAccount(env = process.env, cwd = process.cwd()) {
   const res = spawnSync('git', ['-C', cwd, 'config', '--get', 'user.email'], {
     encoding: 'utf8',
