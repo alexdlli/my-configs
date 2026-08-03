@@ -13,7 +13,7 @@
 # drives waves needs this same entry.
 .wave/
 
-# Orca cria worktrees de onda dentro do repo (w<N>-issue-<n>/).
+# Arvores de onda cortadas dentro do repo (w<N>-issue-<n>/).
 # Sem esta regra elas aparecem como untracked e o auto-update.mjs,
 # que so roda com arvore limpa, para de rodar em silencio.
 w[0-9]*-issue-*/

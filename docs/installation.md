@@ -41,7 +41,7 @@ Both layers live in the client, so both end at whoever controls the client. **Br
 
 ### Why skills are linked one by one
 
-`~/.claude/skills` is shared ground — plugins and other toolkits (argent, maestri, ...) install their skills there too. Symlinking the whole directory to the harness would hide every one of them, so the installer links each entry of `<repo>/.claude/skills` individually. The same mechanism exposes skills that live outside the harness (currently `orca-cli`, from `~/.agents/skills/orca-cli`); if the source is missing the installer says so and moves on.
+`~/.claude/skills` is shared ground — plugins and other toolkits (argent, maestri, ...) install their skills there too. Symlinking the whole directory to the harness would hide every one of them, so the installer links each entry of `<repo>/.claude/skills` individually. The same mechanism exposes skills that live outside the harness, through `EXTERNAL_SKILL_LINKS` in `scripts/install.mjs` — empty today, but kept as the extension point; if the source of an entry is missing the installer says so and moves on.
 
 A name that already exists in `~/.claude/skills` and is not one of our links is **reported and skipped** — never overwritten, never backed up.
 

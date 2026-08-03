@@ -216,12 +216,11 @@ de degradação vivem no bloco de sucesso e não no de erro — então `set -e` 
 e um script segue achando que isolou. Decide um `floor create` real em diretório
 não-APFS seguido de `echo $?`. Até lá o exit code não é sinal: leia o texto.
 
-**Veio simples? Não recrute assim mesmo.** Duas saídas, as mesmas de sempre:
-
-1. **Serializa** — as frentes que dividiriam o diretório viram uma fila num
-   recruta só, uma depois da outra, planejadas com `wave-orchestration` (seções 1
-   e 2) e disparadas à mão.
-2. **Leva a onda pro Orca**, onde o dispatch existe e é testado.
+**Veio simples? Não recrute assim mesmo.** A saída é uma só: **serializar** — as
+frentes que dividiriam o diretório viram uma fila num recruta só, uma depois da
+outra, planejadas com `wave-orchestration` (seções 1 e 2) e disparadas à mão. Não
+existe host vizinho para onde levar a onda: fora do canvas o disparo também é
+manual, e lá a árvore é um `git worktree` que você mesmo corta.
 
 **Nunca N recrutas sobre o mesmo diretório**: sem clone eles dividem os arquivos e
 o index do git — a condição que a regra inviolável 6 de `wave-orchestration` existe
@@ -246,15 +245,14 @@ O primeiro `floor create` real confere o que o clone traz e onde ele fica **ante
 de virar receita de onda.
 
 O que continua não existindo é o **adaptador automático**: `session-context.mjs`
-responde `dispatch.available: false` no Maestri, e nenhum driver corta a onda
-inteira como o `orca-cli` corta (`wave-orchestration`, "Onde o disparo é
-possível"). O que muda é a conclusão — o disparo aqui é **manual e possível
-enquanto o floor sair isolado**: um `floor create` e um `recruit --floor` por
-ticket, os dois marcadores conferidos, instrução curta no `ask` e o requisito longo
-em nota. Saiu simples, valem as duas saídas acima. Planejamento e regras
-invioláveis seguem em
-`wave-orchestration` (seções 1 e 2); o que a onda ganha aqui é a topologia, não a
-automação.
+responde `dispatch.available: false` aqui — e responde o mesmo em todo host, porque
+driver automático não existe em nenhum (`wave-orchestration`, "Onde o disparo é
+possível"). O disparo é **manual e possível enquanto o floor sair isolado**: um
+`floor create` e um `recruit --floor` por ticket, os dois marcadores conferidos,
+o marcador `.wave/worker.json` escrito **antes** do recruta entrar, instrução curta
+no `ask` e o requisito longo em nota. Saiu simples, vale a saída acima.
+Planejamento, procedimento de disparo e regras invioláveis seguem em
+`wave-orchestration`; o que a onda ganha aqui é a topologia, não a automação.
 
 ## Pulso: o mesmo `PULSO_DE_COORDENACAO`, outro instrumento
 

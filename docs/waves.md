@@ -289,7 +289,7 @@ Custo medido: 1 ponto de GraphQL por 100 issues.
 
 | Artefato | Papel |
 |---|---|
-| `.claude/skills/wave-orchestration/SKILL.md`, seção `## Dispatch` | Procedimento completo: resolução de contexto, corte de `origin/main`, criação de worktree, prompt do worker, agente não-default, bypass |
+| `.claude/skills/wave-orchestration/SKILL.md`, seção `## Dispatch` | Procedimento completo: resolução de contexto, corte de `origin/main`, criação da árvore por host, marcador de worker, prompt do worker, agente não-default, bypass |
 | `.claude/commands/wave-status.md` | `/wave-status` — delega a leitura de estado ao `wave-monitor` |
 | `.claude/agents/wave-monitor.md` | Agente `haiku`, `Read` + `Bash`, que devolve o estado das branches da onda em uma tabela. Reporta; não conserta, não mergeia |
 | `.claude/hooks/lib/context.mjs` | Campo `dispatch` da detecção de sessão: em qual host o disparo é possível |
@@ -301,14 +301,18 @@ função continua pura, não sonda CLI nenhuma e não executa nada:
 
 | `host` | `dispatch.available` | `driver` |
 |---|---|---|
-| `orca` | `true` | `orca-cli` |
-| `maestri` | `false` | `null` — não existe **driver automático**; a topologia existe (`floor create` + `recruit --floor`) e o disparo é manual, de dentro do terminal do app |
-| `plain` | `false` | `null` — sem gerenciador de worktree; o disparo é manual |
+| `maestri` | `false` | `null` — a topologia existe (`floor create` + `recruit --floor`) e o disparo é manual, de dentro do terminal do app |
+| `plain` | `false` | `null` — a árvore é um `git worktree` cortado à mão, com o agente aberto por você |
 
-Fora do Orca e do Maestri a entrega continua sendo o plano. Improvisar com `git worktree` na
-mão perde o que o Orca dá aqui: linhagem, terminal gerenciado e vínculo com o ticket. No
-Maestri o floor não é improviso — é isolamento nativo —, mas pode sair simples e compartilhar
-o diretório; a skill `maestri-orchestration` diz como distinguir e o que fazer quando saiu.
+**`available` é `false` em todo host, e isso não quer dizer "não dá para disparar daqui".**
+Quer dizer que nenhum driver automático existe: o disparo é um procedimento manual em ambos.
+O que distingue os hosts é a `reason`, que nomeia o procedimento daquele host — e é ela, não o
+booleano, que o coordenador lê. O dia em que um driver entrar, este campo é o primeiro a mudar.
+
+No Maestri o floor não é improviso — é isolamento nativo —, mas pode sair simples e compartilhar
+o diretório; a skill `maestri-orchestration` diz como distinguir e o que fazer quando saiu. No
+terminal comum não existe linhagem nem vínculo automático com o ticket: o marcador
+`.wave/worker.json` e a tabela da onda são o que substitui os dois, e ambos são obrigatórios.
 
 ### As cinco decisões que custaram caro
 
@@ -319,11 +323,11 @@ reimplementa o que o irmão já entregou — conflito garantido no merge — ou 
 ticket está errado. O `git log` é a prova, não enfeite: se o merge do bloqueador não estiver no
 commit impresso, o fetch não trouxe o que parecia ter trazido.
 
-**2. O prompt vai em arquivo (`.wave/<ticket>/prompt.md`), passado por
-`--prompt "$(cat ...)"`.** Markdown de vários KB colado inline é comido pelo escaping do shell,
+**2. O prompt vai em arquivo (`.wave/<ticket>/prompt.md`), entregue como
+`"$(cat ...)"`.** Markdown de vários KB colado inline é comido pelo escaping do shell,
 e o modo de falha não é erro: é um prompt truncado que o agente obedece achando que está
-completo. O arquivo também torna o disparo reexecutável — se o agente morrer, o reenvio é um
-`orca terminal send --text "$(cat ...)"`.
+completo. O arquivo também torna o disparo reexecutável — se o agente morrer, o reenvio relê o
+mesmo arquivo em vez de remontar o texto de memória.
 
 O prompt precisa ser **autocontido**: a spec inteira do ticket dentro dele. O worker nasce sem
 contexto, e cada ida ao tracker é uma rodada perdida e um ponto onde ele pode ler o ticket
@@ -356,22 +360,19 @@ PRs e deixou as issues #4, #5 e #6 abertas: os corpos de PR não traziam palavra
 fechamento, e só as #1 e #3 fecharam (L-014 em [`lessons.md`](lessons.md)). Trabalho entregue com
 ticket aberto envenena o plano seguinte — `/wave-plan` lê o ticket, não a `main`, e lista como
 pendente o que já foi entregue. O momento é o da abertura do PR porque é o único em que o
-contexto do ticket ainda está de pé; depois do merge ninguém volta para amarrar. No **GitHub
-Issues** o vínculo é a palavra-chave no **corpo** do PR (`Closes #<n>`; `close`/`closes`/`closed`,
+contexto do ticket ainda está de pé; depois do merge ninguém volta para amarrar. O vínculo é a
+palavra-chave no **corpo** do PR (`Closes #<n>`; `close`/`closes`/`closed`,
 `fix`/`fixes`/`fixed` e `resolve`/`resolves`/`resolved` valem igual, caixa alta e dois-pontos
 opcionais), que fecha a issue **no merge** — no título não conta, issue de outro repo vai
 qualificada (`Closes owner/repo#<n>`), cada issue quer a sintaxe repetida (`Closes #10, closes
 #11`, porque `Closes #10, #11` fecha só a #10), e nada disso é interpretado se o PR não mirar a
-branch default. No **Linear** não existe palavra-chave: são `orca linear attach --current --url
-<url-do-pr>` e `orca linear status set --current --to "<estado>"`, com o nome exato do workflow
-state saindo de `orca linear team states --team <key>` em vez de chute. Mover o ticket para
-revisão, onde a fonte tiver esse estado, é do worker e é na mesma hora. Não há guard, deny nem CI
-que perceba a falta do vínculo: o texto do prompt é a camada única.
+branch default. Não há guard, deny nem CI que perceba a falta do vínculo: o texto do prompt é a
+camada única.
 
 ### Bypass de permissão: ligado por padrão
 
 O worker roda com `--dangerously-skip-permissions`. O motivo é operacional: numa onda de N
-worktrees ninguém está olhando o terminal de cada agente, e agente parado num prompt de
+árvores ninguém está olhando o terminal de cada agente, e agente parado num prompt de
 permissão é agente bloqueado descoberto horas depois. Desligar é **opt-out**, por pedido
 explícito.
 
@@ -391,48 +392,38 @@ subagente não foi medido**, e o worker nasce no `orchestrator` e delega: quase 
 onda executa acontece exatamente nesse contexto. As duas camadas de permissão rodam no cliente;
 a única garantia que não depende dele é branch protection no GitHub.
 
-O bypass não é passado pelo dispatch: ele mora em `settings.agentDefaultArgs`
-(`~/Library/Application Support/orca/profiles/local-default/orca-data.json`), e é default de
-fábrica — no `app.asar` a constante é `YOLO_TUI_AGENT_ARGS`, com `DEFAULT_TUI_AGENT_ARGS =
-YOLO_TUI_AGENT_ARGS`. `--agent claude` monta `claude --dangerously-skip-permissions '<prompt>'`
-sozinho, e não há flag de CLI que troque esse argv.
+**Quem escreve o bypass é quem sobe o agente — você.** Não há mais gerenciador injetando esse
+argv por configuração: a flag entra na linha do `recruit --command` no Maestri, ou no `claude`
+digitado dentro do worktree no terminal comum. Esquecer é um worker travado no primeiro prompt
+de permissão sem ninguém olhando; desligar num ticket é só não escrever a flag.
 
-### O dispatch é de um comando só
+### O disparo, por host
+
+**`host: maestri` — um floor por ticket.**
 
 ```bash
-orca worktree create --repo "id:<repoId>" --name "w1-issue-3" \
-  --parent-worktree "path:<parent>" --base-branch origin/main --issue 3 \
-  --agent claude --prompt "$(cat .wave/3/prompt.md)" --json
+"$MAESTRI_CLI" floor create "w1-issue-3" --branch w1-issue-3
+"$MAESTRI_CLI" recruit "W1-3" --preset <preset> --floor "w1-issue-3"
 ```
 
-O handle sai de `.result.agentTerminalHandle`, com fallback `.result.startupTerminal.handle` em
-runtimes antigos. O agente entra na **primeira** aba do worktree — a mesma que virava shell de
-fallback quando o `create` rodava sem `--agent` — e o prompt viaja no argv de lançamento, porque
-o agente `claude` tem `promptInjectionMode: "argv"`. Não há `terminal wait`, não há
-`terminal send`, e é isso que elimina o defeito abaixo.
+Duas armadilhas medidas governam esse par. O `"$MAESTRI_CLI"` **sai com 0 mesmo em erro** —
+verbo inválido devolveu `EXIT=0` —, então nada aqui pode usar `set -e` nem `$?` como detector:
+a decisão sai do texto da resposta, e o isolamento se confirma pelos literais `isolated clone
+at` e `isolated clone on branch '`. E `floor create` é **irreversível pela CLI** (`floor` é
+`create|list`, não existe verbo de remoção): uma onda de N tickets deixa N floors que só o
+humano apaga na interface do app.
 
-### Por que o caminho de dois passos virou exceção
+**`host: plain` — um worktree por ticket.**
 
-Ele existia como padrão sob a premissa errada de que `--agent` não aceitava argv, e cobrou o
-preço no primeiro disparo real de onda: **4 de 5 tickets subiram sem prompt**.
-`orca terminal wait --for tui-idle --timeout-ms 60000 --json` devolveu
-`{ok: true, state: null, waitedMs: null}` — retorno imediato, sem espera. O
-`terminal send --text ... --enter` seguinte entregou o texto, mas o Enter chegou cedo demais e o
-prompt de 15-22 KB ficou no composer, **não submetido**. Na tela, terminal indistinguível de um
-agente pensando; só apareceu porque o humano olhou.
+```bash
+git worktree add "../w1-issue-3" -b w1-issue-3 origin/main
+```
 
-Hoje o caminho de dois passos serve só ao que `--agent` não expressa: agente fora da lista de
-ids conhecidos, ou modelo específico via `--command`. E nele a regra é **verificar, não
-esperar** — depois do `send`, `orca terminal read` para confirmar a submissão; se o texto ainda
-estiver no composer, `orca terminal send --text "" --enter` e ler de novo. O `wait --for
-tui-idle` pode ficar no roteiro como aceleração, nunca como garantia.
+E aí o agente é aberto à mão dentro da árvore, com o prompt do arquivo.
 
-Esse caminho também deixa um shell de fallback aberto ao lado do agente, e **título não
-desempata os dois**: ambos aparecem como `⠂ orchestrator`, porque quem reescreve o título da aba
-é o TUI, não o `--title`. O discriminador é `orca worktree ps --json`, que traz
-`worktrees[].agents[].paneKey` como `<tabId>:<leafId>` — todo terminal do `terminal list` cujo
-`<tabId>:<leafId>` está fora do set de paneKeys de agente é o shell, e fecha com
-`orca terminal close --terminal <handle> --tab`.
+Nos dois casos o marcador `.wave/worker.json` é escrito **antes** de o agente subir. É a única
+vantagem que o disparo manual tem sobre um driver: a janela entre a árvore nascer e o marcador
+existir não chega a abrir.
 
 ### Acompanhamento
 

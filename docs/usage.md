@@ -8,21 +8,21 @@ ondas em detalhe em [`waves.md`](waves.md); instalação em [`installation.md`](
 
 O harness mora em `~/.claude/` por symlink (`~/.claude/{harness,agents,hooks,commands}`,
 mais um link por skill). Logo: **vale em toda sessão do Claude Code, em qualquer pasta** —
-não só dentro deste repo. Orca e Maestri não instalam nada e não são requisito; são só o
-terminal onde a sessão nasceu.
+não só dentro deste repo. O Maestri não instala nada e não é requisito; é só o terminal onde a
+sessão nasceu.
 
 O host é detectado por variável de ambiente, nunca por processo ou socket aberto
-(`node ~/.claude/hooks/session-context.mjs --json` imprime o objeto cru).
+(`node ~/.claude/hooks/session-context.mjs --json` imprime o objeto cru). Sinais e formato em
+[`integrations/session-context.md`](integrations/session-context.md).
 
 | Host | Detectado por | O que muda |
 |---|---|---|
-| Orca | `ORCA_TERMINAL_HANDLE` ou `TERM_PROGRAM=Orca` | Único com **dispatch de onda automático** (`dispatch.driver: orca-cli`): um worktree e um agente por ticket. O caminho do worktree e o repo id saem de graça da env |
-| Maestri | `MAESTRI_TERMINAL_ID` | Injeta o aviso de que `maestri` **não está no PATH** em zsh: toda invocação vai por `"$MAESTRI_CLI"`. **Sem dispatch automático** — o driver não existe, mas a onda tem topologia nativa (`floor create` + `recruit --floor`) e dispara à mão |
-| Terminal comum | nenhuma das duas | Tudo menos o dispatch. `/wave-plan` imprime o plano e o humano abre os worktrees na mão |
+| Maestri | `MAESTRI_TERMINAL_ID` | Injeta o aviso de que `maestri` **não está no PATH** em zsh: toda invocação vai por `"$MAESTRI_CLI"`. A onda tem topologia nativa (`floor create` + `recruit --floor`), e o `qa` prova a entrega num portal do canvas em vez do argent |
+| Terminal comum | a variável ausente | Nada. A onda vira `git worktree` cortado à mão, e o `qa` usa o argent |
 
-Agentes, skills, comandos e hooks são idênticos nos três. Só o dispatch depende do host.
-Maestri é checado antes de Orca: a variável dele é por-terminal, e um terminal do Maestri
-pode nascer dentro do Orca herdando as `ORCA_*`.
+Agentes, skills, comandos e hooks são idênticos nos dois. **Nenhum dos dois tem dispatch de
+onda automático** — `dispatch.available` é `false` em ambos e o driver não existe; o que o
+campo carrega é a `reason`, que nomeia o procedimento manual daquele host.
 
 ## 2. O que acontece sem eu pedir
 
@@ -56,7 +56,7 @@ de propósito **não** pega em [`guard-destructive.md`](guard-destructive.md).
 | `/sync-harness` | nada | Atualiza o harness agora, ignorando só o throttle de 6h. Todas as outras checagens continuam valendo. Output verbatim |
 | `/ticket-new` | escopo, spec ou discussão (vazio: a conversa atual) | Spawna o `pm` com a skill `ticket-contract`. Apresenta a quebra e **espera aprovação** antes de publicar no tracker |
 | `/review-adversarial` | commit, branch ou tag base (vazio: `main`) | Spawna `reviewer` duas vezes em paralelo, cada um com uma lente distinta. Reporta achados convergentes, depois divergências, depois a cobertura de cada lente |
-| `/wave-plan` | projeto do Linear (URL ou nome), ou `owner/repo` + milestone/label | Tabela de ondas, mais os destaques que não cabem em célula: fan-in, bloqueado externamente, dado ruim |
+| `/wave-plan` | `owner/repo` + milestone ou label | Tabela de ondas, mais os destaques que não cabem em célula: fan-in, bloqueado externamente, dado ruim |
 | `/wave-status` | número da onda, ou a lista de branches/tickets | Spawna o `wave-monitor` (`haiku`, contexto próprio) e devolve uma tabela compacta. Só reporta |
 | `/pr-babysit` | número, URL ou branch (vazio: o PR da branch atual) | Leva o PR a review-ready, rastreando CI e feedback como dois estados independentes |
 
@@ -86,7 +86,7 @@ inventar um roteador.
 1. **Você** descreve o escopo. `/ticket-new` → o `pm` quebra em tickets com os 12 campos do
    contrato. O ticket **é** o prompt: o que não estiver escrito não existe para quem executa.
 2. **Você aprova** a quebra. Só então ela é publicada no tracker.
-3. `/wave-plan` lê os tickets (Linear via `orca linear`, GitHub via `gh`), monta o grafo pelo
+3. `/wave-plan` lê os tickets do GitHub Issues via `gh`, monta o grafo pelo
    `blockedBy` declarado e imprime as ondas. Plano de uma onda só costuma significar
    `blockedBy` não preenchido, não projeto plano.
 4. **Você escolhe** a onda. O disparo é manual: um worktree (ou floor) por ticket, cortado de
@@ -118,16 +118,18 @@ Números medidos aqui, não estimativa.
 
 ## 7. Limitações conhecidas
 
-- **Maestri não dispara onda.** A detecção funciona e avisa; o adaptador não existe. Fora do
-  Orca a entrega é o plano, e improvisar `git worktree` na mão perde linhagem, terminal
-  gerenciado e vínculo com o ticket.
+- **Nenhum host dispara onda sozinho.** A detecção funciona e diz o procedimento; driver
+  automático não existe em lugar nenhum. O disparo é manual em ambos: `floor create` +
+  `recruit --floor` no Maestri, `git worktree add` no terminal comum. O que se perde sem
+  gerenciador — linhagem e vínculo com o ticket — volta como marcador `.wave/worker.json` e
+  tabela da onda, e os dois são obrigatórios, não opcionais.
 - **`/wave-plan` não enxerga colisão de arquivo.** O grafo é feito só de dependência
   declarada (`blockedBy`). Dois tickets da mesma onda editando o mesmo arquivo entram em
   paralelo sem aviso nenhum — quem percebe isso é você, lendo o campo de arquivos afetados.
-- **Handle de terminal envelhece.** Handles são de escopo de runtime: se o Orca reiniciar, o
-  handle antigo morre e precisa ser readquirido por `orca terminal list`.
+- **Floor do Maestri não tem verbo de remoção.** `floor` é `create|list`: uma onda de N
+  tickets deixa N floors que só você apaga na interface do app. Confirme a onda antes do
+  primeiro `create`.
 - **Mensagem longa para agente já rodando cai no paste trap.** O texto fica no composer sem
-  ser submetido, e o terminal fica indistinguível de um agente pensando. Depois de um
-  `terminal send`, **verifique** com `orca terminal read`; se o texto ainda estiver lá, mande
-  um `send --text "" --enter` e leia de novo. `terminal wait --for tui-idle` já voltou na hora
-  sem esperar nada, então ele serve como aceleração, nunca como garantia.
+  ser submetido, e o terminal fica indistinguível de um agente pensando. Daí a regra de
+  instrução curta na mensagem e conteúdo longo em nota ou arquivo, e de **verificar** a
+  entrega em vez de esperar por ela (skill `maestri-orchestration`).
