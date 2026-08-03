@@ -57,7 +57,6 @@ de propósito **não** pega em [`guard-destructive.md`](guard-destructive.md).
 | `/ticket-new` | escopo, spec ou discussão (vazio: a conversa atual) | Spawna o `pm` com a skill `ticket-contract`. Apresenta a quebra e **espera aprovação** antes de publicar no tracker |
 | `/review-adversarial` | commit, branch ou tag base (vazio: `main`) | Spawna `reviewer` duas vezes em paralelo, cada um com uma lente distinta. Reporta achados convergentes, depois divergências, depois a cobertura de cada lente |
 | `/wave-plan` | projeto do Linear (URL ou nome), ou `owner/repo` + milestone/label | Tabela de ondas, mais os destaques que não cabem em célula: fan-in, bloqueado externamente, dado ruim |
-| `/wave-run` | número da onda (vazio: **pergunta**, não assume 1) | Dispara **uma** onda: um worktree e um agente por ticket, cortados de `origin/main` atualizada. Nunca mergeia, nunca encadeia a onda seguinte |
 | `/wave-status` | número da onda, ou a lista de branches/tickets | Spawna o `wave-monitor` (`haiku`, contexto próprio) e devolve uma tabela compacta. Só reporta |
 | `/pr-babysit` | número, URL ou branch (vazio: o PR da branch atual) | Leva o PR a review-ready, rastreando CI e feedback como dois estados independentes |
 
@@ -72,7 +71,7 @@ o que o Claude lê para decidir quem acordar. Falar a frase certa basta.
 | Frase | O que acorda |
 |---|---|
 | "quebra esse escopo em tickets" / "esse ticket tá bom?" / "monta o projeto" | Skill `ticket-contract` e o agente `pm` |
-| "quantas frentes dá pra tocar em paralelo?" / "monta o grafo desse projeto" / "o que dá pra começar agora" | Skill `wave-orchestration` (planejamento; o disparo continua sendo `/wave-run`) |
+| "quantas frentes dá pra tocar em paralelo?" / "monta o grafo desse projeto" / "o que dá pra começar agora" | Skill `wave-orchestration` (planejamento; o disparo é manual) |
 | "revisa direito, com duas lentes" / "quero dois revisores" | Skill `adversarial-review`, que spawna `reviewer` duas vezes em paralelo |
 | "o CI falhou" / "por que o check está vermelho" / "responder o review" | Skill `pr-babysitting`, que delega a classificação das threads ao agente `pr-triage` |
 | "onde está definido X?" / "o que chama Y?" / "mapeia esse diretório" | Agente `cavecrew-investigator` (tabela `file:line`, saída comprimida) |
@@ -90,8 +89,8 @@ inventar um roteador.
 3. `/wave-plan` lê os tickets (Linear via `orca linear`, GitHub via `gh`), monta o grafo pelo
    `blockedBy` declarado e imprime as ondas. Plano de uma onda só costuma significar
    `blockedBy` não preenchido, não projeto plano.
-4. **Você escolhe** a onda. `/wave-run <n>` corta um worktree por ticket de uma `origin/main`
-   recém-buscada e sobe um agente em cada, com o prompt vindo de arquivo.
+4. **Você escolhe** a onda. O disparo é manual: um worktree (ou floor) por ticket, cortado de
+   uma `origin/main` recém-buscada, com um agente em cada e o prompt vindo de arquivo.
 5. Cada worker executa no seu worktree: baseline antes de editar, `git stash` proibido (o
    stash é um ref único compartilhado entre worktrees), commit, push, PR contra `main` — e
    **para**.

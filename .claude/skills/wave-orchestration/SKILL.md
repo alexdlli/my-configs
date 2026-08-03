@@ -699,12 +699,11 @@ O vínculo com o ticket, na mesma seção, tem camada nenhuma atrás dele: não 
 guard, permissão nem CI que perceba um PR que não referencia o ticket. A onda 1
 mediu o preço — cinco PRs mergeados, e as issues #4, #5 e #6 continuaram abertas
 porque só dois corpos de PR traziam a palavra-chave (L-014 em
-[`docs/lessons.md`](../../../docs/lessons.md)). Ele está escrito em **três
+[`docs/lessons.md`](../../../docs/lessons.md)). Ele está escrito em **dois
 lugares**: a seção `## Ao terminar` do template acima (a única que o worker de
-fato lê), a conferência do `prompt.md` em `.claude/commands/wave-run.md`, que é
-o que o coordenador checa antes de disparar, e o item 5 de "As cinco decisões
-que custaram caro" em `docs/waves.md`, para quem lê o fluxo de fora. Mesma regra
-de propagação do `git stash` abaixo, e pelo mesmo motivo.
+fato lê) e o item 5 de "As cinco decisões que custaram caro" em `docs/waves.md`,
+para quem lê o fluxo de fora. Mesma regra de propagação do `git stash` abaixo, e
+pelo mesmo motivo.
 
 A seção `git stash` do template duplica de propósito o item 6 das regras
 invioláveis: o worker recebe o prompt como arquivo e não carrega esta skill, de

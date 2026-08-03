@@ -25,7 +25,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 
 Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force` and `git commit --no-verify` — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
-The harness ships <!-- docs-count:skills -->six skills — `ticket-contract`, `orca-linear`, `adversarial-review`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->seven slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+The harness ships <!-- docs-count:skills -->five skills — `ticket-contract`, `adversarial-review`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->six slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
 ## Install
 
@@ -64,10 +64,9 @@ Removes only the links this installer created (matched by recorded target) and r
 │                        # session-context, guard-destructive
 │   └── lib/             # shared hook helpers (+ their tests)
 ├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan
-│                        # /wave-run /wave-status /pr-babysit
-├── skills/              # ticket-contract, orca-linear, adversarial-review,
-│                        # wave-orchestration, pr-babysitting,
-│                        # maestri-orchestration — linked one by one
+│                        # /wave-status /pr-babysit
+├── skills/              # ticket-contract, adversarial-review, wave-orchestration,
+│                        # pr-babysitting, maestri-orchestration — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
@@ -85,7 +84,7 @@ docs/
 ├── waves.md             # ticket contract, dependency graph, wave plan
 ├── guard-destructive.md # the PreToolUse guard: the three permission layers,
 │                        # what it blocks and what it deliberately doesn't
-└── integrations/        # orca, maestri, ecotokens, ai-memory
+└── integrations/        # session-context, maestri, ecotokens, ai-memory
 ```
 
 ## Why
@@ -101,7 +100,7 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 
 | Integration | What it gives you | Doc |
 |-------------|-------------------|-----|
-| Orca / Maestri | Terminal-host and account detection at session start, and the `orca linear` tracker path the wave pipeline reads from | [`docs/integrations/orca.md`](docs/integrations/orca.md) |
+| Session context | Terminal-host, account and tracker detection at session start, by environment variable — no process spawned | [`docs/integrations/session-context.md`](docs/integrations/session-context.md) |
 | Maestri persona | Canonical copy of the Tech Lead / Maestro orchestration persona, its three measured defects, and the map of where each of its rules ended up now that it is ported to the `maestri-orchestration` skill | [`docs/integrations/maestri.md`](docs/integrations/maestri.md) |
 | EcoTokens | Optional Rust output filter | [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md) |
 | ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. `node scripts/setup-ai-memory.mjs`; the default `claude-sub` provider uses your Claude subscription through a local `claude -p` shim | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |

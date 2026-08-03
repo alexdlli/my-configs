@@ -26,14 +26,37 @@
 // e.g. a remote or native deploy):
 //   AI_MEMORY_CONTAINER     container name          (default: ai-memory)
 //   AI_MEMORY_REPO          repo for bootstrap      (default: cwd)
+//   AI_MEMORY_IMAGE         image the server runs   (default: akitaonrails/ai-memory:latest)
 //   AI_MEMORY_LLM_PROVIDER  provider override       (default: from container)
 //   AI_MEMORY_LLM_BASE_URL  openai-compat base URL  (default: from container)
 //   AI_MEMORY_LLM_MODEL     expected model          (default: from container)
+//   CLAUDE_CONFIG_DIR       Claude Code config root (default: ~/.claude)
 
 import { spawnSync } from 'node:child_process';
+import { accessSync, constants, existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
 const CONTAINER = process.env.AI_MEMORY_CONTAINER || 'ai-memory';
 const REPO = process.env.AI_MEMORY_REPO || process.cwd();
+const IMAGE = process.env.AI_MEMORY_IMAGE || 'akitaonrails/ai-memory:latest';
+
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+const CLAUDE_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
+const GLOBAL_SKILLS_DIR = path.join(CLAUDE_DIR, 'skills');
+const PROJECT_SKILLS_DIR = path.join(REPO, '.claude', 'skills');
+
+// Both hook forms ai-memory stages — a vendored shell script and the CLI's own
+// `hook` subcommand — carry the product name in the command string.
+const HOOK_COMMAND_HINT = 'ai-memory';
+const HOOK_SCRIPT_PATTERN = /\S*ai-memory\S*\.sh/;
+
+// Every managed skill carries this marker; an unmanaged skill of the same name
+// does not, which is how ai-memory itself decides what it may overwrite.
+const MANAGED_SKILL_MARKER = 'ai-memory-managed';
+const SKILL_FILE = 'SKILL.md';
+
+const VERSION_PATTERN = /\d+\.\d+\.\d+/;
 
 const LLM_ENV_KEYS = [
   'AI_MEMORY_LLM_PROVIDER',
@@ -309,6 +332,128 @@ function checkWikiGit() {
   else record('Wiki git history', 'WARN', 'no wiki git log yet — capture a session first');
 }
 
+// The version the server actually serves, plus whether it is still the image
+// the tag points at. `ai-memory upgrade` pulls a new image but leaves the
+// running container alone, so an upgrade takes effect only after a recreate.
+function checkVersion() {
+  const running = sh('docker', ['exec', CONTAINER, 'ai-memory', '--version']);
+  const version = running.stdout.match(VERSION_PATTERN)?.[0];
+  if (!version) {
+    const why = (running.stderr || running.stdout || `exit ${running.code}`).split('\n')[0];
+    return record('ai-memory version', 'FAIL', `container "${CONTAINER}" reported no version (${why})`);
+  }
+  const inUse = sh('docker', ['inspect', '-f', '{{.Image}}', CONTAINER]).stdout;
+  const pulled = sh('docker', ['image', 'inspect', '-f', '{{.Id}}', IMAGE]).stdout;
+  if (inUse && pulled && inUse !== pulled) {
+    return record(
+      'ai-memory version',
+      'WARN',
+      `server runs ${version}, from an image that is no longer ${IMAGE} — ` +
+        `\`ai-memory upgrade\` pulls without recreating the container: ` +
+        `docker rm -f ${CONTAINER} && node scripts/setup-ai-memory.mjs`,
+    );
+  }
+  record('ai-memory version', 'PASS', `${version} (${IMAGE})`);
+}
+
+function isExecutable(file) {
+  try {
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function collectAiMemoryHooks(settings) {
+  const events = new Set();
+  const broken = [];
+  for (const [event, matchers] of Object.entries(settings.hooks ?? {})) {
+    for (const matcher of matchers) {
+      for (const hook of matcher.hooks ?? []) {
+        const command = hook.command ?? '';
+        if (!command.includes(HOOK_COMMAND_HINT)) continue;
+        events.add(event);
+        const script = command.match(HOOK_SCRIPT_PATTERN)?.[0];
+        if (script && !isExecutable(script)) broken.push(script);
+      }
+    }
+  }
+  return { events: [...events].sort(), broken };
+}
+
+// Capture lives or dies with these: no hook entry means nothing reaches the
+// server, however healthy the server is.
+function checkStagedHooks() {
+  if (!existsSync(CLAUDE_SETTINGS)) {
+    return record('Staged hooks', 'BLOCKED', `no agent settings at ${CLAUDE_SETTINGS} — hook wiring NOT verified`);
+  }
+  let found;
+  try {
+    found = collectAiMemoryHooks(JSON.parse(readFileSync(CLAUDE_SETTINGS, 'utf8')));
+  } catch (e) {
+    return record('Staged hooks', 'FAIL', `could not read hook wiring from ${CLAUDE_SETTINGS} (${e.message})`);
+  }
+  if (found.events.length === 0) {
+    return record(
+      'Staged hooks',
+      'FAIL',
+      `no ai-memory hook in ${CLAUDE_SETTINGS} — nothing is captured. ` +
+        'Run: ai-memory install-hooks --agent claude-code --apply',
+    );
+  }
+  if (found.broken.length > 0) {
+    return record(
+      'Staged hooks',
+      'FAIL',
+      `staged but missing or not executable: ${found.broken.join(', ')} — re-stage with \`ai-memory upgrade\``,
+    );
+  }
+  record('Staged hooks', 'PASS', found.events.join(', '));
+}
+
+function managedSkillNames(dir) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names.filter((name) => readSkill(path.join(dir, name)).includes(MANAGED_SKILL_MARKER)).sort();
+}
+
+function readSkill(skillDir) {
+  try {
+    return readFileSync(path.join(skillDir, SKILL_FILE), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+// Since 1.18.0 `install-instructions` also writes Agent Skills, and its default
+// scope is the project — i.e. the repo's own .claude/skills, a directory the
+// harness installer owns one entry at a time. The harness asks for `global`.
+function checkManagedSkills() {
+  const projectScoped = managedSkillNames(PROJECT_SKILLS_DIR);
+  if (projectScoped.length > 0) {
+    return record(
+      'Managed skills',
+      'FAIL',
+      `${projectScoped.join(', ')} landed in ${PROJECT_SKILLS_DIR}, which belongs to the harness — ` +
+        'delete them and re-run: ai-memory install-instructions --skills-scope global',
+    );
+  }
+  const globalScoped = managedSkillNames(GLOBAL_SKILLS_DIR);
+  if (globalScoped.length === 0) {
+    return record(
+      'Managed skills',
+      'FAIL',
+      `none in ${GLOBAL_SKILLS_DIR} — run: ai-memory install-skills --scope global`,
+    );
+  }
+  record('Managed skills', 'PASS', `${globalScoped.length} in ${GLOBAL_SKILLS_DIR}`);
+}
+
 async function main() {
   const config = detectLlmConfig();
   if (!jsonMode) {
@@ -321,6 +466,7 @@ async function main() {
   const up = checkContainer();
   await checkLlmBackend(config);
   if (up) {
+    checkVersion();
     checkStatus(config);
     checkBootstrapDryRun();
     checkWikiGit();
@@ -328,9 +474,11 @@ async function main() {
     record(
       'Server-side checks',
       'BLOCKED',
-      'no running container — status, bootstrap reachability and wiki git history were not checked',
+      'no running container — version, status, bootstrap reachability and wiki git history were not checked',
     );
   }
+  checkStagedHooks();
+  checkManagedSkills();
 
   const fails = results.filter((r) => r.status === 'FAIL').length;
   const warns = results.filter((r) => r.status === 'WARN').length;

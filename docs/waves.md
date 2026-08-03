@@ -26,7 +26,6 @@ agente entregar a coisa certa.* "Adicionar suporte a transações recorrentes" r
 | `.claude/skills/ticket-contract/SKILL.md` | Fonte da verdade: os 12 campos, as regras de criação de projeto, a checagem de prontidão, o adaptador de tracker e a regra de autoria |
 | `.claude/agents/pm.md` | Agente que transforma discussão/spec em projeto + tickets. Lê o codebase para preencher os campos técnicos; nunca edita código |
 | `.claude/commands/ticket-new.md` | `/ticket-new` — aciona o fluxo |
-| `.claude/skills/orca-linear/SKILL.md` | Stub de descoberta da CLI `orca linear` (guia completo vem do binário) |
 | `~/.claude/skills/to-tickets/SKILL.md` | Prior art externa reaproveitada para a mecânica de decomposição |
 
 Os 12 campos e as regras não são repetidos aqui de propósito: quem edita, edita a skill.
@@ -60,7 +59,7 @@ As fases seguintes consomem tickets independentes de tracker:
 
 O tracker é detectado por `node ~/.claude/hooks/session-context.mjs --json` (campos `tracker`
 e `trackerSource`), nunca adivinhado pelo nome do repo. Os sinais de ambiente que alimentam
-essa detecção estão em [`integrations/orca.md`](integrations/orca.md).
+essa detecção estão em [`integrations/session-context.md`](integrations/session-context.md).
 
 **Assimetria deliberada entre trackers:** Linear (pessoal) e GitHub Issues têm leitura e
 escrita — o primeiro via CLI `orca linear`, o segundo via CLI `gh`; é onde os tickets nascem.
@@ -307,7 +306,6 @@ Custo medido: 1 ponto de GraphQL por 100 issues.
 | Artefato | Papel |
 |---|---|
 | `.claude/skills/wave-orchestration/SKILL.md`, seção `## Dispatch` | Procedimento completo: resolução de contexto, corte de `origin/main`, criação de worktree, prompt do worker, agente não-default, bypass |
-| `.claude/commands/wave-run.md` | `/wave-run` — dispara **uma** onda |
 | `.claude/commands/wave-status.md` | `/wave-status` — delega a leitura de estado ao `wave-monitor` |
 | `.claude/agents/wave-monitor.md` | Agente `haiku`, `Read` + `Bash`, que devolve o estado das branches da onda em uma tabela. Reporta; não conserta, não mergeia |
 | `.claude/hooks/lib/context.mjs` | Campo `dispatch` da detecção de sessão: em qual host o disparo é possível |

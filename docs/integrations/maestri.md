@@ -22,7 +22,7 @@ O binário do app injeta o bloco de PATH em `~/.profile`, `~/.bashrc` e na confi
 
 Toda invocação do persona (`maestri list`, `maestri ask`, `maestri recruit`, `maestri routine`, `maestri ask --batch`) vira `"$MAESTRI_CLI"`, com aspas — o caminho staged fica sob `$TMPDIR`.
 
-Confirmado ao vivo: num terminal do Maestri existem exatamente **três** variáveis — `MAESTRI_SOCKET`, `MAESTRI_TERMINAL_ID` e `MAESTRI_CLI`. Os outros 11 nomes `MAESTRI_*` que o binário do app carrega não chegam ao terminal. Detalhe e sinais em [`orca.md`](orca.md).
+Confirmado ao vivo: num terminal do Maestri existem exatamente **três** variáveis — `MAESTRI_SOCKET`, `MAESTRI_TERMINAL_ID` e `MAESTRI_CLI`. Os outros 11 nomes `MAESTRI_*` que o binário do app carrega não chegam ao terminal. Detalhe e sinais em [`session-context.md`](session-context.md).
 
 ### 2. Nomes de skill desatualizados
 

@@ -18,7 +18,7 @@ docs/
   usage.md             # driving the harness day to day
   contributing.md      # this file
   waves.md             # ticket contract, dependency graph, wave plan
-  integrations/        # orca.md, maestri.md, ecotokens.md, ai-memory.md
+  integrations/        # session-context.md, maestri.md, ecotokens.md, ai-memory.md
 scripts/
   install.mjs          # symlink + merge installer
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
