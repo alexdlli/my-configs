@@ -2,14 +2,15 @@
 name: wave-orchestration
 description: >-
   Planejamento de execução em ondas a partir do grafo de dependências de um
-  projeto de tickets. Use quando o usuário pedir "plano de ondas", "quantas
-  frentes dá pra tocar em paralelo", "o que dá pra começar agora", "monta o
-  grafo desse projeto", ou ao orquestrar várias frentes com marcos de
-  sincronização. Lê os tickets de GitHub Issues via `gh`, monta o grafo pelas
-  relações reais de bloqueio e apresenta as ondas ao humano. Também cobre o
-  disparo **manual** de uma onda por vez — uma árvore e um agente por ticket —
-  quando o usuário pedir "dispara a onda 1", "roda essa onda", "abre os
-  worktrees". Nunca faz merge: isso é do humano.
+  projeto de tickets. **Opt-in: só carregue quando o usuário pedir ondas ou
+  grafo pelo nome** — "plano de ondas", "monta o grafo desse projeto", "quantas
+  frentes dá pra tocar em paralelo", "dispara a onda 1", ou o comando
+  `/wave-plan`. Tocar várias frentes em paralelo, por si só, **não** é motivo
+  para carregar esta skill: isso é o trabalho normal do orquestrador. Lê os
+  tickets de GitHub Issues via `gh`, monta o grafo pelas relações reais de
+  bloqueio e apresenta as ondas ao humano. Também cobre o disparo **manual** de
+  uma onda por vez — uma árvore e um agente por ticket. Nunca faz merge: isso é
+  do humano.
 ---
 
 # Orquestração em ondas

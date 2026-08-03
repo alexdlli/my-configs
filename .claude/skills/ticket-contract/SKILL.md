@@ -1,12 +1,13 @@
 ---
 name: ticket-contract
 description: >-
-  Contrato de ticket para trabalho executado por agente autônomo. Use ao escrever,
-  revisar ou quebrar tickets, ao montar um projeto no tracker, e ao decidir se um
-  ticket existente já serve como prompt de agente sem contexto implícito. Dispara
-  em "criar tickets", "quebrar esse escopo", "esse ticket tá bom?", "montar o
-  projeto", "transformar essa spec em tickets", "revisar o backlog antes de soltar
-  os agentes". Tracker pessoal: GitHub Issues via CLI `gh`, com leitura e escrita.
+  Contrato de ticket para trabalho executado por agente autônomo. **Opt-in: só
+  carregue quando o usuário pedir ticket ou projeto pelo nome** — "criar
+  tickets", "quebrar esse escopo em tickets", "esse ticket tá bom?", "montar o
+  projeto", "transformar essa spec em tickets", "revisar o backlog antes de
+  soltar os agentes", ou o comando `/ticket-new`. Uma tarefa comum **não** passa
+  por aqui: virar ticket é uma decisão do usuário, não o caminho padrão do
+  trabalho. Tracker pessoal: GitHub Issues via CLI `gh`, com leitura e escrita.
   Tracker de trabalho: Jira via agente `atlassian` (somente leitura).
 ---
 

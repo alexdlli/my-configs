@@ -56,6 +56,8 @@ Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-
 
 Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. <!-- docs-count:skills -->Five ship with the harness, under `.claude/skills/`.
 
+Two of them — `ticket-contract` and `wave-orchestration` — are deliberately **opt-in**, and their descriptions say so. They load when the user names tickets, a graph or a wave; they do not load because the orchestrator happens to be running three fronts at once. That is ordinary delegation, and routing it through the ticket pipeline spends two rounds before any code exists.
+
 | Skill | What it owns |
 |-------|--------------|
 | `ticket-contract` | The 12 fields a ticket needs in order to work as a standalone agent prompt, plus the project-creation rules, the readiness check and the tracker adapter. Source of truth for the `pm` agent. |

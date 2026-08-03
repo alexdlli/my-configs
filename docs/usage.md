@@ -70,8 +70,8 @@ o que o Claude lê para decidir quem acordar. Falar a frase certa basta.
 
 | Frase | O que acorda |
 |---|---|
-| "quebra esse escopo em tickets" / "esse ticket tá bom?" / "monta o projeto" | Skill `ticket-contract` e o agente `pm` |
-| "quantas frentes dá pra tocar em paralelo?" / "monta o grafo desse projeto" / "o que dá pra começar agora" | Skill `wave-orchestration` (planejamento; o disparo é manual) |
+| "quebra esse escopo em tickets" / "esse ticket tá bom?" / "monta o projeto" | Skill `ticket-contract` e o agente `pm` — **só nessas palavras**: tarefa comum não vira ticket |
+| "quantas frentes dá pra tocar em paralelo?" / "monta o grafo desse projeto" / "plano de ondas" | Skill `wave-orchestration` (planejamento; o disparo é manual) — **só nessas palavras**: tocar três frentes em paralelo é trabalho normal do orquestrador, não uma onda |
 | "revisa direito, com duas lentes" / "quero dois revisores" | Skill `adversarial-review`, que spawna `reviewer` duas vezes em paralelo |
 | "o CI falhou" / "por que o check está vermelho" / "responder o review" | Skill `pr-babysitting`, que delega a classificação das threads ao agente `pr-triage` |
 | "onde está definido X?" / "o que chama Y?" / "mapeia esse diretório" | Agente `cavecrew-investigator` (tabela `file:line`, saída comprimida) |
@@ -81,7 +81,15 @@ o que o Claude lê para decidir quem acordar. Falar a frase certa basta.
 Se o agente errado (ou nenhum) acordar, o conserto é editar o `description:` dele, não
 inventar um roteador.
 
-## 5. Do "tenho uma ideia" ao merge
+## 5. Do "tenho uma ideia" ao merge — o caminho longo, e ele é opt-in
+
+**Este fluxo não é o padrão.** O padrão é pedir a coisa e o orquestrador decompor e delegar
+na mesma resposta, sem ticket e sem onda. O caminho abaixo existe para o projeto que vale
+tickets — várias frentes com dependência real entre elas, executadas por agentes que nascem
+sem contexto — e ele só começa quando **você** o chama pelo nome ou por um dos comandos.
+
+Vale o preço quando o grafo é real. Não vale para uma frente só: ali o custo de virar ticket
+é duas rodadas antes de a primeira linha ser escrita.
 
 1. **Você** descreve o escopo. `/ticket-new` → o `pm` quebra em tickets com os 12 campos do
    contrato. O ticket **é** o prompt: o que não estiver escrito não existe para quem executa.

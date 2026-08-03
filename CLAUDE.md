@@ -66,6 +66,8 @@ Every session starts in the `orchestrator` agent (set via `.claude/settings.json
 
 Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
 
+**The ticket and wave pipeline is opt-in.** `pm` → `ticket-contract` → dependency graph → `wave-orchestration` still exists and still works, but it is not the default path: it runs when I ask for it by name (or through `/ticket-new`, `/wave-plan`, `/wave-status`). Delegating several fronts in parallel is ordinary orchestration, not a wave — turning a plain request into tickets costs two rounds before the first line is written.
+
 Inspiration credit: [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — adopted the *idea* of specialized agents with personas, built on Claude Code's official subagents mechanism.
 
 Full details: [`docs/agent-system.md`](docs/agent-system.md).

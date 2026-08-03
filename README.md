@@ -27,6 +27,8 @@ Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior
 
 The harness ships <!-- docs-count:skills -->five skills — `ticket-contract`, `adversarial-review`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->six slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
+The ticket → dependency-graph → wave pipeline (`ticket-contract`, `wave-orchestration`, `/ticket-new`, `/wave-plan`, `/wave-status`) is **opt-in**: it runs when you ask for it by name, never by default. The default path is the orchestrator decomposing the request and delegating to specialists in a single response — several fronts in parallel is ordinary work, not a wave.
+
 ## Install
 
 ```bash
