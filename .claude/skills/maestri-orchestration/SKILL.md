@@ -321,11 +321,11 @@ dirigido pela mesma CLI, o que o põe dentro do `Bash` que o `qa` já tem no
 allowlist.
 
 - **Web:** `portal create URL ["Nome"] [--size WxH]`, e daí navegar, clicar,
-  preencher, screenshot, `resize W H` (viewport exato, QA responsivo) e `ua`
+  preencher, screenshot, `resize "Nome" W H` (viewport exato, QA responsivo) e `ua`
   (troca de user agent). Skill `maestri-portal`.
 - **Simulador:** `portal devices` lista os dispositivos com runtime, estado de
   boot e qual portal já ocupa cada um; `portal create --simulator UDID` abre um.
-  Valem os mesmos verbos, mais botão de hardware e `launch "com.bundle.id"`.
+  Valem os mesmos verbos, mais botão de hardware e `launch "Nome" com.bundle.id`.
   Skill `maestri-portal-devices`.
 
 ### Coordenada de simulador: são TRÊS espaços, não dois
@@ -336,14 +336,15 @@ por um fator 3, e o erro não dá erro: o tap acerta outro elemento e a corrida 
 | Fonte | Valor medido | Espaço | Serve para |
 |---|---|---|---|
 | header e árvore do `snapshot`, e os verbos `click` / `tap` | `screen: 402x874pt` | **screen points** | **tocar** |
-| `portal info` | `display: 1206x2622 px` | pixels nativos | pegar o `udid` e passar para o build. **Nunca** para tocar |
+| `portal info "Nome"` | `display: 1206x2622 px` | pixels nativos | pegar o `udid` e passar para o build. **Nunca** para tocar |
 | o PNG do modo fallback | `589x1280` | pixels da própria imagem | tocar **no modo imagem**, lidos direto da imagem, sem reescalar |
 
 1206/402 e 2622/874 dão **3.000 exato** — é fator de escala, não arredondamento.
 Confirmado por dois taps independentes, cada espaço candidato levando a um destino
-diferente: `click 201,371` (centro de `@e3 button "Accessibility"`) abriu
-Accessibility, e `click 201,319` (centro de `@e2 button "General"`) abriu General.
-Em pixel nativo os dois teriam caído na status bar ou num título não-tocável.
+diferente: `click "Nome" 201,371` (centro de `@e3 button "Accessibility"`) abriu
+Accessibility, e `click "Nome" 201,319` (centro de `@e2 button "General"`) abriu
+General. Em pixel nativo os dois teriam caído na status bar ou num título
+não-tocável.
 
 **O `--help` do Maestri diz que a coordenada vai "in device pixels", e isso foi
 medido como errado para o toque.** É defeito upstream, não nosso: não "conserte"
@@ -363,8 +364,8 @@ Duas regras que não mudam de ambiente. **Coordenada não sai de screenshot:**
 `snapshot` devolve ref e é por ref que se clica, a mesma descoberta-antes-do-toque
 que o `qa` aplica no argent. Quando o `snapshot` do simulador vem **imagem em vez
 de árvore**, a linha `accessibility:` do header nomeia o motivo, e o conserto é
-`portal launch` do bundle — que traz o app para debaixo do Maestri e devolve a
-árvore. Tocar por pixel lido da imagem é a exceção da seção acima: ela tem
+`portal launch "Nome" com.bundle.id` — que traz o app para debaixo do Maestri e
+devolve a árvore. Tocar por pixel lido da imagem é a exceção da seção acima: ela tem
 marcador de modo próprio e resolução declarada no header, e não é licença para
 adivinhar pixel quando a árvore existe. E **artefato que existiu só no terminal
 não é artefato:** o screenshot vai para disco ou para uma nota, legendado com o
