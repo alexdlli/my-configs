@@ -49,7 +49,9 @@ Fora de `~/work/` a deteccao **nao** afirma "pessoal": ali vale a identidade def
 node ~/.claude/hooks/session-context.mjs --verify-account
 ```
 
-Essa checagem compara o e-mail que o git realmente resolve no cwd (`git config --get user.email`) com a identidade default declarada em `~/.gitconfig` antes do bloco `includeIf`. Iguais → conta pessoal → `github`; diferentes → conta de trabalho → `jira`; `trackerSource` vira `git-identity`. Nenhum e-mail fica hardcoded no repo.
+Essa checagem compara o e-mail que o git realmente resolve no cwd (`git config --get user.email`) com a identidade default declarada em `~/.gitconfig` antes do bloco `includeIf`. Iguais → conta pessoal → `github`; diferentes → conta de trabalho → `jira`. Nenhum e-mail fica hardcoded no repo.
+
+**A resposta sai em `accountCheck`, aninhada — o topo nao muda.** `--verify-account` acrescenta a chave `accountCheck` e nao reescreve `tracker`, `trackerSource` nem `account`: fora de `~/work/` eles continuam `null`/`unknown` mesmo com a flag. Quem quer o tracker le `accountCheck.tracker` (e `accountCheck.trackerSource`, que ai sim vale `git-identity`); reler o `tracker` do topo depois da checagem devolve o mesmo `null` de antes, com um subprocess a mais. Sem e-mail resolvido no cwd ou sem identidade default legivel, `accountCheck.tracker` tambem vem `null` — e so nesse caso a pergunta vai pro usuario.
 
 ## Formato retornado
 
@@ -67,9 +69,17 @@ Essa checagem compara o e-mail que o git realmente resolve no cwd (`git config -
   },
   "tracker": null,
   "trackerSource": "unknown",
-  "account": "unknown"
+  "account": "unknown",
+  "accountCheck": {
+    "email": "<e-mail que o git resolve no cwd>",
+    "account": "personal",
+    "tracker": "github",
+    "trackerSource": "git-identity"
+  }
 }
 ```
+
+`accountCheck` **so aparece com `--verify-account`** — sem a flag a chave nao existe. No exemplo ela contradiz o topo de proposito: e exatamente o que sai num repo pessoal fora de `~/work/`, onde o caminho puro nao tem evidencia para afirmar `github` e a checagem tem. O topo nunca e reescrito, entao o valor bom e o de dentro do `accountCheck`.
 
 Em `plain`, `hostDetail` vem vazio. O campo `dispatch` responde **so** "da pra disparar uma onda daqui?": hoje `available` e `false` em todo host, porque nenhum driver automatico existe, e o que muda e a `reason` — ela nomeia o procedimento manual daquele host. Ver [`../waves.md`](../waves.md).
 

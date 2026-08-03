@@ -23,8 +23,11 @@ context. Anything you leave implicit does not exist for that agent.
    not as a failure — the hook path is pure and never claims the personal account.
    Resolve it with `node ~/.claude/hooks/session-context.mjs --verify-account`, which
    spends one subprocess comparing the git identity of the cwd against the default one
-   and answers `github` or `jira` with `trackerSource: git-identity`. Only if that is
-   still inconclusive do you ask the user. Never guess from the repo name.
+   and answers `github` or `jira` with `trackerSource: git-identity`. That answer arrives
+   **nested under `accountCheck`** — read `accountCheck.tracker`, never the top-level
+   `tracker`, which stays `null`: the check is added as its own key and never overwrites
+   the pure fields. Only if `accountCheck.tracker` is `null` too do you ask the user.
+   Never guess from the repo name.
 
 # Tracker routing
 

@@ -390,7 +390,10 @@ Detecte o tracker com `node ~/.claude/hooks/session-context.mjs --json` e leia
 puro responde `null` **de propósito** — ele não afirma a conta pessoal sem evidência.
 Quem resolve é `node ~/.claude/hooks/session-context.mjs --verify-account`, que gasta um
 subprocess comparando a identidade git do cwd com a default e devolve `github` ou `jira`,
-com `trackerSource: git-identity`. Só depois disso, se ainda restar dúvida, pergunte.
+com `trackerSource: git-identity`. Essa resposta vem **aninhada em `accountCheck`**: leia
+`accountCheck.tracker`, nunca o `tracker` do topo, que continua `null` — a checagem entra
+como chave própria e não sobrescreve os campos puros. Só se `accountCheck.tracker` também
+vier `null` é que você pergunta.
 
 **Jira (trabalho) — somente leitura.** Delegue ao agente `atlassian`, que é o único
 com acesso ao MCP da Atlassian. No trabalho os tickets chegam prontos: o papel aqui é
