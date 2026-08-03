@@ -51,8 +51,9 @@ const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
 
 // Skills installed by other toolkits outside ~/.claude/skills. Claude Code only
 // loads what lives under ~/.claude/skills, so without a link these are inert.
-// Empty today; add `'<name>': '<absolute path>'` to expose one. A target that
-// is not on disk is reported and skipped, never linked blind.
+// Empty today; add `'<name>': '<absolute path>'` to expose one. A target that is
+// not on disk is reported and skipped, never linked blind — but the name stays
+// declared, so an already-installed link is not read as a dropped skill.
 const EXTERNAL_SKILL_LINKS = {};
 
 // v1 metadata predates addedLinks. That installer only ever created these two
@@ -495,13 +496,21 @@ async function linkHarnessDirs(dryRun) {
   return links;
 }
 
+// Aborts rather than reporting an empty declaration: "the harness declares no
+// skills" and "I could not read the harness" are the same value to every caller
+// downstream, and retraction acts on that value. Reading a deleted or unreadable
+// .claude/skills as zero declarations takes every skill link off the machine —
+// measured, exit 0, five links removed. Every checkout ships this directory.
 async function harnessSkillNames() {
   let entries;
   try {
     entries = await fs.readdir(HARNESS_SKILLS_DIR, { withFileTypes: true });
   } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
+    die(
+      `cannot read ${HARNESS_SKILLS_DIR} (${err.code ?? err.message}). ` +
+        'That is a damaged checkout, not a harness that declares no skills — ' +
+        'refusing to retract every skill link on that reading.',
+    );
   }
   return entries
     .filter((entry) => !entry.name.startsWith('.'))
@@ -509,23 +518,38 @@ async function harnessSkillNames() {
     .sort();
 }
 
+// Returns { sources, declaredPaths }. `sources` is what can be linked right now;
+// `declaredPaths` is every skill link the harness claims, which also covers an
+// external skill whose target is currently missing from disk.
+//
+// The two sets are not the same, and collapsing them deleted live links: a
+// missing external target dropped the name from `sources`, retractLinks read the
+// gap as "the harness stopped declaring it", the readlink still matched, and the
+// link went — "not found — skipping" and "removed symlink" in the same run.
+// Whether a skill is declared is decided here; whether it resolves is not.
 async function skillSources() {
+  const declared = new Set(await harnessSkillNames());
   const sources = new Map();
-  for (const name of await harnessSkillNames()) {
+  for (const name of declared) {
     sources.set(name, path.join(HARNESS_SKILLS_DIR, name));
   }
   for (const [name, target] of Object.entries(EXTERNAL_SKILL_LINKS)) {
+    declared.add(name);
     if (!existsSync(target)) {
-      console.log(`! external skill ${name} not found at ${target} — skipping`);
+      console.log(
+        `! external skill ${name} not found at ${target} — skipping (still declared, link left alone)`,
+      );
       continue;
     }
     sources.set(name, target);
   }
-  return sources;
+  return {
+    sources,
+    declaredPaths: [...declared].map((name) => path.join(TARGET_SKILLS_DIR, name)),
+  };
 }
 
-async function linkSkills(dryRun) {
-  const sources = await skillSources();
+async function linkSkills(sources, dryRun) {
   if (sources.size === 0) return [];
 
   if (!existsSync(TARGET_SKILLS_DIR)) {
@@ -556,6 +580,9 @@ async function linkSkills(dryRun) {
 // worse, still resolving — a live entry routing work to a tool the repo had
 // just deleted. Reuses removeManagedLink, so a destination whose readlink no
 // longer matches what we recorded is left exactly where it is.
+//
+// `declaredPaths` must be what the harness declares, never what resolved on
+// disk this run: a name missing from it is read as deleted from the repo.
 async function retractLinks(priorLinks, declaredPaths, dryRun) {
   const retracted = priorLinks.filter((link) => !declaredPaths.has(link.path));
   for (const { path: dest, target } of retracted) {
@@ -587,25 +614,30 @@ async function runInstall(opts) {
   const prior = await readJsonOrEmpty(METADATA_PATH);
   const priorMetadata = normalizeMetadata(prior);
 
+  const { sources, declaredPaths: declaredSkillPaths } = await skillSources();
   const links = [
     ...(await linkHarnessDirs(opts.dryRun)),
-    ...(await linkSkills(opts.dryRun)),
+    ...(await linkSkills(sources, opts.dryRun)),
   ];
-  const retractedLinks = await retractLinks(
-    priorMetadata.addedLinks,
-    new Set(links.map((link) => link.path)),
-    opts.dryRun,
-  );
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
   const harnessSettings = await readJsonOrEmpty(
     path.join(HARNESS_ROOT, '.claude', 'settings.json'),
   );
+  // Ahead of the retraction on purpose: this call can die() on an agent
+  // conflict, and an install that exits non-zero must not have already deleted
+  // a link the metadata it never wrote still claims.
   const { merged, added } = buildMergedSettings(
     userSettings,
     harnessSettings,
     opts,
     priorMetadata,
+  );
+
+  const retractedLinks = await retractLinks(
+    priorMetadata.addedLinks,
+    new Set([...links.map((link) => link.path), ...declaredSkillPaths]),
+    opts.dryRun,
   );
   added.addedLinks = links
     .filter((link) => link.owned)
