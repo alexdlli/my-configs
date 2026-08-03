@@ -90,8 +90,8 @@ Hooks capture whatever session you happen to open. `ai-memory run` launches the 
 
 ```bash
 ai-memory run claude                              # continue the newest managed session here
-ai-memory run claude --new purge-orca             # create and select a fresh workstream
-ai-memory run claude --workstream purge-orca      # rejoin an existing one
+ai-memory run claude --new refactor-hooks         # create and select a fresh workstream
+ai-memory run claude --workstream refactor-hooks  # rejoin an existing one
 ai-memory run claude --fresh                      # new native session inside the selected workstream
 ```
 
