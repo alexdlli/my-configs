@@ -107,7 +107,13 @@ ai-memory workstream-search "wave dispatch" --limit 50 --json
 
 `--workstream-id` defaults to `AI_MEMORY_WORKSTREAM_ID`, which managed child processes already carry, so you never pass it by hand from inside a run.
 
-> `run` is the one command the Docker wrapper cannot serve from a container — native harnesses and their transcript stores are host resources. The wrapper downloads a checksum-verified native client into `~/.cache/ai-memory/native-runner/` and executes that instead (macOS/Linux, x86_64/arm64; override with `AI_MEMORY_NATIVE_BIN`).
+### `run` is a different binary from the rest
+
+`run` is the one command the Docker wrapper cannot serve from a container — native harnesses and their transcript stores are host resources. The wrapper intercepts `run` before any Docker work and `exec`s a native client out of `~/.cache/ai-memory/native-runner/` (macOS/Linux, x86_64/arm64). Three consequences:
+
+- **The version depends on the path.** Measured 2026-08-03: the container answers `ai-memory 1.18.0`, the native client `ai-memory 1.22.0`. Every version on this page — and the `ai-memory version` row of `verify-ai-memory.mjs` — is the container's; `run` is a newer build nobody checks. Ask them separately: `ai-memory --version` vs `~/.cache/ai-memory/native-runner/ai-memory --version`.
+- **The download is unconditional and unprompted.** `curl` from `https://github.com/akitaonrails/ai-memory/releases/latest/download/` (sha256 verified) whenever the binary or the tarball is missing, plus once a day when the published sha256 differs from the cached one — 11 MB compressed, 24 MB installed. The binary is resolved before the arguments are read, so even `ai-memory run --help` can trigger it. `AI_MEMORY_NATIVE_BIN` points at a binary you supply and skips the download entirely.
+- **The environment crosses over whole.** A plain `exec`, no `env -i` and no filtering: it adds `AI_MEMORY_WORKSTREAM_ID`, `AI_MEMORY_HOOK_URL` and `AI_MEMORY_RUN_ID` and removes nothing. So inside a managed run `session-context.mjs` still reports `host: "maestri"` and the `qa` agent's portal track is intact. The env allowlist in the wrapper belongs to the Docker path, which `run` never reaches.
 
 ## Per-project behaviour — `.ai-memory.toml`
 
@@ -149,7 +155,7 @@ What it checks:
 | ai-memory container | the container exists and is running |
 | LLM backend | the backend the **server is actually configured with** answers. The provider is read from the container's own `AI_MEMORY_LLM_*` env, so `claude-sub` is checked against the shim's `/healthz`, `local` against Ollama's `/v1/models`. `anthropic`/`anthropic-oauth` have no local endpoint and are skipped; a zero-LLM install has no backend to check |
 | LLM model | the configured model is the one the backend serves (Ollama: actually pulled) |
-| ai-memory version | the running container reports a version **and** still runs the image `akitaonrails/ai-memory:latest` points at. A mismatch warns, because `ai-memory upgrade` pulls the new image without recreating the container — see [Upgrade](#upgrade--uninstall) |
+| ai-memory version | the running container reports a version **and** still runs the image `akitaonrails/ai-memory:latest` points at. A mismatch warns, because `ai-memory upgrade` pulls the new image without recreating the container — see [Upgrade](#upgrade--uninstall). The container only: the client behind `ai-memory run` is a separate, newer binary and no check covers it — see [`run` is a different binary](#run-is-a-different-binary-from-the-rest) |
 | `ai-memory status` | the server answers and reports the provider the container was started with |
 | `bootstrap --dry-run` | the server can collect sources — proves it reaches the LLM backend |
 | Wiki git history | `/data/wiki` has commits, i.e. capture is being committed |
