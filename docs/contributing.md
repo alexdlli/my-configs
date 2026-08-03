@@ -21,7 +21,7 @@ docs/
   integrations/        # session-context.md, maestri.md, ecotokens.md, ai-memory.md
 scripts/
   install.mjs          # symlink + merge installer
-  install.test.mjs     # link retraction: what the harness stopped declaring must go
+  install.test.mjs     # link retraction, both directions: what the harness stopped declaring goes, what it still declares stays
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
   waves/               # wave pipeline: tickets-github, graph, gh, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
