@@ -18,11 +18,12 @@ docs/
   usage.md             # driving the harness day to day
   contributing.md      # this file
   waves.md             # ticket contract, dependency graph, wave plan
-  integrations/        # orca.md, maestri.md, ecotokens.md, ai-memory.md
+  integrations/        # session-context.md, maestri.md, ecotokens.md, ai-memory.md
 scripts/
   install.mjs          # symlink + merge installer
+  install.test.mjs     # link retraction, both directions: what the harness stopped declaring goes, what it still declares stays
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
-  waves/               # wave pipeline: tickets-linear, tickets-github, graph, gh, pr-state, fetch-pr-threads
+  waves/               # wave pipeline: tickets-github, graph, gh, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
   verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
   backup-ai-memory.mjs # volume backup + rotation + LaunchAgent
@@ -88,6 +89,7 @@ Don't add a hook just because you can. Add one when there's a real recurring pai
 - Maintain the flags: default install, `--dry-run`, `--uninstall`, `--force-agent`, `--help`.
 - Keep the deep-merge behavior for `settings.json` — never clobber unrelated keys (`theme`, `enabledPlugins`, etc.).
 - Keep the metadata file (`~/.claude/.my-configs-managed.json`) accurate — `--uninstall` reads it to revert precisely what was added, and removes a link only when its `readlink` still matches the recorded target.
+- **Adding is only half of it.** Anything the installer installs must also be *retractable*: when the harness stops declaring it, the next install has to take it off the machine. Links go through `retractLinks`, permission entries through `retractPermissionEntries`; both key on the metadata, so nothing the user wrote by hand is ever touched. A new kind of managed artifact needs its own retraction and its own case in `scripts/install.test.mjs` — a union-only merge looks correct until something is deleted from the repo, and then it leaves a dead path behind in silence.
 - Never symlink `~/.claude/skills` itself; it is shared with plugins and other toolkits. Add skills to `.claude/skills/` (linked per entry automatically) or, for a skill installed elsewhere on disk, to `EXTERNAL_SKILL_LINKS`.
 - Bump `METADATA_VERSION` when the metadata shape changes, and teach `normalizeMetadata` how to read the old shape.
 - Test with `--dry-run` against a fake `$HOME`:

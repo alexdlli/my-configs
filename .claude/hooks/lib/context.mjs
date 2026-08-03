@@ -9,8 +9,7 @@
 // `verifyAccount` is the opt-in exception — one `git config` subprocess plus a
 // read of ~/.gitconfig. Never call it from the hook path.
 //
-// Signals below are empirically confirmed on this machine; see
-// docs/integrations/orca.md for the confirmation status of each one.
+// Signals below are empirically confirmed on this machine.
 //
 // Requires Node.js 24+.
 
@@ -20,16 +19,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const HOST_MAESTRI = 'maestri';
-export const HOST_ORCA = 'orca';
 export const HOST_PLAIN = 'plain';
 
-export const DISPATCH_DRIVER_ORCA = 'orca-cli';
-
-const ORCA_TERM_PROGRAM = 'Orca';
-const ORCA_WORKTREE_SEPARATOR = '::';
-
-const DISPATCH_REASON_ORCA =
-  'orca worktree create --agent: one worktree per ticket, agent launched in its first terminal';
 // Maestri has the wave topology natively (a floor is a git-isolated clone) but no
 // driver: its CLI exists only as $MAESTRI_CLI inside the app's own terminal, so
 // nothing outside it can spawn the wave.
@@ -37,9 +28,14 @@ const DISPATCH_REASON_MAESTRI =
   'no automatic wave driver for Maestri — dispatch by hand from the app terminal: $MAESTRI_CLI floor create per ticket, then recruit --floor';
 const DISPATCH_REASON_PLAIN = 'no worktree manager in this session — the human dispatches by hand';
 
+const DISPATCH_REASON_BY_HOST = {
+  [HOST_MAESTRI]: DISPATCH_REASON_MAESTRI,
+  [HOST_PLAIN]: DISPATCH_REASON_PLAIN,
+};
+
 const WORK_DIR_NAME = 'work';
 const WORK_TRACKER = 'jira';
-const PERSONAL_TRACKER = 'linear';
+const PERSONAL_TRACKER = 'github';
 
 const TRACKER_SOURCE_CWD_WORK = 'cwd-work';
 const TRACKER_SOURCE_GIT_IDENTITY = 'git-identity';
@@ -59,39 +55,15 @@ function homeDir(env) {
   return nonEmpty(env.HOME) ?? os.homedir();
 }
 
-// ORCA_WORKTREE_ID is `<repoId>::<absPath>`. The repo id is a uuid and never
-// contains the separator, but an absolute path legally can, so the split is on
-// the first occurrence only.
-function parseOrcaWorktreeId(worktreeId) {
-  if (!worktreeId) return { repoId: null, worktreePath: null };
-  const separatorAt = worktreeId.indexOf(ORCA_WORKTREE_SEPARATOR);
-  if (separatorAt === -1) return { repoId: null, worktreePath: null };
-  return {
-    repoId: worktreeId.slice(0, separatorAt) || null,
-    worktreePath: worktreeId.slice(separatorAt + ORCA_WORKTREE_SEPARATOR.length) || null,
-  };
-}
-
-// Maestri wins ties: MAESTRI_TERMINAL_ID is set per terminal, and a Maestri
-// terminal can be launched from inside Orca, inheriting the ORCA_* vars. Never
-// detect Maestri by the presence of its socket or its running app — both exist
-// while the app is alive, including for sessions that are not inside it.
+// MAESTRI_TERMINAL_ID is set per terminal, which is the granularity a session
+// needs. Never detect Maestri by the presence of its socket or its running app —
+// both exist while the app is alive, including for sessions outside it.
 function detectHost(env) {
   const terminalId = nonEmpty(env.MAESTRI_TERMINAL_ID);
   if (terminalId) {
     return {
       host: HOST_MAESTRI,
       hostDetail: { terminalId, cliPath: nonEmpty(env.MAESTRI_CLI) },
-    };
-  }
-
-  const terminalHandle = nonEmpty(env.ORCA_TERMINAL_HANDLE);
-  if (terminalHandle || env.TERM_PROGRAM === ORCA_TERM_PROGRAM) {
-    const worktreeId = nonEmpty(env.ORCA_WORKTREE_ID);
-    const { repoId, worktreePath } = parseOrcaWorktreeId(worktreeId);
-    return {
-      host: HOST_ORCA,
-      hostDetail: { terminalHandle, worktreeId, repoId, worktreePath },
     };
   }
 
@@ -109,17 +81,18 @@ function isUnderWorkRoot(env, cwd) {
 }
 
 // Describes whether a wave can be dispatched from this host, never dispatches.
-// The description is a property of the host alone: no CLI is probed, no worktree
-// is read. A caller that wants to know whether the Orca app is actually up asks
-// the `orca` binary; this only says which adapter would be used if it were.
-function describeDispatch(host) {
-  if (host === HOST_ORCA) {
-    return { available: true, driver: DISPATCH_DRIVER_ORCA, reason: DISPATCH_REASON_ORCA };
-  }
+// The description is a property of the host alone: no CLI is probed, no process
+// is spawned. No host carries an automatic driver today, so every reason names
+// the manual procedure that replaces it.
+//
+// A host with no entry in the map falls back to the plain reason instead of an
+// undefined one: the coordinator is told to read `reason`, and a host added to
+// detectHost without a reason of its own must still hand it a string.
+export function describeDispatch(host) {
   return {
     available: false,
     driver: null,
-    reason: host === HOST_MAESTRI ? DISPATCH_REASON_MAESTRI : DISPATCH_REASON_PLAIN,
+    reason: DISPATCH_REASON_BY_HOST[host] ?? DISPATCH_REASON_PLAIN,
   };
 }
 
@@ -134,7 +107,6 @@ export function detectContext(env = process.env, cwd = process.cwd()) {
     tracker: underWork ? WORK_TRACKER : null,
     trackerSource: underWork ? TRACKER_SOURCE_CWD_WORK : TRACKER_SOURCE_UNKNOWN,
     account: underWork ? ACCOUNT_WORK : ACCOUNT_UNKNOWN,
-    repoRoot: hostDetail.worktreePath ?? null,
   };
 }
 
@@ -166,7 +138,7 @@ function readDefaultGitEmail(env) {
 // Opt-in confirmation of the account behind a cwd, for the cases the cwd rule
 // cannot decide: it compares the identity git actually resolves against the
 // default one. A work repo cloned outside ~/work is detected here, and only
-// here can `linear` be asserted instead of guessed.
+// here can `github` be asserted instead of guessed.
 export function verifyAccount(env = process.env, cwd = process.cwd()) {
   const res = spawnSync('git', ['-C', cwd, 'config', '--get', 'user.email'], {
     encoding: 'utf8',

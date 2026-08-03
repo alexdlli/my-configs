@@ -5,7 +5,7 @@
 // As a hook: emits JSON on stdout in the shape Claude Code expects for
 // SessionStart hooks:
 //   { "hookSpecificOutput": { "hookEventName": "SessionStart",
-//                             "additionalContext": "<up to 4 lines>" } }
+//                             "additionalContext": "<up to 3 lines>" } }
 // Only the actionable facts go in — the host, and what changes because of it.
 // On a plain terminal nothing is injected at all.
 //
@@ -22,12 +22,7 @@
 // Requires Node.js 24+.
 
 import process from 'node:process';
-import {
-  HOST_MAESTRI,
-  HOST_ORCA,
-  detectContext,
-  verifyAccount,
-} from './lib/context.mjs';
+import { HOST_MAESTRI, detectContext, verifyAccount } from './lib/context.mjs';
 
 const MAESTRI_PATH_RULE =
   'maestri is NOT on PATH in zsh — always invoke it as "$MAESTRI_CLI", never as "maestri"';
@@ -49,9 +44,6 @@ function contextLines(ctx) {
   if (ctx.host === HOST_MAESTRI) {
     lines.push('[session context] host: Maestri terminal');
     lines.push(MAESTRI_PATH_RULE);
-  } else if (ctx.host === HOST_ORCA) {
-    lines.push('[session context] host: Orca terminal');
-    if (ctx.repoRoot) lines.push(`worktree: ${ctx.repoRoot}`);
   }
 
   if (lines.length > 0 && ctx.tracker) {

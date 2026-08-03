@@ -351,7 +351,13 @@ function wireClaudeCode(opts) {
   console.log('→ wiring Claude Code (MCP + hooks + instructions)');
   run('ai-memory', ['install-mcp', '--client', 'claude-code', '--apply'], opts);
   run('ai-memory', ['install-hooks', '--agent', 'claude-code', '--apply'], opts);
-  run('ai-memory', ['install-instructions'], { ...opts, allowFail: true });
+  // Global skills scope on purpose: the default (`project`) writes ai-memory's
+  // managed Agent Skills into <repo>/.claude/skills, the directory install.mjs
+  // owns one entry at a time precisely so no tool takes over the namespace.
+  run('ai-memory', ['install-instructions', '--skills-scope', 'global'], {
+    ...opts,
+    allowFail: true,
+  });
 }
 
 function main() {

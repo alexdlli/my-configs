@@ -7,6 +7,10 @@
 // hook event the harness declares) without disturbing keys the user owns
 // (theme, enabledPlugins, extraKnownMarketplaces, ...).
 //
+// Installing is not append-only: a link or a permission entry this installer
+// added and the harness no longer declares is retracted on the next run, so a
+// skill deleted from the checkout stops being reachable from ~/.claude.
+//
 // Usage:
 //   node scripts/install.mjs                # install or refresh
 //   node scripts/install.mjs --dry-run      # show plan, touch nothing
@@ -47,10 +51,10 @@ const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
 
 // Skills installed by other toolkits outside ~/.claude/skills. Claude Code only
 // loads what lives under ~/.claude/skills, so without a link these are inert.
-// orca-cli is Orca's worktree/terminal control and handoff path.
-const EXTERNAL_SKILL_LINKS = {
-  'orca-cli': path.join(HOME, '.agents', 'skills', 'orca-cli'),
-};
+// Empty today; add `'<name>': '<absolute path>'` to expose one. A target that is
+// not on disk is reported and skipped, never linked blind — but the name stays
+// declared, so an already-installed link is not read as a dropped skill.
+const EXTERNAL_SKILL_LINKS = {};
 
 // v1 metadata predates addedLinks. That installer only ever created these two
 // symlinks, so they are exactly what an uninstall of a v1 install must remove.
@@ -80,7 +84,7 @@ What gets installed:
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
   ~/.claude/commands → symlink to <harness>/.claude/commands
   ~/.claude/skills/<name> → one symlink per entry in <harness>/.claude/skills,
-                     plus the external skills the harness exposes (orca-cli).
+                     plus any external skill the harness exposes (none today).
                      Never the directory itself: it is shared with skills from
                      plugins and other toolkits. A name that already exists and
                      is not ours is reported and skipped, never overwritten.
@@ -89,7 +93,13 @@ What gets installed:
                      other keys (theme, enabledPlugins, extraKnownMarketplaces,
                      ...) are left untouched.
   ~/.claude/.my-configs-managed.json records exactly what was added so that
-                     --uninstall can revert it without nuking user state.`);
+                     --uninstall can revert it without nuking user state.
+
+What gets retracted:
+  A link recorded in the metadata whose path the harness no longer declares is
+  removed from disk and dropped from the metadata — but only when its readlink
+  still matches what was recorded, so a name taken over by another toolkit is
+  left alone. Same for permissions.allow/deny entries this installer added.`);
 }
 
 function die(msg) {
@@ -229,7 +239,7 @@ function retractPermissionEntries(merged, listName, harnessEntries, previouslyAd
 // Returns { merged, added }. `merged` is the full settings to write; `added`
 // records only what this run introduced (so uninstall can revert exactly that,
 // nothing else) plus what it retracted, so the metadata stops claiming it.
-// `addedLinks` is filled in by the caller.
+// `addedLinks` and `retractedLinks` are filled in by the caller.
 function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata) {
   const merged = cloneJson(userSettings);
   const added = {
@@ -240,6 +250,7 @@ function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata)
     retractedDenyEntries: [],
     addedHooks: [],
     addedLinks: [],
+    retractedLinks: [],
   };
 
   if (Object.hasOwn(harnessSettings, 'agent')) {
@@ -350,10 +361,19 @@ function normalizeMetadata(raw) {
 }
 
 // A retracted entry is no longer installed, so the metadata must stop claiming
-// it — otherwise the next run's union puts it straight back.
+// it — otherwise the next run's union puts it straight back. Two shapes need
+// this: the permission lists are plain strings, the links are {path, target}
+// records compared by signature.
 function unionWithout(prior, incoming, retracted) {
   const gone = new Set(retracted);
   return [...new Set([...prior, ...incoming])].filter((entry) => !gone.has(entry));
+}
+
+function dedupeWithout(prior, incoming, retracted, signature) {
+  const gone = new Set(retracted.map(signature));
+  return dedupeBySignature(prior, incoming, signature).filter(
+    (item) => !gone.has(signature(item)),
+  );
 }
 
 function mergeMetadata(prior, added) {
@@ -372,7 +392,12 @@ function mergeMetadata(prior, added) {
       added.retractedDenyEntries,
     ),
     addedHooks: dedupeBySignature(normalized.addedHooks, added.addedHooks, hookSignature),
-    addedLinks: dedupeBySignature(normalized.addedLinks, added.addedLinks, linkSignature),
+    addedLinks: dedupeWithout(
+      normalized.addedLinks,
+      added.addedLinks,
+      added.retractedLinks,
+      linkSignature,
+    ),
   };
 }
 
@@ -400,8 +425,10 @@ async function readLinkTarget(p) {
   }
 }
 
-// Returns null when the destination is left alone, otherwise
-// { path, target, changed } — `changed` marks a link this run created.
+// Returns { path, target, changed, owned }. `changed` marks a link this run
+// created; `owned` is false when the destination belongs to someone else and
+// was left alone. The harness still declares that path either way, which is
+// what keeps retractLinks from reading a skipped name as a dropped one.
 async function ensureLink(dest, target, dryRun, onConflict) {
   const kind = await pathKind(dest);
 
@@ -409,11 +436,11 @@ async function ensureLink(dest, target, dryRun, onConflict) {
     const current = await readLinkTarget(dest);
     if (current === target) {
       console.log(`✓ ${dest} already points to ${target}`);
-      return { path: dest, target, changed: false };
+      return { path: dest, target, changed: false, owned: true };
     }
     if (onConflict === CONFLICT_SKIP) {
       console.log(`! ${dest} → ${current} (not ours) — skipping`);
-      return null;
+      return { path: dest, target, changed: false, owned: false };
     }
     if (dryRun) {
       console.log(`→ would replace symlink ${dest} (currently → ${current}) with → ${target}`);
@@ -422,7 +449,7 @@ async function ensureLink(dest, target, dryRun, onConflict) {
       await fs.symlink(target, dest, 'dir');
       console.log(`✓ replaced symlink ${dest} → ${target}`);
     }
-    return { path: dest, target, changed: true };
+    return { path: dest, target, changed: true, owned: true };
   }
 
   if (kind === 'absent') {
@@ -432,12 +459,12 @@ async function ensureLink(dest, target, dryRun, onConflict) {
       await fs.symlink(target, dest, 'dir');
       console.log(`✓ symlinked ${dest} → ${target}`);
     }
-    return { path: dest, target, changed: true };
+    return { path: dest, target, changed: true, owned: true };
   }
 
   if (onConflict === CONFLICT_SKIP) {
     console.log(`! ${dest} already exists (${kind}) and is not ours — skipping`);
-    return null;
+    return { path: dest, target, changed: false, owned: false };
   }
 
   const backupPath = `${dest}.backup-${Date.now()}`;
@@ -449,37 +476,41 @@ async function ensureLink(dest, target, dryRun, onConflict) {
     await fs.symlink(target, dest, 'dir');
     console.log(`✓ symlinked ${dest} → ${target}`);
   }
-  return { path: dest, target, changed: true };
+  return { path: dest, target, changed: true, owned: true };
 }
 
 async function linkHarnessDirs(dryRun) {
-  const links = [];
-  const selfLink = await ensureLink(
-    SELF_REFERENCE_LINK,
-    HARNESS_ROOT,
-    dryRun,
-    CONFLICT_BACKUP,
-  );
-  if (selfLink) links.push(selfLink);
+  const links = [
+    await ensureLink(SELF_REFERENCE_LINK, HARNESS_ROOT, dryRun, CONFLICT_BACKUP),
+  ];
   for (const name of SYMLINK_ITEMS) {
-    const link = await ensureLink(
-      path.join(TARGET_DIR, name),
-      path.join(HARNESS_ROOT, '.claude', name),
-      dryRun,
-      CONFLICT_BACKUP,
+    links.push(
+      await ensureLink(
+        path.join(TARGET_DIR, name),
+        path.join(HARNESS_ROOT, '.claude', name),
+        dryRun,
+        CONFLICT_BACKUP,
+      ),
     );
-    if (link) links.push(link);
   }
   return links;
 }
 
+// Aborts rather than reporting an empty declaration: "the harness declares no
+// skills" and "I could not read the harness" are the same value to every caller
+// downstream, and retraction acts on that value. Reading a deleted or unreadable
+// .claude/skills as zero declarations takes every skill link off the machine —
+// measured, exit 0, five links removed. Every checkout ships this directory.
 async function harnessSkillNames() {
   let entries;
   try {
     entries = await fs.readdir(HARNESS_SKILLS_DIR, { withFileTypes: true });
   } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
+    die(
+      `cannot read ${HARNESS_SKILLS_DIR} (${err.code ?? err.message}). ` +
+        'That is a damaged checkout, not a harness that declares no skills — ' +
+        'refusing to retract every skill link on that reading.',
+    );
   }
   return entries
     .filter((entry) => !entry.name.startsWith('.'))
@@ -487,23 +518,38 @@ async function harnessSkillNames() {
     .sort();
 }
 
+// Returns { sources, declaredPaths }. `sources` is what can be linked right now;
+// `declaredPaths` is every skill link the harness claims, which also covers an
+// external skill whose target is currently missing from disk.
+//
+// The two sets are not the same, and collapsing them deleted live links: a
+// missing external target dropped the name from `sources`, retractLinks read the
+// gap as "the harness stopped declaring it", the readlink still matched, and the
+// link went — "not found — skipping" and "removed symlink" in the same run.
+// Whether a skill is declared is decided here; whether it resolves is not.
 async function skillSources() {
+  const declared = new Set(await harnessSkillNames());
   const sources = new Map();
-  for (const name of await harnessSkillNames()) {
+  for (const name of declared) {
     sources.set(name, path.join(HARNESS_SKILLS_DIR, name));
   }
   for (const [name, target] of Object.entries(EXTERNAL_SKILL_LINKS)) {
+    declared.add(name);
     if (!existsSync(target)) {
-      console.log(`! external skill ${name} not found at ${target} — skipping`);
+      console.log(
+        `! external skill ${name} not found at ${target} — skipping (still declared, link left alone)`,
+      );
       continue;
     }
     sources.set(name, target);
   }
-  return sources;
+  return {
+    sources,
+    declaredPaths: [...declared].map((name) => path.join(TARGET_SKILLS_DIR, name)),
+  };
 }
 
-async function linkSkills(dryRun) {
-  const sources = await skillSources();
+async function linkSkills(sources, dryRun) {
   if (sources.size === 0) return [];
 
   if (!existsSync(TARGET_SKILLS_DIR)) {
@@ -517,15 +563,32 @@ async function linkSkills(dryRun) {
 
   const links = [];
   for (const [name, target] of sources) {
-    const link = await ensureLink(
-      path.join(TARGET_SKILLS_DIR, name),
-      target,
-      dryRun,
-      CONFLICT_SKIP,
+    links.push(
+      await ensureLink(path.join(TARGET_SKILLS_DIR, name), target, dryRun, CONFLICT_SKIP),
     );
-    if (link) links.push(link);
   }
   return links;
+}
+
+// Removes the symlinks a previous run of this installer created and the harness
+// no longer declares, returning the metadata entries actually dropped.
+//
+// The link half of what retractPermissionEntries does for the permission lists,
+// and it went missing for the same reason: creating is idempotent, so a union
+// looks like it is enough until something is *removed* from the harness. A
+// skill dropped from `.claude/skills` left its link behind either dangling or,
+// worse, still resolving — a live entry routing work to a tool the repo had
+// just deleted. Reuses removeManagedLink, so a destination whose readlink no
+// longer matches what we recorded is left exactly where it is.
+//
+// `declaredPaths` must be what the harness declares, never what resolved on
+// disk this run: a name missing from it is read as deleted from the repo.
+async function retractLinks(priorLinks, declaredPaths, dryRun) {
+  const retracted = priorLinks.filter((link) => !declaredPaths.has(link.path));
+  for (const { path: dest, target } of retracted) {
+    await removeManagedLink(dest, target, dryRun);
+  }
+  return retracted;
 }
 
 async function writeSettingsAtomic(merged) {
@@ -548,24 +611,38 @@ async function runInstall(opts) {
 
   await ensureTargetDir(opts.dryRun);
 
+  const prior = await readJsonOrEmpty(METADATA_PATH);
+  const priorMetadata = normalizeMetadata(prior);
+
+  const { sources, declaredPaths: declaredSkillPaths } = await skillSources();
   const links = [
     ...(await linkHarnessDirs(opts.dryRun)),
-    ...(await linkSkills(opts.dryRun)),
+    ...(await linkSkills(sources, opts.dryRun)),
   ];
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
   const harnessSettings = await readJsonOrEmpty(
     path.join(HARNESS_ROOT, '.claude', 'settings.json'),
   );
-  const prior = await readJsonOrEmpty(METADATA_PATH);
-  const priorMetadata = normalizeMetadata(prior);
+  // Ahead of the retraction on purpose: this call can die() on an agent
+  // conflict, and an install that exits non-zero must not have already deleted
+  // a link the metadata it never wrote still claims.
   const { merged, added } = buildMergedSettings(
     userSettings,
     harnessSettings,
     opts,
     priorMetadata,
   );
-  added.addedLinks = links.map(({ path: dest, target }) => ({ path: dest, target }));
+
+  const retractedLinks = await retractLinks(
+    priorMetadata.addedLinks,
+    new Set([...links.map((link) => link.path), ...declaredSkillPaths]),
+    opts.dryRun,
+  );
+  added.addedLinks = links
+    .filter((link) => link.owned)
+    .map(({ path: dest, target }) => ({ path: dest, target }));
+  added.retractedLinks = retractedLinks;
 
   const preservedKeys = describePreserved(userSettings, added);
   const summaryParts = [];
@@ -581,8 +658,11 @@ async function runInstall(opts) {
   if (added.addedHooks.length > 0)
     addedSummary.push(`${added.addedHooks.length} hook(s)`);
   if (addedSummary.length > 0) summaryParts.push(`added ${addedSummary.join(', ')}`);
-  const retracted = [...added.retractedAllowEntries, ...added.retractedDenyEntries];
-  if (retracted.length > 0) summaryParts.push(`retracted ${retracted.join(', ')}`);
+  const retractedSummary = [];
+  if (retractedLinks.length > 0) retractedSummary.push(`${retractedLinks.length} link(s)`);
+  const retractedEntries = [...added.retractedAllowEntries, ...added.retractedDenyEntries];
+  if (retractedEntries.length > 0) retractedSummary.push(retractedEntries.join(', '));
+  if (retractedSummary.length > 0) summaryParts.push(`retracted ${retractedSummary.join(', ')}`);
   if (summaryParts.length === 0) summaryParts.push('no changes needed');
 
   if (opts.dryRun) {

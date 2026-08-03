@@ -1,38 +1,25 @@
 ---
-description: Monta o grafo de dependências de um projeto Linear ou de um repo do GitHub e imprime o plano de ondas.
+description: Monta o grafo de dependências de um recorte de GitHub Issues e imprime o plano de ondas.
 ---
 
 Carregue a skill `wave-orchestration` antes de rodar qualquer coisa — ela é dona do formato do plano, dos destaques obrigatórios e das regras invioláveis.
 
-Escopo: $ARGUMENTS. Sem argumento, pergunte qual é — não adivinhe pelo nome do repo.
+Escopo: $ARGUMENTS — `owner/repo` mais o recorte (`--milestone` ou `--label`). Sem argumento, pergunte qual é; não adivinhe pelo nome do repo nem assuma o repo inteiro.
 
-Primeiro decida a **fonte**, porque só o primeiro passo muda; o `graph.mjs` é agnóstico:
+O leitor de tickets é um só, `tickets-github.mjs`, e o `graph.mjs` é agnóstico de fonte. Jira não tem leitor: lá a leitura é pelo agente `atlassian`, e não existe pipeline automatizado de ondas.
 
-- URL ou nome de projeto do Linear → `tickets-linear.mjs`.
-- `owner/repo`, um milestone ou uma label → `tickets-github.mjs`.
-- Ambíguo → confira `node ~/.claude/hooks/session-context.mjs --json` (campos `tracker` e `trackerSource`) e, se ainda restar dúvida, **pergunte**.
-
-Rode os dois passos **separados**, nesta ordem, e confira o código de saída de cada um.
-
-Linear:
-
-```bash
-node ~/.claude/harness/scripts/waves/tickets-linear.mjs "<projeto>" --json > /tmp/wave-tickets.json
-node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
-```
-
-GitHub Issues:
+Rode os dois passos **separados**, nesta ordem, e confira o código de saída de cada um:
 
 ```bash
 node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> --milestone <n> --json > /tmp/wave-tickets.json
 node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
 ```
 
-No GitHub, `--repo` é obrigatório e o recorte (`--milestone`, `--label`) não. Sem recorte o escopo é o repo inteiro: se o stderr avisar isso e o pedido era um milestone, **pare e confirme** antes de mostrar qualquer tabela.
+`--repo` é obrigatório e o recorte (`--milestone`, `--label`) não. Sem recorte o escopo é o repo inteiro: se o stderr avisar isso e o pedido era um milestone, **pare e confirme** antes de mostrar qualquer tabela.
 
-Se o primeiro passo falhar, pare e me diga qual foi o motivo. O leitor do Linear separa CLI ausente (3), app Orca fora do ar (4), Linear desconectado (5), projeto não encontrado ou ambíguo (6) e erro do `orca` (7). O do GitHub separa CLI `gh` ausente (3), GitHub inalcançável ou rate limit (4), não autenticado ou sem escopo (5), repo inexistente ou issues desabilitadas (6) e erro do `gh` ou leitura truncada (7). Nunca siga para o grafo com arquivo vazio: plano de ondas vazio parecendo sucesso é o pior resultado possível — leitura legítima de zero tickets vem anunciada no stderr, e é diferente de falha.
+Se o primeiro passo falhar, pare e me diga qual foi o motivo. O leitor separa CLI `gh` ausente (3), GitHub inalcançável ou rate limit (4), não autenticado ou sem escopo (5), repo inexistente ou issues desabilitadas (6) e erro do `gh` ou leitura truncada (7). Nunca siga para o grafo com arquivo vazio: plano de ondas vazio parecendo sucesso é o pior resultado possível — leitura legítima de zero tickets vem anunciada no stderr, e é diferente de falha.
 
-O leitor do GitHub também sai com **8**: os tickets no stdout prestam, mas há dado ruim atrás deles (marcador `<!-- blocked-by: ... -->` malformado ou labels `est:` conflitantes). Mostre as linhas `! bad data:` antes da tabela e diga que a aresta ou a estimativa que faltou não entrou no plano.
+O leitor também sai com **8**: os tickets no stdout prestam, mas há dado ruim atrás deles (marcador `<!-- blocked-by: ... -->` malformado ou labels `est:` conflitantes). Mostre as linhas `! bad data:` antes da tabela e diga que a aresta ou a estimativa que faltou não entrou no plano.
 
 Se o `graph.mjs` sair com 3, o plano está incompleto (ciclo ou `blockedBy` apontando para id inexistente): mostre `cycles` e `badData` **antes** da tabela e diga que o plano não é executável assim.
 

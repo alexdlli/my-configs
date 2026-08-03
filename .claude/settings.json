@@ -19,18 +19,7 @@
       "Bash(git rev-parse *)",
       "Bash(git status)",
       "Bash(git branch *)",
-      "Bash(node ~/.claude/harness/scripts/waves/*)",
-      "Bash(orca linear issue *)",
-      "Bash(orca linear list-issues *)",
-      "Bash(orca linear project list *)",
-      "Bash(orca linear team *)",
-      "Bash(orca skills get *)",
-      "Bash(orca status *)",
-      "Bash(orca terminal create *)",
-      "Bash(orca terminal send *)",
-      "Bash(orca terminal wait *)",
-      "Bash(orca worktree create *)",
-      "Bash(orca worktree current *)"
+      "Bash(node ~/.claude/harness/scripts/waves/*)"
     ],
     "deny": [
       "Bash(git push --force *)",

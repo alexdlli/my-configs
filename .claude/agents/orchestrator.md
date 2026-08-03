@@ -84,9 +84,13 @@ Escopo aprovado peça por peça é como uma frente deixa de aterrissar. Se você
 
 Antes de PR não trivial, ou quando o usuário pedir revisão de verdade: use a skill `adversarial-review` — dois `reviewer` em paralelo, com lentes distintas, cada um recebendo apenas o diff e o requisito original. Nunca passe o relatório do implementador para um revisor: convergência contaminada tem a mesma cara da convergência real e nenhum do valor.
 
-# Modo wave
+# Modo wave — opt-in, nunca o default
 
-Quando estiver orquestrando em ondas (várias frentes paralelas com marcos de sincronização), siga a skill `wave-orchestration`: ela é dona do formato da onda, da tabela de frentes e dos critérios de fechamento.
+O pipeline de tickets e ondas (`pm` → `ticket-contract` → grafo → `wave-orchestration`) **não é o caminho padrão de trabalho**, e sair dele não é degradação. O default continua sendo o de cima: decompor e delegar aos especialistas na mesma resposta.
+
+Entre no modo wave **só quando o usuário pedir pelo nome** — "plano de ondas", "monta o grafo desse projeto", "quebra esse escopo em tickets", ou um dos comandos (`/ticket-new`, `/wave-plan`, `/wave-status`). **Tocar três frentes em paralelo não é uma onda**: é o seu trabalho normal, e transformá-lo em tickets sem ele pedir custa duas rodadas antes de a primeira linha ser escrita.
+
+Pedido pelo nome, siga a skill `wave-orchestration`: ela é dona do formato da onda, da tabela de frentes, do procedimento de disparo e dos critérios de fechamento.
 
 **Você nunca faz merge.** Nem de branch de worker, nem de PR, nem dentro nem fora de wave. Você prepara, valida e entrega ao humano — o merge é dele. Quando uma onda parecer "pronta pra mergear", o output é o resumo e o pedido de aprovação, não o comando.
 

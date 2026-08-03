@@ -170,9 +170,8 @@ Logo, **a única camada do lado do recruta é o texto que você escreve no role
 dele**. Escreva, explícito: *"abra o PR contra `main`, vincule o PR ao ticket e
 PARE; você nunca mergeia, nem com CI verde, nem com review aprovado — quem
 aperta merge é o Alex"*. O vínculo tem a mesma forma da seção `## Ao terminar`
-de `wave-orchestration` — no GitHub, a palavra-chave no corpo do PR; no Linear,
-`orca linear attach` mais `orca linear status set` — e cai no mesmo buraco: aqui
-não sobra camada nenhuma atrás do texto.
+de `wave-orchestration` — a palavra-chave de fechamento no corpo do PR — e cai no
+mesmo buraco: aqui não sobra camada nenhuma atrás do texto.
 
 ## Onda no Maestri: o floor é a primitiva
 
@@ -217,12 +216,11 @@ de degradação vivem no bloco de sucesso e não no de erro — então `set -e` 
 e um script segue achando que isolou. Decide um `floor create` real em diretório
 não-APFS seguido de `echo $?`. Até lá o exit code não é sinal: leia o texto.
 
-**Veio simples? Não recrute assim mesmo.** Duas saídas, as mesmas de sempre:
-
-1. **Serializa** — as frentes que dividiriam o diretório viram uma fila num
-   recruta só, uma depois da outra, planejadas com `wave-orchestration` (seções 1
-   e 2) e disparadas à mão.
-2. **Leva a onda pro Orca**, onde o dispatch existe e é testado.
+**Veio simples? Não recrute assim mesmo.** A saída é uma só: **serializar** — as
+frentes que dividiriam o diretório viram uma fila num recruta só, uma depois da
+outra, planejadas com `wave-orchestration` (seções 1 e 2) e disparadas à mão. Não
+existe host vizinho para onde levar a onda: fora do canvas o disparo também é
+manual, e lá a árvore é um `git worktree` que você mesmo corta.
 
 **Nunca N recrutas sobre o mesmo diretório**: sem clone eles dividem os arquivos e
 o index do git — a condição que a regra inviolável 6 de `wave-orchestration` existe
@@ -247,15 +245,14 @@ O primeiro `floor create` real confere o que o clone traz e onde ele fica **ante
 de virar receita de onda.
 
 O que continua não existindo é o **adaptador automático**: `session-context.mjs`
-responde `dispatch.available: false` no Maestri, e nenhum driver corta a onda
-inteira como o `orca-cli` corta (`wave-orchestration`, "Onde o disparo é
-possível"). O que muda é a conclusão — o disparo aqui é **manual e possível
-enquanto o floor sair isolado**: um `floor create` e um `recruit --floor` por
-ticket, os dois marcadores conferidos, instrução curta no `ask` e o requisito longo
-em nota. Saiu simples, valem as duas saídas acima. Planejamento e regras
-invioláveis seguem em
-`wave-orchestration` (seções 1 e 2); o que a onda ganha aqui é a topologia, não a
-automação.
+responde `dispatch.available: false` aqui — e responde o mesmo em todo host, porque
+driver automático não existe em nenhum (`wave-orchestration`, "Onde o disparo é
+possível"). O disparo é **manual e possível enquanto o floor sair isolado**: um
+`floor create` e um `recruit --floor` por ticket, os dois marcadores conferidos,
+o marcador `.wave/worker.json` escrito **antes** do recruta entrar, instrução curta
+no `ask` e o requisito longo em nota. Saiu simples, vale a saída acima.
+Planejamento, procedimento de disparo e regras invioláveis seguem em
+`wave-orchestration`; o que a onda ganha aqui é a topologia, não a automação.
 
 ## Pulso: o mesmo `PULSO_DE_COORDENACAO`, outro instrumento
 
@@ -324,23 +321,52 @@ dirigido pela mesma CLI, o que o põe dentro do `Bash` que o `qa` já tem no
 allowlist.
 
 - **Web:** `portal create URL ["Nome"] [--size WxH]`, e daí navegar, clicar,
-  preencher, screenshot, `resize W H` (viewport exato, QA responsivo) e `ua`
+  preencher, screenshot, `resize "Nome" W H` (viewport exato, QA responsivo) e `ua`
   (troca de user agent). Skill `maestri-portal`.
 - **Simulador:** `portal devices` lista os dispositivos com runtime, estado de
   boot e qual portal já ocupa cada um; `portal create --simulator UDID` abre um.
-  Valem os mesmos verbos, mais botão de hardware e `launch "com.bundle.id"`.
-  Coordenada de árvore e de `info` vem em **screen points, não pixels** — num
-  device 3x confundir os dois erra o toque por um fator 3. Skill
-  `maestri-portal-devices`.
+  Valem os mesmos verbos, mais botão de hardware e `launch "Nome" com.bundle.id`.
+  Skill `maestri-portal-devices`.
+
+### Coordenada de simulador: são TRÊS espaços, não dois
+
+Medido num iPhone 17 Pro (iOS 26.5, device 3x). Confundir dois deles erra o toque
+por um fator 3, e o erro não dá erro: o tap acerta outro elemento e a corrida segue.
+
+| Fonte | Valor medido | Espaço | Serve para |
+|---|---|---|---|
+| header e árvore do `snapshot`, e os verbos `click` / `tap` | `screen: 402x874pt` | **screen points** | **tocar** |
+| `portal info "Nome"` | `display: 1206x2622 px` | pixels nativos | pegar o `udid` e passar para o build. **Nunca** para tocar |
+| o PNG do modo fallback | `589x1280` | pixels da própria imagem | tocar **no modo imagem**, lidos direto da imagem, sem reescalar |
+
+1206/402 e 2622/874 dão **3.000 exato** — é fator de escala, não arredondamento.
+Confirmado por dois taps independentes, cada espaço candidato levando a um destino
+diferente: `click "Nome" 201,371` (centro de `@e3 button "Accessibility"`) abriu
+Accessibility, e `click "Nome" 201,319` (centro de `@e2 button "General"`) abriu
+General. Em pixel nativo os dois teriam caído na status bar ou num título
+não-tocável.
+
+**O `--help` do Maestri diz que a coordenada vai "in device pixels", e isso foi
+medido como errado para o toque.** É defeito upstream, não nosso: não "conserte"
+esta seção de volta para o que o `help` diz sem refazer a medição acima.
+
+O terceiro espaço só existe no **modo imagem**, e o modo se discrimina pelo header:
+em modo árvore ele é `app: <bundle>  screen: 402x874pt  elements: N`, sem mais
+nada; em modo imagem aparece a linha `accessibility:` (dizendo por que a árvore não
+existe) e a linha que declara o espaço literalmente — `coordinates: tap x,y in this
+image's own pixels (589x1280) — read them straight off the image, do not rescale`.
+A presença da linha `accessibility:` é o discriminador confiável.
+
+**Um device só foi medido.** `info` num device 2x (iPad) e o tap em modo fallback
+confirmado por acerto observado continuam **não verificados**.
 
 Duas regras que não mudam de ambiente. **Coordenada não sai de screenshot:**
 `snapshot` devolve ref e é por ref que se clica, a mesma descoberta-antes-do-toque
 que o `qa` aplica no argent. Quando o `snapshot` do simulador vem **imagem em vez
 de árvore**, a linha `accessibility:` do header nomeia o motivo, e o conserto é
-`portal launch` do bundle — que traz o app para debaixo do Maestri e devolve a
-árvore. A regra tem **exceção documentada**: nesse modo se toca por pixel lido da
-imagem devolvida, que vem capturada na resolução que o toque espera
-(`maestri-portal-devices`). Exceção com marcador próprio e resolução casada — não
-é licença para adivinhar pixel quando a árvore existe. E **artefato que existiu só
-no terminal não é artefato:** o screenshot vai para disco ou para uma nota,
-legendado com o passo que ele prova.
+`portal launch "Nome" com.bundle.id` — que traz o app para debaixo do Maestri e
+devolve a árvore. Tocar por pixel lido da imagem é a exceção da seção acima: ela tem
+marcador de modo próprio e resolução declarada no header, e não é licença para
+adivinhar pixel quando a árvore existe. E **artefato que existiu só no terminal
+não é artefato:** o screenshot vai para disco ou para uma nota, legendado com o
+passo que ele prova.

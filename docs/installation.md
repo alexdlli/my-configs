@@ -24,6 +24,36 @@ When you run `node scripts/install.mjs`, it:
    - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision — see the measured limits below)
    - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the same three commands as the deny list, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
+4. Retracts what it added and the harness no longer declares — see below.
+
+### Installing is not append-only
+
+A skill removed from `.claude/skills/` (or from `EXTERNAL_SKILL_LINKS`) does not just stop being refreshed: on the next install its link is **removed** from `~/.claude/skills/`, and the metadata stops claiming it. The same already happened for `permissions.allow` / `permissions.deny` entries.
+
+Without it, deleting a skill from the repo left a link behind that either dangled or — worse — kept resolving to a directory outside the checkout, so a `SKILL.md` for a tool the repo had just dropped went on routing work. Nothing warned about it.
+
+The metadata is what makes this safe: only a link this installer is on record as having created is ever considered, and it is removed only when its current `readlink` still matches the recorded target. A name another toolkit took over in the meantime is reported and left where it is — including a recorded path that stopped being a symlink at all (another toolkit installed its own real directory over it): reported, never deleted. A link that was never ours is never even looked at.
+
+`--dry-run` prints the removals as `→ would remove symlink …` and touches nothing.
+
+**Declared is not the same as resolved.** Retraction keys on what the harness *declares*, never on what happened to resolve during that run. An `EXTERNAL_SKILL_LINKS` entry whose target is missing from disk is reported (`! external skill <name> not found at … — skipping (still declared, link left alone)`) and its existing link stays put; only removing the entry retracts it. Same reasoning one level up: an unreadable `<repo>/.claude/skills` **aborts** the install instead of being read as "the harness declares nothing", because that reading takes every skill link off the machine in a single run that exits 0.
+
+**Retraction runs after the settings merge.** The merge can abort — see the `agent` conflict under [Conflicts](#conflicts) — and an install that exits non-zero must leave the machine as it found it: nothing removed from disk, no metadata written.
+
+### Caveat: retraction is global to `$HOME`, decided by the checkout that runs
+
+The metadata lives in `~/.claude/`, and every run compares it against whatever the *running* checkout declares. Two checkouts of this harness sharing one `$HOME` — a worktree, a second clone — therefore disagree about what is declared. Measured against a throwaway `$HOME`, with checkout A declaring `alpha` + `beta` and checkout B declaring only `alpha` (paths abbreviated):
+
+```
+$ node A/scripts/install.mjs
+✓ symlinked ~/.claude/skills/alpha → A/.claude/skills/alpha
+✓ symlinked ~/.claude/skills/beta  → A/.claude/skills/beta
+$ node B/scripts/install.mjs
+! ~/.claude/skills/alpha → A/.claude/skills/alpha (not ours) — skipping
+✓ removed symlink ~/.claude/skills/beta
+```
+
+Installing from B retracted a skill A still declares, and left `alpha` pointing into A because that link is not B's to take over. Re-running the installer from A restores `beta` (measured), so this is recoverable, not destructive — but this repo runs worktrees by design, so **install from one checkout consistently**, and re-run it from that checkout after installing from another.
 
 ### What `permissions.deny` guarantees under `--dangerously-skip-permissions`
 
@@ -41,7 +71,7 @@ Both layers live in the client, so both end at whoever controls the client. **Br
 
 ### Why skills are linked one by one
 
-`~/.claude/skills` is shared ground — plugins and other toolkits (argent, maestri, ...) install their skills there too. Symlinking the whole directory to the harness would hide every one of them, so the installer links each entry of `<repo>/.claude/skills` individually. The same mechanism exposes skills that live outside the harness (currently `orca-cli`, from `~/.agents/skills/orca-cli`); if the source is missing the installer says so and moves on.
+`~/.claude/skills` is shared ground — plugins and other toolkits (argent, maestri, ...) install their skills there too. Symlinking the whole directory to the harness would hide every one of them, so the installer links each entry of `<repo>/.claude/skills` individually. The same mechanism exposes skills that live outside the harness, through `EXTERNAL_SKILL_LINKS` in `scripts/install.mjs` — empty today, but kept as the extension point; if the source of an entry is missing the installer says so and moves on, leaving any link it already installed alone.
 
 A name that already exists in `~/.claude/skills` and is not one of our links is **reported and skipped** — never overwritten, never backed up.
 
@@ -63,7 +93,10 @@ Other keys in your `~/.claude/settings.json` (`theme`, `enabledPlugins`, `extraK
 The installer backs it up to `~/.claude/<name>.backup-<timestamp>` and proceeds. The message in the output points to the backup location. This does **not** apply to `~/.claude/skills` entries, which are only ever skipped.
 
 **`~/.claude/settings.json` already has `agent` set to something other than `orchestrator`.**
-The installer aborts with a clear message. Re-run with `--force-agent` to overwrite, or remove the field manually.
+The installer aborts with a clear message, before retracting anything. Re-run with `--force-agent` to overwrite, or remove the field manually.
+
+**`<repo>/.claude/skills` is missing or unreadable.**
+The installer aborts before touching the filesystem. Every checkout ships that directory, so an absent one is a damaged checkout — and reading it as "the harness declares no skills" would retract every skill link on the machine.
 
 **Settings backups accumulate** (`~/.claude/settings.json.backup-<ts>`). Clean them with `rm ~/.claude/*.backup-*` once you're confident the install is stable.
 
@@ -75,7 +108,7 @@ git pull
 node scripts/install.mjs
 ```
 
-The installer is idempotent: running again refreshes the symlinks (no-op if already correct), re-runs the merge, and updates the metadata file.
+The installer is idempotent: running again refreshes the symlinks (no-op if already correct), re-runs the merge, retracts what the harness stopped declaring, and updates the metadata file.
 
 ### Automatic update on session start
 

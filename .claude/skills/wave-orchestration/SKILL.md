@@ -2,15 +2,15 @@
 name: wave-orchestration
 description: >-
   Planejamento de execução em ondas a partir do grafo de dependências de um
-  projeto de tickets. Use quando o usuário pedir "plano de ondas", "quantas
-  frentes dá pra tocar em paralelo", "o que dá pra começar agora", "monta o
-  grafo desse projeto", ou ao orquestrar várias frentes com marcos de
-  sincronização. Lê os tickets de uma de duas fontes — projeto no Linear via
-  `orca linear`, ou GitHub Issues via `gh` — monta o grafo pelas relações reais
-  de bloqueio e apresenta as ondas ao humano. Também dispara **uma** onda por
-  vez em worktrees do Orca — um worktree e um agente por ticket — quando o
-  usuário pedir "dispara a onda 1", "roda essa onda", "abre os worktrees".
-  Nunca faz merge: isso é do humano.
+  projeto de tickets. **Opt-in: só carregue quando o usuário pedir ondas ou
+  grafo pelo nome** — "plano de ondas", "monta o grafo desse projeto", "quantas
+  frentes dá pra tocar em paralelo", "dispara a onda 1", ou o comando
+  `/wave-plan`. Tocar várias frentes em paralelo, por si só, **não** é motivo
+  para carregar esta skill: isso é o trabalho normal do orquestrador. Lê os
+  tickets de GitHub Issues via `gh`, monta o grafo pelas relações reais de
+  bloqueio e apresenta as ondas ao humano. Também cobre o disparo **manual** de
+  uma onda por vez — uma árvore e um agente por ticket. Nunca faz merge: isso é
+  do humano.
 ---
 
 # Orquestração em ondas
@@ -30,9 +30,9 @@ bloqueador; nunca inferida de título, numeração ou ordem). Projeto sem
 `blockedBy` preenchido gera uma onda 1 gigante que mente sobre o paralelismo
 disponível — nesse caso, volte para `ticket-contract` antes de planejar.
 
-Onde a aresta mora depende da fonte: no Linear, na relação "blocked by"; no
-GitHub, na dependência nativa da issue **ou** no marcador `<!-- blocked-by: ...
--->` no corpo. Nos dois casos ela é declarada, nunca inferida.
+No GitHub a aresta mora na dependência nativa da issue **ou** no marcador
+`<!-- blocked-by: ... -->` no corpo. Nos dois casos ela é declarada, nunca
+inferida.
 
 **Não confunda dois artefatos de nome parecido:**
 
@@ -49,40 +49,19 @@ um ticket. Um não substitui o outro.
 Dois scripts, dois passos. Não recalcule ondas na cabeça e não reordene o
 resultado: o cálculo é do `graph.mjs` e é testado.
 
-### Escolher a fonte
+### A fonte é uma só: GitHub Issues
 
 **O `graph.mjs` é agnóstico de fonte.** Ele consome o formato normalizado e não
-sabe de onde veio. Só o primeiro passo muda:
-
-| Fonte | Leitor | Recorte |
-|---|---|---|
-| Linear (pessoal) | `tickets-linear.mjs` | O projeto (URL ou nome) |
-| GitHub Issues | `tickets-github.mjs` | `--repo` obrigatório, `--milestone`/`--label` opcionais |
-
-Como escolher, nesta ordem:
-
-1. **O usuário disse.** "plano de ondas do milestone 7" ou uma URL do Linear
-   resolve sozinho.
-2. **O tracker do repo**, por `node ~/.claude/hooks/session-context.mjs --json`
-   (campos `tracker` e `trackerSource`). Nunca adivinhe pelo nome do repo.
-3. **Na dúvida, pergunte.** Rodar o leitor errado devolve "projeto não
-   encontrado" ou um plano do repo inteiro — os dois custam uma rodada.
+sabe de onde veio. Quem conhece o tracker é só o primeiro passo, e existe um
+leitor: `tickets-github.mjs`, recortado por `--repo` mais `--milestone`/`--label`.
 
 Jira não tem leitor: lá a leitura é via agente `atlassian`, e não existe pipeline
-automatizado de ondas.
+automatizado de ondas. Um pedido de plano de ondas sobre um projeto do Jira volta
+como recusa explícita, não como plano vazio.
 
-### Linear
-
-```bash
-node ~/.claude/harness/scripts/waves/tickets-linear.mjs "<projeto>" --json > /tmp/wave-tickets.json
-node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
-```
-
-`<projeto>` é a URL ou o nome do projeto no Linear. O leitor distingue CLI
-ausente (3), app Orca fora do ar (4), Linear desconectado (5), projeto não
-encontrado ou ambíguo (6) e erro do `orca` (7).
-
-### GitHub Issues
+O que ainda se decide antes de rodar é o **recorte**, e ele não se adivinha pelo
+nome do repo: se o usuário não disse qual milestone ou label, **pergunte**. Rodar
+sem recorte devolve um plano do repo inteiro, que custa uma rodada e engana.
 
 ```bash
 node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> --milestone <n> --json > /tmp/wave-tickets.json
@@ -110,8 +89,8 @@ labels `est:` conflitantes. Leve o `! bad data:` do stderr ao humano.
 
 **Nunca use um pipe direto.** Num pipe, o código de saída do leitor some e um
 erro dele vira "plano vazio". Se o primeiro comando falhar, pare e reporte o
-motivo — nenhum dos dois leitores emite array vazio como sucesso, e leitura
-legítima de zero tickets vem anunciada no stderr.
+motivo — o leitor nunca emite array vazio como sucesso, e leitura legítima de
+zero tickets vem anunciada no stderr.
 
 O `graph.mjs` sai com 3 quando o plano está **incompleto** — ciclo de
 dependência ou `blockedBy` apontando para id inexistente. Nesse caso o plano
@@ -202,48 +181,51 @@ Valem desde já, antes mesmo de existir disparo automático.
 
 ## Dispatch
 
-Disparar uma onda é criar **um worktree por ticket** e colocar **um agente** em
-cada um. Planejar é barato; disparar toca o disco, gasta contexto de verdade e
-cada erro aqui custa a onda inteira.
+Disparar uma onda é criar **uma árvore de trabalho por ticket** e colocar **um
+agente** em cada uma. Planejar é barato; disparar toca o disco, gasta contexto de
+verdade e cada erro aqui custa a onda inteira.
 
 **Uma onda por vez.** O humano nomeia qual. Nunca dispare a onda seguinte junto,
 nem "as duas primeiras porque a segunda é pequena": a onda seguinte depende de
 **merge**, e merge é humano.
 
+**Não existe driver automático em host nenhum.** O disparo é um procedimento
+manual em todos eles, e é este. Os passos 1, 2a, 3 e o template do prompt valem
+igual nos dois hosts; o que muda é só como a árvore nasce e como o agente entra
+nela (passo 2).
+
 ### Onde o disparo é possível
 
 `node ~/.claude/hooks/session-context.mjs --json` traz o campo `dispatch`:
 
-| `host` | `dispatch` | O que fazer |
+| `host` | `dispatch` | Como a árvore nasce |
 |---|---|---|
-| `orca` | `available: true`, driver `orca-cli` | Siga esta seção |
-| `maestri` | `available: false`, sem driver | O adaptador **automático** não existe, mas a topologia sim: um `floor create` por ticket e um `recruit --floor` em cada. Disparo **manual**, de dentro do terminal do app, e só depois de confirmar na resposta que o floor saiu isolado (skill `maestri-orchestration`) |
-| `plain` | `available: false` | Sem gerenciador de worktree na sessão: entregue o plano e o humano dispara |
+| `maestri` | `available: false`, driver `null` | Topologia nativa: um `floor create` por ticket e um `recruit --floor` em cada, de dentro do terminal do app — e só depois de confirmar **no texto da resposta** que o floor saiu isolado (skill `maestri-orchestration`) |
+| `plain` | `available: false`, driver `null` | `git worktree add` por ticket, e o agente aberto à mão em cada árvore |
 
-Fora do Orca e do Maestri a entrega da skill continua sendo o **plano**. Não
-improvise substituto com `git worktree` na mão: o que o Orca dá aqui não é o
-checkout, é a linhagem, o terminal gerenciado e o vínculo com o ticket.
+`available: false` nos dois quer dizer **"não há driver automático"**, não "não dá
+para disparar daqui". O que distingue os hosts é a `reason`, e ela nomeia o
+procedimento manual daquele host. No dia em que um driver existir, este campo é o
+primeiro a mudar — e esta seção junto.
 
-No Maestri o floor **não** é improviso — é isolamento nativo, um clone por ticket.
+No Maestri o floor **não** é improviso: é isolamento nativo, um clone por ticket.
 Mas ele pode sair **simples**, compartilhando o diretório do térreo, e aí a
-premissa desta skill (uma árvore por frente) deixa de valer: nesse caso serializa
-as frentes num agente só ou traz a onda pro Orca, nunca N agentes sobre o mesmo
-diretório. Como distinguir os dois é da `maestri-orchestration`.
+premissa desta skill (uma árvore por frente) deixa de valer — nesse caso serializa
+as frentes num agente só, nunca N agentes sobre o mesmo diretório. Como distinguir
+os dois é da `maestri-orchestration`.
 
 ### 0 — Resolver o contexto uma vez
 
-Os dois selectores usados em **todo** ticket da onda saem de uma chamada só:
+O que todo ticket da onda vai precisar, resolvido de uma vez:
 
 ```bash
-WT=$(orca worktree current --json)
-[ "$(jq -r '.ok' <<<"$WT")" = true ] || { echo "orca worktree current falhou"; exit 1; }
-REPO_ID=$(jq -r '.result.worktree.repoId' <<<"$WT")
-PARENT=$(jq -r '.result.worktree.path' <<<"$WT")
+REPO_ROOT=$(git rev-parse --show-toplevel)
+node ~/.claude/hooks/session-context.mjs --json
 ```
 
-O envelope tem `ok` no topo e os campos sob `result.worktree` — confira o `.ok`
-antes de ler o resto, porque envelope de erro não traz `worktree` e o `jq`
-devolveria `null` silenciosamente para os dois selectores.
+`REPO_ROOT` é de onde as árvores são cortadas e onde o `prompt.md` de cada ticket
+é escrito. Do `--json` só o `host` decide alguma coisa, e ele decide **apenas** o
+passo 2.
 
 ### 1 — `git fetch origin main` antes de cortar a onda
 
@@ -271,74 +253,93 @@ Vale inclusive quando "acabei de dar fetch faz dois minutos": o merge do humano
 pode ter acontecido nesses dois minutos, e é exatamente por isso que a onda
 estava esperando.
 
-### 2 — Um worktree por ticket
+### 2 — Uma árvore por ticket
 
-**Um comando por ticket.** O `create` corta o worktree, sobe o agente no
-**primeiro** terminal e entrega o prompt no argv de lançamento:
+O objetivo é o mesmo nos dois hosts: um checkout próprio por ticket, cortado de
+`origin/main`, com **um** agente dentro. Muda o comando.
+
+**`host: maestri` — um floor por ticket.**
 
 ```bash
-CREATE=$(orca worktree create \
-  --repo "id:$REPO_ID" \
-  --name w1-issue-3 \
-  --parent-worktree "path:$PARENT" \
-  --base-branch origin/main \
-  --issue 3 \
-  --agent claude \
-  --prompt "$(cat .wave/3/prompt.md)" \
-  --json)
-HANDLE=$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$CREATE")
+"$MAESTRI_CLI" floor create "w1-issue-3" --branch w1-issue-3
+"$MAESTRI_CLI" recruit "W1-3" --preset <preset> --floor "w1-issue-3"
 ```
 
-| Flag | Por quê |
-|---|---|
-| `--repo id:$REPO_ID` | Explícito. Sem ele o Orca infere o repo do cwd, e o cwd de um loop de N tickets não é confiável |
-| `--name` | Prefixo da onda + ticket (`w1-issue-3`). É o que a tabela da onda e o `orca worktree list` mostram |
-| `--parent-worktree path:$PARENT` | Linhagem: os worktrees da onda são **filhos** do worktree atual, não irmãos soltos |
-| `--base-branch origin/main` | O corte. Depende do passo 1 ter rodado |
-| `--issue <n>` / `--linear-issue <id\|url>` | Vincula o worktree ao ticket. GitHub usa `--issue`, Linear usa `--linear-issue` |
-| `--agent claude` | Sobe o agente conhecido no primeiro terminal. Ids: `claude`, `codex`, e os outros TUIs instalados |
-| `--prompt "$(cat ...)"` | O prompt do ticket, sempre do arquivo (passo 3) |
-| `--setup` | `inherit` é o default. Passe `--setup run` quando o ticket precisa das deps instaladas para rodar teste |
+Três coisas não se negociam aqui, e as três estão na `maestri-orchestration`:
 
-**O argv do agente não vem da linha de comando — vem do setting.** `--agent
-claude` não sobe um `claude` pelado: o Orca monta
-`claude --dangerously-skip-permissions '<prompt>'` a partir de
-`settings.agentDefaultArgs`, em
-`~/Library/Application Support/orca/profiles/local-default/orca-data.json`, que
-já traz `{"claude": "--dangerously-skip-permissions", "codex":
-"--dangerously-bypass-approvals-and-sandbox"}`. E isso é **default de fábrica**,
-não configuração desta máquina: no `app.asar` a constante chama-se
-`YOLO_TUI_AGENT_ARGS`, com `DEFAULT_TUI_AGENT_ARGS = YOLO_TUI_AGENT_ARGS`. Não
-existe flag de CLI para trocar esse argv (ver `### Bypass de permissão`
-adiante).
+- **O exit code do `"$MAESTRI_CLI"` não é detector de falha.** Verbo inválido já
+  foi medido saindo com **0**. Decida pelo texto da resposta, nunca por `$?`, e
+  não rode este trecho sob `set -e` achando que ele protege.
+- **Confirme o isolamento no texto**, com os dois marcadores: `isolated clone at`
+  no `floor create` e `isolated clone on branch '` no `recruit --floor`. Veio
+  `without git isolation` ou `on the ground level`, o floor saiu simples e **não**
+  se recruta assim mesmo.
+- **`floor create` é irreversível pela CLI** — `floor` é `create|list`, não existe
+  verbo de remoção. Uma onda de N tickets deixa N floors que só o humano apaga na
+  interface do app, então confirme a onda com ele **antes** do primeiro `create`.
 
-Duas armadilhas do caminho de dois passos simplesmente **não existem aqui**:
+**`host: plain` — um worktree por ticket.**
 
-- **Nenhum shell órfão.** O agente entra na primeira aba — que é exatamente a que
-  virava o shell de fallback quando o `create` rodava sem `--agent`.
-- **Nenhuma corrida de `tui-idle`.** O agente `claude` tem
-  `promptInjectionMode: "argv"`: o prompt viaja no argv de lançamento, não é
-  digitado no TUI. Não há `terminal wait`, não há `terminal send`, e o defeito
-  descrito no passo 2b não tem por onde acontecer.
+```bash
+git worktree add "../w1-issue-3" -b w1-issue-3 origin/main
+```
 
-Com `--agent`, **não** crie um segundo terminal com o mesmo agente depois: ele já
-está no primeiro, e um segundo é um agente duplicado no mesmo checkout brigando
-pelos mesmos arquivos.
+Aqui não existe linhagem, terminal gerenciado nem vínculo automático com o ticket
+— era isso que um gerenciador de worktree dava, e ele não está mais no fluxo. Os
+dois substitutos são explícitos e obrigatórios: o **marcador do passo 2a**, que é
+o vínculo com o ticket que o guard lê, e a **tabela do passo 4**, que é a linhagem
+que sobra. O agente você abre à mão dentro da árvore, com o prompt do passo 3.
 
-Não passe `--activate` num loop de N tickets: cada `--activate` rouba o foco do
-app e o humano perde o lugar N vezes.
+**Nunca dois agentes na mesma árvore**, em host nenhum: dois agentes no mesmo
+checkout brigam pelos mesmos arquivos e pelo mesmo índice do git.
 
-### 2a — Marcar o worktree como worker, no comando seguinte
+### 2a — Marcar a árvore como worker, ANTES de subir o agente
 
 **É este passo que impede o worker de mergear. Tirar ele reabre o buraco.**
 
 ```bash
-WT_PATH=$(jq -r '.result.worktree.path' <<<"$CREATE")
-BRANCH=$(jq -r '.result.worktree.branch' <<<"$CREATE")
+WT_PATH=../w1-issue-3   # no Maestri, o caminho do clone que o `floor create` devolveu
+BRANCH=w1-issue-3
 mkdir -p "$WT_PATH/.wave"
 jq -n --arg ticket 3 --arg branch "$BRANCH" --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{ticket: $ticket, branch: $branch, createdAt: $createdAt}' > "$WT_PATH/.wave/worker.json"
 ```
+
+**Passo obrigatório, imediatamente depois do `jq -n`: confirme o marcador a
+partir da árvore-alvo.** `$WT_PATH` é caminho **transcrito à mão** — no Maestri,
+lido da prosa de um `floor create` que já foi medido saindo com **0 em falha** —,
+e transcrição errada não produz erro nenhum na tela: `mkdir -p` cria o que faltar
+e o `jq` escreve feliz num lugar que não é a árvore onde o recruta vai rodar.
+
+```bash
+WT_ROOT="$(git -C "$WT_PATH" rev-parse --show-toplevel)" \
+  && jq -e . "$WT_ROOT/.wave/worker.json" \
+  && echo "MARCADOR CONFIRMADO EM: $WT_ROOT" \
+  || echo "PARE: marcador NAO confirmado em $WT_PATH"
+```
+
+São duas provas distintas, e nenhuma delas é opcional:
+
+1. **`rev-parse --show-toplevel` prova que `$WT_PATH` é raiz de árvore git — e
+   imprime qual.** O comando falha se o caminho não existir ou não estiver num
+   repo; se `$WT_PATH` cair dentro de outra árvore, ele imprime a raiz *dela*.
+   Por isso o caminho impresso não é enfeite: **`$WT_ROOT` é o que vai para o
+   `--floor`/`cd` que sobe o agente e para a tabela do passo 4.** Se o que
+   apareceu não for a árvore que você vai abrir, pare — o marcador está numa
+   árvore e o agente nasceria noutra. Ao contrário do `"$MAESTRI_CLI"`, **o exit
+   code do `git` é detector confiável**, e é por isso que a confirmação se faz com
+   `git` e não relendo o texto do `floor create`.
+2. **`jq -e` prova que o marcador está lá dentro e é JSON válido**, lido do
+   caminho canônico que o `git` acabou de imprimir — não do caminho que você
+   digitou. É exatamente o que o hook vai procurar, checado do mesmo jeito.
+
+**Falhou qualquer uma das duas, o agente NÃO sobe.** Conserte `$WT_PATH` (releia
+o output do `floor create`, ou `"$MAESTRI_CLI" floor list`), reescreva o marcador,
+rode a confirmação de novo. Subir mesmo assim é subir um worker sem guard: sem
+marcador na árvore em que ele roda, `detectWorkerContext` devolve `other` e o hook
+**não emite veredito nenhum** — `guard-destructive.mjs:74`, `if (context ===
+CONTEXT_OTHER) return;`. O `gh pr merge` cai no caminho normal de permissão, que
+sob `--dangerously-skip-permissions` é execução direta.
 
 O hook `guard-destructive` nega `gh pr merge` — literal e envelopado em
 `bash -c` — **quando acha esse marcador** subindo de `CLAUDE_PROJECT_DIR` e da
@@ -358,111 +359,48 @@ Três coisas que não podem mudar sem pensar:
 - **`.wave/` é gitignorado**, então o marcador nunca entra num commit nem
   aparece no `git status` do worker.
 
-Roda **imediatamente depois** do `create`, antes de qualquer outra coisa. O
-`--agent` já subiu o agente, então existe uma janela entre o worktree nascer e o
-marcador existir. Ela é inofensiva na prática — para mergear, o worker precisa
-antes ler o prompt, fazer o trabalho e abrir um PR, e nada disso acontece nos
-milissegundos do `jq` — mas não a alargue colocando outros comandos no meio.
-
-### 2b — Caminho de exceção: dois passos, com verificação
-
-Só quando o `--agent` não expressa o que o ticket precisa: **agente não-default**
-ou **modelo específico** (ver `### Agente não-default` adiante). Nunca como
-padrão — e a razão está medida.
-
-**O defeito: no primeiro disparo real de onda, 4 de 5 tickets subiram sem
-prompt.** `orca terminal wait --for tui-idle --timeout-ms 60000 --json` devolveu
-`{ok: true, state: null, waitedMs: null}` — voltou na hora, sem esperar coisa
-alguma. O `terminal send --text ... --enter` seguinte entregou o texto, mas o
-Enter chegou cedo demais: o prompt de 15-22 KB ficou **no composer, não
-submetido**. Da tela, o terminal parecia um agente pensando. Só apareceu porque o
-humano olhou.
-
-Daí a regra deste caminho: **verificação, não esperança.** Depois do `send`,
-confirme a submissão lendo o terminal.
-
-Aqui o marcador de worker (passo 2a) tem lugar melhor que no caminho padrão:
-como o agente só sobe no `terminal create`, escrevê-lo entre os dois comandos
-fecha a janela em vez de apenas encurtá-la.
-
-```bash
-NEW=$(orca worktree create --repo "id:$REPO_ID" --name w1-issue-3 \
-  --parent-worktree "path:$PARENT" --base-branch origin/main --issue 3 --json)
-WT_ID=$(jq -r '.result.worktree.id' <<<"$NEW")
-WT_PATH=$(jq -r '.result.worktree.path' <<<"$NEW")
-
-mkdir -p "$WT_PATH/.wave"
-jq -n --arg ticket 3 --arg branch "$(jq -r '.result.worktree.branch' <<<"$NEW")" \
-  --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{ticket: $ticket, branch: $branch, createdAt: $createdAt}' > "$WT_PATH/.wave/worker.json"
-
-TERM=$(orca terminal create --worktree "id:$WT_ID" --title w1-issue-3 \
-  --command 'codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.5' --json)
-HANDLE=$(jq -r '.result.terminal.handle // .result.handle // empty' <<<"$TERM")
-[ -n "$HANDLE" ] || HANDLE=$(orca terminal list --worktree "id:$WT_ID" --json \
-  | jq -r '.result.terminals[] | select(.title | contains("w1-issue-3")) | .handle')
-
-orca terminal send --terminal "$HANDLE" --text "$(cat .wave/3/prompt.md)" --enter --json
-orca terminal read --terminal "$HANDLE" --json
-```
-
-Se o `read` mostrar o prompt parado no composer em vez de um agente trabalhando,
-mande só o Enter e leia de novo:
-
-```bash
-orca terminal send --terminal "$HANDLE" --text "" --enter --json
-orca terminal read --terminal "$HANDLE" --json
-```
-
-`wait --for tui-idle` pode continuar no roteiro como aceleração, mas **não vale
-como garantia**: ele já voltou `state: null` na hora, para 4 terminais de 5. Quem
-decide é o `read`.
-
-**Pegue o handle do envelope do `terminal create`, na hora.** O plano B por
-título (`contains`, nunca igualdade) só vale nos primeiros instantes: o TUI
-reescreve o título da aba assim que sobe, e depois disso o título não identifica
-mais nada.
-
-**E sobra um shell.** Sem `--agent`, o `create` abriu um terminal de fallback, e
-ele fica aberto ao lado do agente. **Casar por título não desempata os dois:**
-ambos aparecem com o mesmo texto (`⠂ orchestrator`), porque quem escreve o título
-da aba é o TUI, não o `--title`. O discriminador confiável é
-`orca worktree ps --json`, que traz `worktrees[].agents[].paneKey` no formato
-`<tabId>:<leafId>` — monte o set de paneKeys de agente e trate como não-agente
-todo terminal cujo `<tabId>:<leafId>` esteja fora do set:
-
-```bash
-AGENT_PANES=$(orca worktree ps --json | jq -r '.result.worktrees[].agents[].paneKey')
-orca terminal list --worktree "id:$WT_ID" --json | jq -r --arg panes "$AGENT_PANES" '
-  ($panes | split("\n")) as $set
-  | .result.terminals[]
-  | select(("\(.tabId):\(.leafId)" | IN($set[])) | not)
-  | .handle'
-```
-
-Fecha com `orca terminal close --terminal <handle> --tab`. Confira o handle antes
-de fechar: aba errada é um agente da onda morto no meio do trabalho.
+Os dois comandos — escrita **e** confirmação — rodam **antes** de o agente subir:
+depois de a árvore existir e antes do `recruit --floor` ou de você abrir o agente
+no worktree. É a vantagem que o disparo manual tem sobre o driver que existia
+antes: a janela entre a árvore nascer e o marcador existir não chega a abrir. Não
+a reabra invertendo a ordem — nem pulando a confirmação, que é o que transforma
+"escrevi o marcador" em "o marcador está onde o guard vai procurar".
 
 ### 3 — O prompt vai em ARQUIVO, sempre
 
-Escreva `.wave/<ticket>/prompt.md` e passe o **conteúdo do arquivo**:
-`--prompt "$(cat .wave/<ticket>/prompt.md)"` no `worktree create`, ou
-`--text "$(cat .wave/<ticket>/prompt.md)"` no `terminal send` do caminho 2b.
-**Nunca cole o markdown direto na linha de comando.**
+Escreva `.wave/<ticket>/prompt.md` e entregue ao agente o **conteúdo do arquivo**,
+sempre lido dele: `"$(cat .wave/<ticket>/prompt.md)"`. **Nunca cole o markdown
+direto na linha de comando nem numa mensagem de chat.**
 
 O prompt de um ticket bom tem vários KB de markdown: crase, `$`, `!`, aspas,
 bloco de código, comentário HTML. Inline, o shell come parte disso antes de o
-`orca` ver — e o modo de falha não é erro, é um prompt **truncado ou
+comando ver — e o modo de falha não é erro, é um prompt **truncado ou
 adulterado** que o agente obedece achando que está completo.
 
+No Maestri o veículo muda e a regra não: no `ask` vai a **instrução curta** mais o
+nome da nota (ou o caminho do arquivo) onde está o conteúdo longo, porque o canal
+do canvas já foi medido engolindo texto grande sem submeter
+(`maestri-orchestration`, "O canal é frágil: instrução curta, conteúdo longo em
+nota").
+
 O arquivo também é o que torna o disparo reexecutável: se o agente morrer, o
-prompt continua no disco e o reenvio é `orca terminal send --text "$(cat ...)"`.
+prompt continua no disco e o reenvio é reler o mesmo arquivo — não remontar o
+texto de memória, que é como um reenvio entrega uma spec diferente da primeira.
+
+**Confira o `prompt.md` antes de subir o agente.** São dois itens, e são
+exatamente os dois pontos que não têm camada automática atrás:
+
+1. O **"abra o PR contra `main` e PARE, você não faz merge nunca"** da seção
+   `## Ao terminar` do template está lá, explícito. Sob bypass não existe prompt
+   de permissão para barrar nada.
+2. O **vínculo do PR com o ticket** está lá, na forma exata (`Closes #<n>`,
+   repetida por issue). Nem deny, nem guard, nem CI enxerga um PR que não
+   referencia o ticket.
 
 **O prompt precisa ser autocontido.** A spec inteira do ticket vai dentro dele —
-os 12 campos, ou o que existir deles. O agente do worktree não deve precisar
-reabrir o Linear nem o GitHub para saber o que construir: ele nasce sem
-contexto, e cada ida ao tracker é uma rodada perdida e um ponto onde ele pode
-ler o ticket errado.
+os 12 campos, ou o que existir deles. O agente da árvore não deve precisar
+reabrir o GitHub para saber o que construir: ele nasce sem contexto, e cada ida
+ao tracker é uma rodada perdida e um ponto onde ele pode ler o ticket errado.
 
 Se o ticket consome código de um irmão recém-mergeado, diga com todas as letras,
 dentro do prompt:
@@ -477,44 +415,20 @@ reescreve por segurança.
 
 ### 4 — Registrar a onda
 
-Uma linha por ticket, atualizada a cada create:
+**Sem gerenciador de worktree, esta tabela é a linhagem da onda** — não é
+relatório, é o único lugar onde fica escrito quem está onde. Uma linha por
+ticket, atualizada a cada árvore criada:
 
 ```text
-| Ticket | Worktree id | Branch | Terminal handle | PR |
+| Ticket | Caminho da árvore | Branch | Agente (floor ou terminal) | PR |
 ```
 
-- **Worktree id** é o `.result.worktree.id` do create, no formato
-  `<repoId>::<path>`. Guarde **inteiro**; o `repoId` sozinho endereça o repo, não
-  o worktree.
-- **Terminal handle** no caminho padrão sai do envelope do `worktree create`, em
-  `.result.agentTerminalHandle`; runtimes antigos devolvem só
-  `.result.startupTerminal.handle`, então leia os dois:
-
-  ```bash
-  HANDLE=$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$CREATE")
-  ```
-
-  No caminho de exceção (2b) ele vem do envelope do `terminal create`, com plano
-  B em `orca terminal list --worktree "id:<worktreeId>" --json` casando o título
-  por `contains`. Handle vazio não é falha do create: recupere pela mesma lista.
-  Handles são de escopo de runtime — se o Orca reiniciar, o handle antigo morre e
-  tem que ser readquirido.
-
-Opcionalmente, mova a coluna do board com
-`orca worktree set --worktree "id:<worktreeId>" --workspace-status in-progress --json`
-(ids default: `todo`, `in-progress`, `in-review`, `completed`).
-
-### 5 — Reparent em pé, se a linhagem escapou
-
-Esqueceu o `--parent-worktree` num ticket? Não recrie o worktree e não mate o
-agente:
-
-```bash
-orca worktree set --worktree "branch:<branch>" --parent-worktree "path:$PARENT" --json
-```
-
-É metadado do Orca: não mexe no checkout, não mexe no git, não perturba o agente
-que já está trabalhando lá dentro.
+- **Caminho da árvore** é absoluto ou relativo à raiz do repo, e é o que o humano
+  usa para entrar nela. No Maestri é o caminho do clone que o `floor create`
+  devolveu; `"$MAESTRI_CLI" floor list` reimprime todos, e **dois floors com o
+  mesmo caminho são duas frentes não isoladas** — é o sensor de auditoria da onda.
+- **Agente** é o nome do recruta (Maestri) ou o terminal onde ele foi aberto
+  (plain). Sem esse campo, "quem está travado" vira busca manual.
 
 ### O prompt padrão do worker
 
@@ -657,7 +571,7 @@ contexto do ticket ainda está de pé. Sem ele o trabalho entra na `main` e o
 ticket continua aberto, e o próximo plano de ondas lista como pendente o que já
 foi entregue.
 
-**Ticket no GitHub Issues:** a palavra-chave de fechamento vai no **corpo** do
+A palavra-chave de fechamento vai no **corpo** do
 PR — `Closes #<n>` —, e quem fecha a issue é o **merge**. Valem `close`,
 `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` e `resolved`,
 com caixa alta e dois-pontos opcionais (`CLOSES: #10`). Três detalhes custam o
@@ -667,19 +581,9 @@ repetida — `Closes #10, closes #11`, porque `Closes #10, #11` fecha só a #10.
 Nada disso é interpretado se o PR não mirar a branch **default** do repo: contra
 outra branch a palavra-chave é ignorada e nem link ela cria.
 
-**Ticket no Linear:** não existe palavra-chave — `Closes ENG-123` no corpo não
-fecha nada. O vínculo são dois comandos, na mesma hora:
-`orca linear attach --current --url <url-do-pr> --title "PR" --json` anexa o PR
-ao issue, e `orca linear status set --current --to "<estado>" --json` move o
-status. `--current` usa o issue que o Orca linkou a esta worktree, então não há
-id para errar. O `--to` quer o **nome exato do workflow state do time**, que
-varia por workspace: liste com `orca linear team states --team <key> --json` em
-vez de chutar `"In Review"`. `orca` ausente ou Linear desconectado não vira
-palpite: deixe o ticket sem vínculo e **diga isso no relatório**.
-
-**Mover o ticket para revisão também é seu, na abertura do PR**, quando a fonte
-tiver esse estado. No Linear é o `status set` acima; no GitHub Issues não existe
-estado de revisão, e o PR vinculado é o próprio sinal.
+No GitHub Issues não existe estado de revisão para mover: o PR vinculado é o
+próprio sinal, e é por isso que a palavra-chave no corpo é a única coisa a
+conferir antes de parar.
 
 **Você não faz merge. Nunca.** Não rode `gh pr merge`, não mergeie pela UI, não
 peça a outro agente que mergeie, não mergeie "porque o CI ficou verde" nem
@@ -701,10 +605,10 @@ mediu o preço — cinco PRs mergeados, e as issues #4, #5 e #6 continuaram aber
 porque só dois corpos de PR traziam a palavra-chave (L-014 em
 [`docs/lessons.md`](../../../docs/lessons.md)). Ele está escrito em **três
 lugares**: a seção `## Ao terminar` do template acima (a única que o worker de
-fato lê), a conferência do `prompt.md` em `.claude/commands/wave-run.md`, que é
-o que o coordenador checa antes de disparar, e o item 5 de "As cinco decisões
-que custaram caro" em `docs/waves.md`, para quem lê o fluxo de fora. Mesma regra
-de propagação do `git stash` abaixo, e pelo mesmo motivo.
+fato lê), a conferência do `prompt.md` no passo 3, que é o que o coordenador
+checa antes de subir o agente, e o item 5 de "As cinco decisões que custaram
+caro" em `docs/waves.md`, para quem lê o fluxo de fora. Mesma regra de propagação
+do `git stash` abaixo, e pelo mesmo motivo.
 
 A seção `git stash` do template duplica de propósito o item 6 das regras
 invioláveis: o worker recebe o prompt como arquivo e não carrega esta skill, de
@@ -736,22 +640,20 @@ ponteiro para um arquivo que ele não vai abrir.
 
 ### Agente não-default: Codex, ou um modelo específico
 
-`--agent <id>` escolhe **o agente, não o modelo**: ele não aceita `--model` nem
-`-c model_reasoning_effort=...`. É esta a situação — junto com o agente que não
-está na lista de ids conhecidos — que justifica o caminho de exceção do passo 2b.
-Só o `--command` muda:
+No disparo manual o argv do agente é **seu**, então trocar de agente ou de modelo
+é só mudar o comando que você digita. No Maestri, `recruit` aceita `--preset` (o
+caminho documentado, com os nomes vindo de `preset list`) e `--command`, que leva
+o argv inteiro:
 
 ```text
 codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.5 -c model_reasoning_effort="xhigh"
 ```
 
-O resto é o 2b inteiro, sem atalho: handle do envelope, `send --text`, **`read`
-para confirmar que o prompt foi submetido** e descarte do shell órfão por
-`paneKey`. Repare que o bypass vai escrito à mão: `agentDefaultArgs` só vale no
-caminho `--agent`, então aqui o argv é responsabilidade de quem monta a linha.
+Nome de preset e de modelo **se listam, não se adivinham** — citar de memória é
+como o persona antigo carregou um verbo inexistente por meses
+(`maestri-orchestration`, "Recrutar, retargetar, dispensar").
 
-**Se o CLI local rejeitar o modelo, pare e mostre o erro exato.** O erro está no
-próprio terminal: `orca terminal read --terminal "$HANDLE" --json`. Não caia em
+**Se o CLI local rejeitar o modelo, pare e mostre o erro exato.** Não caia em
 outro modelo em silêncio — o humano pediu aquele modelo por um motivo, e um
 worker rodando o modelo errado entrega um resultado que ninguém consegue
 explicar depois.
@@ -759,16 +661,15 @@ explicar depois.
 ### Bypass de permissão: ligado por padrão, e o que isso obriga
 
 O worker roda com `--dangerously-skip-permissions` por padrão. O motivo é
-operacional: numa onda de N worktrees ninguém está olhando o terminal de cada
+operacional: numa onda de N árvores ninguém está olhando o terminal de cada
 agente, e agente parado num prompt de permissão é agente bloqueado que só é
 descoberto horas depois. É **opt-out**, não opt-in.
 
-**Quem liga isso não é a skill, é o Orca.** O argv sai de
-`settings.agentDefaultArgs` (`orca-data.json`), cujo default de fábrica é a
-constante `YOLO_TUI_AGENT_ARGS` do `app.asar`. O dispatch não passa flag nenhuma
-de bypass no caminho padrão, e não existe flag de CLI para desligá-la ali:
-desligar num ticket é mexer no setting, ou cair no caminho de exceção 2b e montar
-o `--command` à mão.
+**E agora quem liga isso é você.** Não há mais gerenciador injetando o argv por
+setting: o bypass entra na linha que sobe o agente — no `--command` do `recruit`,
+ou no `claude` que você digita dentro do worktree. Desligar num ticket é só não
+escrever a flag; ligar é responsabilidade de quem monta a linha, e esquecer é um
+worker que trava no primeiro prompt de permissão sem ninguém olhando.
 
 **A consequência, e é ela que muda o desenho do fluxo:** sob bypass **não existe
 prompt de permissão** para barrar nada. Para o worker, o merge não é uma decisão
@@ -784,7 +685,8 @@ executa quase tudo, não foi medido; o texto do prompt é o que não depende del
 ### O que o dispatch nunca faz
 
 - **Nunca mergeia.** No worker, o hook `guard-destructive` nega `gh pr merge`
-  literal e envelopado, desde que o marcador do passo 2a exista — e é a única
+  literal e envelopado, desde que o marcador do passo 2a exista **na árvore em
+  que o worker roda** — o que só a confirmação do passo 2a prova — e é a única
   camada automática que sobrou ali, porque `Bash(gh pr merge *)` saiu do
   `permissions.deny`. A instrução no prompt do worker continua lá mesmo assim,
   por defesa em camadas. Não existe caminho nesta skill que tente merge, nem

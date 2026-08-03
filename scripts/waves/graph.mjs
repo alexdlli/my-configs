@@ -2,11 +2,11 @@
 // Wave planner for the ticket dependency graph.
 //
 // `planWaves()` is pure — no filesystem, no network, no child process. It takes
-// the normalized ticket array produced by tickets-linear.mjs and returns the
+// the normalized ticket array produced by tickets-github.mjs and returns the
 // wave plan. The block at the bottom is a thin stdin/stdout wrapper so the
 // read-only pipeline can run:
 //
-//   node tickets-linear.mjs <project> --json | node graph.mjs --json
+//   node tickets-github.mjs --repo <owner>/<repo> --json | node graph.mjs --json
 //
 // Usage:
 //   node graph.mjs [--json] < tickets.json
@@ -26,8 +26,9 @@ export const BLOCKED_CYCLE = 'cycle';
 export const BLOCKED_UNKNOWN_BLOCKER = 'unknown-blocker';
 export const BLOCKED_UPSTREAM = 'upstream';
 
-// A blocker counts as satisfied either by the tracker's own state type
-// (Linear exposes `completed`) or by a display name the harness treats as merged.
+// A blocker counts as satisfied either by the tracker's own state type (the
+// reader maps a closed-as-completed issue to `completed`) or by a display name
+// the harness treats as merged.
 const SATISFIED_STATUS_TYPE = 'completed';
 const SATISFIED_STATUS_NAMES = new Set(['done', 'merged', 'completed']);
 
@@ -359,7 +360,7 @@ function usage() {
   console.log(`Turn a normalized ticket array into a wave plan.
 
 Usage:
-  node tickets-linear.mjs <project> --json | node graph.mjs [--json]
+  node tickets-github.mjs --repo <owner>/<repo> --json | node graph.mjs [--json]
 
 Options:
   --json     Emit the plan as JSON instead of a readable summary
@@ -434,7 +435,7 @@ async function main(args) {
     fail(`unknown option: ${unknown[0]}`, EXIT_INVALID_INPUT);
   }
   if (process.stdin.isTTY) {
-    fail('nothing on stdin — pipe the output of tickets-linear.mjs --json', EXIT_INVALID_INPUT);
+    fail('nothing on stdin — pipe the output of tickets-github.mjs --json', EXIT_INVALID_INPUT);
   }
 
   const raw = await readStdin();

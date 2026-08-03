@@ -29,10 +29,10 @@ If any of these is missing or out of date, tell me before proceeding.
 - **`.claude/settings.json`** — baseline tool permissions (`allow` + `deny`), default agent, and hooks (deep-merged into `~/.claude/settings.json` by the installer)
 - **`.claude/agents/`** — orchestrator + specialist subagent definitions (symlinked into `~/.claude/agents/`)
 - **`.claude/hooks/`** — Claude Code hook scripts (symlinked into `~/.claude/hooks/`). <!-- docs-count:hooks -->Five today; the one that carries a guarantee is `guard-destructive.mjs`, a `PreToolUse` hook on `Bash` that denies `gh pr merge`, `git push --force` and `git commit --no-verify` **including the shell-wrapped form** (`bash -c "..."`, pipe to a shell) that `permissions.deny` matches as a string and therefore misses. Both layers were measured to survive `--dangerously-skip-permissions`, which is what keeps "merge is always human" true for a wave worker running with the bypass on — the deny list alone would not, since the bypass removes the approval prompt that used to catch the wrapper. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
-- **`.claude/commands/`** — slash commands, symlinked as a whole directory into `~/.claude/commands/`: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-run`, `/wave-status`, `/pr-babysit`. A new command file goes live on pull, with no re-install.
-- **`.claude/skills/`** — `ticket-contract` (the 12 fields that make a ticket a self-sufficient agent prompt), `orca-linear` (discovery stub for the `orca linear` CLI), `adversarial-review` (two reviewers, two lenses, fresh context each), `wave-orchestration` (wave plan from the dependency graph), `pr-babysitting` (CI and feedback as two independent states), `maestri-orchestration` (what changes when the session runs inside a Maestri terminal: `"$MAESTRI_CLI"`, the shared-note protocol, and the fact that no wave dispatch exists there). Linked **one entry at a time** into `~/.claude/skills/` — that directory is shared with 30+ third-party skills, so the installer never symlinks it wholesale, and a name it doesn't own is reported and skipped rather than overwritten. The same mechanism exposes skills living outside the harness: `EXTERNAL_SKILL_LINKS` links `orca-cli` from `~/.agents/skills/orca-cli`.
+- **`.claude/commands/`** — slash commands, symlinked as a whole directory into `~/.claude/commands/`: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-status`, `/pr-babysit`. A new command file goes live on pull, with no re-install.
+- **`.claude/skills/`** — `ticket-contract` (the 12 fields that make a ticket a self-sufficient agent prompt), `adversarial-review` (two reviewers, two lenses, fresh context each), `wave-orchestration` (wave plan from the dependency graph), `pr-babysitting` (CI and feedback as two independent states), `maestri-orchestration` (what changes when the session runs inside a Maestri terminal: `"$MAESTRI_CLI"`, the shared-note protocol, the floor as the wave's isolation primitive and the portal as the proof instrument). Linked **one entry at a time** into `~/.claude/skills/` — that directory is shared with 30+ third-party skills, so the installer never symlinks it wholesale, and a name it doesn't own is reported and skipped rather than overwritten. The same mechanism exposes skills living outside the harness through `EXTERNAL_SKILL_LINKS`, empty today and kept as the extension point.
 - **`scripts/install.mjs`** — installer (symlinks + settings merge + uninstall)
-- **`scripts/waves/`** — read-only wave pipeline: `tickets-linear.mjs` (Linear project into normalized tickets), `tickets-github.mjs` (GitHub Issues into the same shape, via `gh`), `graph.mjs` (`planWaves()`), `gh.mjs` (the shared `gh` access plus the exit-code table both PR readers honour), `pr-state.mjs` (CI state), `fetch-pr-threads.mjs` (PR feedback). See [`docs/waves.md`](docs/waves.md).
+- **`scripts/waves/`** — read-only wave pipeline: `tickets-github.mjs` (GitHub Issues into normalized tickets, via `gh`), `graph.mjs` (`planWaves()`), `gh.mjs` (the shared `gh` access plus the exit-code table both PR readers honour), `pr-state.mjs` (CI state), `fetch-pr-threads.mjs` (PR feedback). See [`docs/waves.md`](docs/waves.md).
 - **`scripts/setup-ai-memory.mjs`** — one-shot [ai-memory](https://github.com/akitaonrails/ai-memory) setup (long-term markdown-wiki memory + Hermes-style auto-improve for coding agents). `--provider` selects the LLM backend; default `claude-sub` routes ai-memory's `openai-compat` provider through the local `claude -p` shim so it uses your Claude subscription via the sanctioned CLI path. ai-memory owns its own MCP/hooks/instructions and merges them idempotently, coexisting with `install.mjs`. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
 - **`scripts/claude-openai-shim.mjs`** — zero-dep OpenAI-compatible HTTP server that shells out to `claude -p` (stripping `ANTHROPIC_API_KEY` to force subscription auth). Kept alive by a LaunchAgent so memory works in every session.
 - **`scripts/verify-ai-memory.mjs`** — read-only end-to-end check of the ai-memory chain (container, the LLM backend the server is actually configured with, `ai-memory status`, bootstrap reachability, wiki git history). `--json` for a machine-readable summary; exit 2 means a prerequisite was missing and part of the setup went unverified.
@@ -65,6 +65,8 @@ Every session starts in the `orchestrator` agent (set via `.claude/settings.json
 | `atlassian`             | Confluence / Jira via the Atlassian Rovo MCP  |
 
 Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
+
+**The ticket and wave pipeline is opt-in.** `pm` → `ticket-contract` → dependency graph → `wave-orchestration` still exists and still works, but it is not the default path: it runs when I ask for it by name (or through `/ticket-new`, `/wave-plan`, `/wave-status`). Delegating several fronts in parallel is ordinary orchestration, not a wave — turning a plain request into tickets costs two rounds before the first line is written.
 
 Inspiration credit: [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — adopted the *idea* of specialized agents with personas, built on Claude Code's official subagents mechanism.
 
@@ -142,133 +144,66 @@ The per-ticket exception still applies to 11 and 12: a ticket that starts touchi
 This project uses [ai-memory](https://github.com/akitaonrails/ai-memory)
 for cross-session continuity.
 
-**Default to the current project — always.** Every ai-memory tool
+**Default to the current project - always.** Every ai-memory tool
 auto-scopes to the project resolved from your session's working
-directory. **Do NOT pass `project`, `workspace`, or `cwd` arguments unless the user
-explicitly references a *different* project by name** (e.g. "what did we
-decide in the `other-app` project?"). Phrases like "this project",
-"here", "we", "our work", "where did we leave off" all mean the *current*
-project — call the tool with no scoping args. If the user asks about a
-handoff and the SessionStart auto-fetched block is already in your
-context, just answer from it; do not re-call the tool to "find it again"
-in another project.
+directory. **Do NOT pass `project`, `workspace`, or `cwd` arguments unless
+the user explicitly references a *different* project by name** (e.g. "what
+did we decide in the `other-app` project?"). Phrases like "this project",
+"here", "we", "our work", and "where did we leave off" all mean the
+*current* project, so call tools with no scoping args.
 
-**Lifecycle hooks already capture every prompt + tool call
-automatically.** You never need to manually write routine notes; the
-SessionStart hook auto-fetches pending handoffs, and on session end
-ai-memory writes a session-summary page and a handoff.
-LLM consolidation (compiling observations into topical wiki pages) runs
-on PreCompact, on demand via `memory_consolidate`, and at session end
-only when the server sets `AI_MEMORY_CONSOLIDATE_ON_SESSION_END`. Only
-write a durable wiki page when the user explicitly asks to remember or
-annotate something permanently.
+This default assumes the MCP client can identify the current agent
+session. Static MCP clients in parallel sessions for the same user cannot
+forward the real agent session id automatically; pass explicit
+`workspace` + `project` / `scopes`, or use a session-aware bridge that
+forwards the lifecycle-hook session id on MCP calls.
 
-### When to reach for each tool
+**Lifecycle hooks already capture sanitized, bounded prompt and tool-lifecycle
+observations automatically.** They are not complete native transcripts;
+managed `ai-memory run` launches add the portable visible-event ledger. Do not
+manually write routine notes. Only write durable memory when the user explicitly asks
+to remember or annotate something permanently.
 
-The user can express any of the intents below in plain English —
-match the intent to the tool. They do not need to name the tool.
+### Use the installed ai-memory Agent Skills
 
-| User says / situation | Tool |
-|---|---|
-| "have we discussed X?" / "search memory for Y" / before proposing architecture | `memory_query` (current project; `scopes` for named siblings; `global=true` to search every project) |
-| "what's been going on" / "show recent activity" (light) | `memory_recent` |
-| "is ai-memory healthy?" / "how big is the wiki?" | `memory_status` |
-| "give me the stats" / structured snapshot for the agent to consume | `memory_briefing` (read-only; never creates handoffs) |
-| "catch me up" / "I've been away" / "what's important right now?" / open-ended exploration | `memory_explore` |
-| "where did we leave off?" — and you see a `📥 ai-memory: pending handoff` block in your context | already done — answer from that block; do NOT re-call `memory_handoff_accept` |
-| "where did we leave off?" — and no such block is visible | `memory_handoff_accept` (rare; the SessionStart hook usually got there first; pass `workspace` + `project` together only for a named sibling workspace/project) |
-| "save context for the next session" / wrapping up / ending this session | `memory_handoff_begin` (session-end only; do **not** use for status/briefing; single-use handoff; terse summary; put detail in `open_questions` + `next_steps` bullets; pass `workspace` + `project` together only for a named sibling workspace/project) |
-| "discard that handoff" / "I created a handoff by mistake" | `memory_handoff_cancel` (requires exact `handoff_id` from `memory_handoff_begin`; marks it expired before the next session sees it) |
-| "consolidate this session" / "compile what we learned" (also runs on PreCompact; at session end only if `AI_MEMORY_CONSOLIDATE_ON_SESSION_END` is set) | `memory_consolidate` |
-| "what did we learn from this session?" / "what memory should we add?" / explicit wrap-up learning review | `memory_auto_improve` (manual learning review for a completed session; omit `session_id` for latest completed session; the server also schedules background review for newly completed sessions in every project when configured) |
-| "remember this permanently" / "save a note" / "add an annotation" / durable project knowledge | `memory_write_page` (write a wiki page; do **not** use handoff for permanent notes; put the title as a `# H1` on the first line of `body` and omit the `title` arg — ai-memory derives it from the H1) |
-| "read the page about X" / "show me the full content of Y" / "open the page on Z" | `memory_read_page` (full body; pass a query to search or `path` for a direct lookup; pass `workspace` + `project` together only for a named sibling workspace/project) |
-| "delete the page X" / "remove that note" | `memory_delete_page` (by exact `path`; idempotent; pass `workspace` + `project` together only for a named sibling workspace/project) |
-| "audit the wiki" / "find contradictions" / "what rules should we add?" | `memory_lint` |
-| "prune old pages" / "memory cleanup" | `memory_forget_sweep` |
-
-`memory_explore` is the right default for the "I want to know what's
-going on" use case — it returns a prose digest whose verbosity
-scales automatically to how long it's been since the last activity
-(< 1 h → one line; > 30 days → full catchup).
-
-### When the current project comes up empty — broaden the search
-
-`memory_query` searches only the **current** project by default. If a
-search comes back empty or thin, the knowledge may live in a **sibling
-project** — shared `infra`, `ops`, or a related app. Don't conclude
-"we never recorded it" after a single project misses; broaden instead:
-
-- **Know which projects to check?** Re-run with explicit `scopes`, e.g.
-  `scopes: [{ "workspace": "default", "project": "infra" }]`.
-- **Don't know where it lives?** Pass `global=true` to search every
-  project in every workspace at once. Each hit is annotated with its
-  workspace + project so you can tell where it came from. `global=true`
-  cannot be combined with `scopes`/`project`/`workspace`.
-
-`memory_query` returns **snippets, not full page bodies** — an empty or
-short snippet does **not** mean the page is empty (a large page can
-match outside the snippet window). To read the whole page, use
-`memory_read_page` (by `path`, or pass a `query` to fetch the top hit's
-full body; add `workspace` + `project` together only when the user names
-a sibling workspace/project).
-
-### Use Retrieved Memory As Operating Guidance
-
-When `memory_query` or `memory_recent` returns `_rules/`, `gotchas/`,
-`procedures/`, or `decisions/` pages that match the current task, treat
-them as actionable context, not trivia:
-
-- Read full pages with `memory_read_page` when the snippet looks relevant.
-- Apply `_rules/` as constraints.
-- Check `gotchas/` as preflight warnings before editing the same subsystem.
-- Follow `procedures/` as checklists for releases, PR reviews, deploys,
-  migrations, and other repeatable workflows.
-- Use `decisions/` as prior architecture unless the user explicitly asks
-  to revisit them.
-
-Before non-trivial coding, debugging, deployment, release, auth, scope,
-migration, PR-review, or data-preservation work, search memory for the
-subsystem and task type first. If the first query is thin, broaden or
-query specific error/subsystem terms before designing a fix.
-
-### Learning Review
-
-The server schedules background auto-improvement for newly completed sessions in
-every project when an LLM provider is configured. `memory_auto_improve` is the manual version:
-use it when the user asks what durable lessons this session suggests, or at
-explicit wrap-up when reviewing proposed memory would be useful. Scheduled and
-manual runs apply or stage validated edits through the auto-improvement approval
-path. Admins can turn off scheduling with `[auto_improve.scheduler] enabled =
-false`, or opt into manual proposal approval with `[auto_improve]
-require_approval = true`, in which case scheduled and manual proposals stay in
-pending-writes until approved.
+Detailed tool-routing guidance lives in the installed ai-memory Agent
+Skills. When a task matches an installed ai-memory Agent Skill, load and
+follow that skill before calling ai-memory tools. The skills cover memory
+retrieval, handoffs, durable pages, learning maintenance, and routing
+install or refresh work.
 
 ### When you write a project rule, write it here
 
 If you're about to write a durable project rule ("always X", "never
-Y", "all PRs must …"), write it in the project's canonical agent
-instruction file. Many projects use CLAUDE.md for Claude Code and
-AGENTS.md for Codex / OpenCode / Cursor / Gemini CLI, but if the
-project says one file is canonical, use that file. ai-memory's lint
-pass surfaces the same hint automatically when a `kind: rule` page
-lands in `_rules/`.
+Y", "all PRs must ..."), write it in the project's canonical agent instruction file.
+Many projects use CLAUDE.md for Claude Code and
+AGENTS.md for Codex / OpenCode / Cursor / Gemini CLI / Grok Build CLI / Kimi Code,
+but if the project says one file is canonical, use that file.
+
+If the rule is a standing *user/team* preference that should apply to
+every project (tech choices, code style, personal conventions), save it
+to ai-memory's reserved global scope instead — the durable-pages skill
+covers how. Default memory reads surface global-scope pages in every
+project automatically.
 
 ### Refreshing this snippet
 
-This block is maintained by ai-memory. Two ways to refresh it with
-the latest binary's recommended copy:
+This block is maintained by ai-memory. Two ways to refresh it with the
+latest binary's recommended copy:
 
 - **From the agent** (no terminal needed): ask "refresh the ai-memory
-  routing in this project" — the agent calls
-  `memory_install_self_routing`, picks the right filename for itself
-  (Claude Code → `CLAUDE.md`; Codex / OpenCode / Cursor / Gemini →
-  `AGENTS.md`), and uses its Write / Edit tool to land the block.
+  routing in this project". The agent calls `memory_install_self_routing`,
+  picks the right filename for itself (Claude Code -> `CLAUDE.md`; Codex /
+  OpenCode / Cursor / Gemini / Grok -> `AGENTS.md`; Kimi Code -> `AGENTS.md`),
+  uses its Write / Edit tool to replace or append the returned
+  `markered_block` while preserving
+  non-ai-memory user content, then writes or updates each returned
+  `managed_skills` item under the selected skill root from `target_hints`
+  using its `relative_path`.
 - **From the CLI**: `ai-memory install-instructions` (defaults to
-  `CLAUDE.md`; pass `--target AGENTS.md` for non-Claude agents or
-  projects that use `AGENTS.md` as the canonical instruction file).
+  `CLAUDE.md`; pass `--target AGENTS.md` for non-Claude agents or projects
+  that use `AGENTS.md` as the canonical instruction file).
 
-Both are idempotent: re-runs replace the block bracketed by
-`<!-- ai-memory:start -->` / `<!-- ai-memory:end -->` markers
-without disturbing the rest of the file.
+Both are idempotent: re-runs replace the block delimited by the ai-memory
+start/end HTML-comment markers, without disturbing the rest of the file.
 <!-- ai-memory:end -->

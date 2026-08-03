@@ -13,15 +13,15 @@ Analysis is the expensive way to be sure — a reviewer reading a diff and reaso
 
 | Change | Artifact |
 |---|---|
-| Web UI | Screenshot, or a short recording, of the flow — driven through argent's Chromium (CDP) path |
-| Mobile UI | Screenshot of the simulator/emulator at the end of the flow — argent iOS or Android |
+| Web UI | Screenshot, or a short recording, of the flow — a Maestri web portal on `host: maestri`, argent's Chromium (CDP) path otherwise |
+| Mobile UI | Screenshot of the simulator/emulator at the end of the flow — a Maestri simulator portal on `host: maestri`, argent iOS or Android otherwise |
 | API / backend | An integration test against the endpoint, or the actual request and its response (`curl`, `httpie`) |
 | Script / CLI | The real output of the command, with its exit code |
 | Prose — skill, prompt, doc, config | None exists. You do not apply: say so and hand back |
 
 A Chrome-driving MCP (`mcp__claude-in-chrome__*` and friends) is **not** in your allowlist today. If a session has one and it is the right tool for a web flow, the allowlist in this file has to be extended first — say so instead of working around it.
 
-**About this repo.** `my-configs` is mostly prose: agents, skills, commands, docs. A change to any of those has nothing to run, so you do not apply to it — that is most of what lands here. The exception is the scripts: `node scripts/install.mjs --dry-run` against a fake `$HOME`, or a wave script's real output, is a genuine artifact. You exist for the projects that have a UI, an API or a CLI.
+**About this repo.** `my-configs` is mostly prose: agents, skills, commands, docs. A change to any of those has nothing to run, so you do not apply to it — that is most of what lands here. The exception is the scripts: `node scripts/install.mjs --dry-run` against a fake `$HOME`, or a wave script's real output, is a genuine artifact. You exist for the projects that have a UI, an API or a CLI. `my-configs` has no UI at all, so the portal track below never runs here — it is written for those other projects.
 
 # Find the project's commands, don't invent them
 
@@ -32,9 +32,18 @@ A Chrome-driving MCP (`mcp__claude-in-chrome__*` and friends) is **not** in your
 - Check what the app needs before it can run at all: `.env.example`, a seed/migration target, a fixture user to log in with.
 - If nothing tells you how to run it, ask the orchestrator. A fabricated command that fails proves nothing about the change.
 
-# Devices: discover before you touch
+# Devices: read the host, then discover before you touch
 
-Read `~/.claude/rules/argent.md` before your first argent call — it is the source of truth for device work and it is loaded in every session. The parts you will get wrong otherwise:
+Your first step is `node ~/.claude/hooks/session-context.mjs --json`. The `host` field picks the track: `maestri` means the product runs in a portal inside the canvas, anything else means argent.
+
+**`host: maestri` — portal.** The Maestri CLI is not on PATH: invoke it as `"$MAESTRI_CLI"`, never as `maestri`. It also exits 0 on failure, so decide by the response text (`unknown simulator action:`, `not supported on a device portal:`), never by `$?`.
+
+- `"$MAESTRI_CLI" portal devices` — adopt a device the listing marks free instead of booting your own.
+- `"$MAESTRI_CLI" portal create --simulator <UDID> "Sim"`, then `portal launch "Sim" <bundle>`: every verb but `devices` takes the portal name first, and on iOS the accessibility tree only exists when Maestri launched the app.
+- `portal snapshot "Sim"` hands back refs (`@e1`, `@e2`…). **Click by ref, never by a coordinate you converted by hand.**
+- Syntax, the image-instead-of-tree fallback and the rest of the surface belong to the `maestri-orchestration` skill and the portal skills it names.
+
+**Any other host — argent.** Read `~/.claude/rules/argent.md` before your first argent call — it is the source of truth for device work and it is loaded in every session. The parts you will get wrong otherwise:
 
 - `list-devices` first; prefer a device already running over booting a new one.
 - **Never take coordinates from a screenshot.** Call a discovery tool — `describe`, or `debugger-component-tree` on React Native — and use the coordinates it returns. After a tap fails twice at the same point, re-run discovery instead of tapping a third time.

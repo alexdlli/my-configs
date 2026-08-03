@@ -17,7 +17,7 @@ function ticket(key, overrides = {}) {
     id: `id-${key}`,
     key,
     title: `Ticket ${key}`,
-    url: `https://linear.app/acme/issue/${key}`,
+    url: `https://github.com/acme/repo/issues/${key}`,
     estimate: 2,
     status: 'Backlog',
     statusType: 'unstarted',
