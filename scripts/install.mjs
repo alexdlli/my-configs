@@ -47,10 +47,9 @@ const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
 
 // Skills installed by other toolkits outside ~/.claude/skills. Claude Code only
 // loads what lives under ~/.claude/skills, so without a link these are inert.
-// orca-cli is Orca's worktree/terminal control and handoff path.
-const EXTERNAL_SKILL_LINKS = {
-  'orca-cli': path.join(HOME, '.agents', 'skills', 'orca-cli'),
-};
+// Empty today; add `'<name>': '<absolute path>'` to expose one. A target that
+// is not on disk is reported and skipped, never linked blind.
+const EXTERNAL_SKILL_LINKS = {};
 
 // v1 metadata predates addedLinks. That installer only ever created these two
 // symlinks, so they are exactly what an uninstall of a v1 install must remove.
@@ -80,7 +79,7 @@ What gets installed:
   ~/.claude/hooks    → symlink to <harness>/.claude/hooks
   ~/.claude/commands → symlink to <harness>/.claude/commands
   ~/.claude/skills/<name> → one symlink per entry in <harness>/.claude/skills,
-                     plus the external skills the harness exposes (orca-cli).
+                     plus any external skill the harness exposes (none today).
                      Never the directory itself: it is shared with skills from
                      plugins and other toolkits. A name that already exists and
                      is not ours is reported and skipped, never overwritten.
