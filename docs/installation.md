@@ -24,6 +24,17 @@ When you run `node scripts/install.mjs`, it:
    - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision — see the measured limits below)
    - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the same three commands as the deny list, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
+4. Retracts what it added and the harness no longer declares — see below.
+
+### Installing is not append-only
+
+A skill removed from `.claude/skills/` (or from `EXTERNAL_SKILL_LINKS`) does not just stop being refreshed: on the next install its link is **removed** from `~/.claude/skills/`, and the metadata stops claiming it. The same already happened for `permissions.allow` / `permissions.deny` entries.
+
+Without it, deleting a skill from the repo left a link behind that either dangled or — worse — kept resolving to a directory outside the checkout, so a `SKILL.md` for a tool the repo had just dropped went on routing work. Nothing warned about it.
+
+The metadata is what makes this safe: only a link this installer is on record as having created is ever considered, and it is removed only when its current `readlink` still matches the recorded target. A name another toolkit took over in the meantime is reported and left where it is. A link that was never ours is never even looked at.
+
+`--dry-run` prints the removals as `→ would remove symlink …` and touches nothing.
 
 ### What `permissions.deny` guarantees under `--dangerously-skip-permissions`
 
@@ -75,7 +86,7 @@ git pull
 node scripts/install.mjs
 ```
 
-The installer is idempotent: running again refreshes the symlinks (no-op if already correct), re-runs the merge, and updates the metadata file.
+The installer is idempotent: running again refreshes the symlinks (no-op if already correct), re-runs the merge, retracts what the harness stopped declaring, and updates the metadata file.
 
 ### Automatic update on session start
 
