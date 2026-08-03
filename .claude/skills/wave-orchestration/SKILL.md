@@ -305,6 +305,42 @@ jq -n --arg ticket 3 --arg branch "$BRANCH" --arg createdAt "$(date -u +%Y-%m-%d
   '{ticket: $ticket, branch: $branch, createdAt: $createdAt}' > "$WT_PATH/.wave/worker.json"
 ```
 
+**Passo obrigatório, imediatamente depois do `jq -n`: confirme o marcador a
+partir da árvore-alvo.** `$WT_PATH` é caminho **transcrito à mão** — no Maestri,
+lido da prosa de um `floor create` que já foi medido saindo com **0 em falha** —,
+e transcrição errada não produz erro nenhum na tela: `mkdir -p` cria o que faltar
+e o `jq` escreve feliz num lugar que não é a árvore onde o recruta vai rodar.
+
+```bash
+WT_ROOT="$(git -C "$WT_PATH" rev-parse --show-toplevel)" \
+  && jq -e . "$WT_ROOT/.wave/worker.json" \
+  && echo "MARCADOR CONFIRMADO EM: $WT_ROOT" \
+  || echo "PARE: marcador NAO confirmado em $WT_PATH"
+```
+
+São duas provas distintas, e nenhuma delas é opcional:
+
+1. **`rev-parse --show-toplevel` prova que `$WT_PATH` é raiz de árvore git — e
+   imprime qual.** O comando falha se o caminho não existir ou não estiver num
+   repo; se `$WT_PATH` cair dentro de outra árvore, ele imprime a raiz *dela*.
+   Por isso o caminho impresso não é enfeite: **`$WT_ROOT` é o que vai para o
+   `--floor`/`cd` que sobe o agente e para a tabela do passo 4.** Se o que
+   apareceu não for a árvore que você vai abrir, pare — o marcador está numa
+   árvore e o agente nasceria noutra. Ao contrário do `"$MAESTRI_CLI"`, **o exit
+   code do `git` é detector confiável**, e é por isso que a confirmação se faz com
+   `git` e não relendo o texto do `floor create`.
+2. **`jq -e` prova que o marcador está lá dentro e é JSON válido**, lido do
+   caminho canônico que o `git` acabou de imprimir — não do caminho que você
+   digitou. É exatamente o que o hook vai procurar, checado do mesmo jeito.
+
+**Falhou qualquer uma das duas, o agente NÃO sobe.** Conserte `$WT_PATH` (releia
+o output do `floor create`, ou `"$MAESTRI_CLI" floor list`), reescreva o marcador,
+rode a confirmação de novo. Subir mesmo assim é subir um worker sem guard: sem
+marcador na árvore em que ele roda, `detectWorkerContext` devolve `other` e o hook
+**não emite veredito nenhum** — `guard-destructive.mjs:74`, `if (context ===
+CONTEXT_OTHER) return;`. O `gh pr merge` cai no caminho normal de permissão, que
+sob `--dangerously-skip-permissions` é execução direta.
+
 O hook `guard-destructive` nega `gh pr merge` — literal e envelopado em
 `bash -c` — **quando acha esse marcador** subindo de `CLAUDE_PROJECT_DIR` e da
 cwd até a raiz do repo. Sem marcador ele fica calado e o comando cai no prompt
@@ -323,10 +359,12 @@ Três coisas que não podem mudar sem pensar:
 - **`.wave/` é gitignorado**, então o marcador nunca entra num commit nem
   aparece no `git status` do worker.
 
-Roda **antes** de o agente subir — depois de a árvore existir e antes do
-`recruit --floor` ou de você abrir o agente no worktree. É a vantagem que o
-disparo manual tem sobre o driver que existia antes: a janela entre a árvore
-nascer e o marcador existir não chega a abrir. Não a reabra invertendo a ordem.
+Os dois comandos — escrita **e** confirmação — rodam **antes** de o agente subir:
+depois de a árvore existir e antes do `recruit --floor` ou de você abrir o agente
+no worktree. É a vantagem que o disparo manual tem sobre o driver que existia
+antes: a janela entre a árvore nascer e o marcador existir não chega a abrir. Não
+a reabra invertendo a ordem — nem pulando a confirmação, que é o que transforma
+"escrevi o marcador" em "o marcador está onde o guard vai procurar".
 
 ### 3 — O prompt vai em ARQUIVO, sempre
 
@@ -647,7 +685,8 @@ executa quase tudo, não foi medido; o texto do prompt é o que não depende del
 ### O que o dispatch nunca faz
 
 - **Nunca mergeia.** No worker, o hook `guard-destructive` nega `gh pr merge`
-  literal e envelopado, desde que o marcador do passo 2a exista — e é a única
+  literal e envelopado, desde que o marcador do passo 2a exista **na árvore em
+  que o worker roda** — o que só a confirmação do passo 2a prova — e é a única
   camada automática que sobrou ali, porque `Bash(gh pr merge *)` saiu do
   `permissions.deny`. A instrução no prompt do worker continua lá mesmo assim,
   por defesa em camadas. Não existe caminho nesta skill que tente merge, nem

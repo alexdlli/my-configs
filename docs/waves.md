@@ -421,9 +421,27 @@ git worktree add "../w1-issue-3" -b w1-issue-3 origin/main
 
 E aí o agente é aberto à mão dentro da árvore, com o prompt do arquivo.
 
-Nos dois casos o marcador `.wave/worker.json` é escrito **antes** de o agente subir. É a única
-vantagem que o disparo manual tem sobre um driver: a janela entre a árvore nascer e o marcador
-existir não chega a abrir.
+Nos dois casos o marcador `.wave/worker.json` é escrito **antes** de o agente subir — e
+**confirmado a partir da árvore-alvo**, também antes disso. O caminho da árvore (`$WT_PATH`) é
+transcrito à mão, no Maestri lido da prosa de um `floor create` que sai com 0 mesmo em falha, e
+marcador escrito fora da árvore certa não produz erro nenhum na tela:
+
+```bash
+WT_ROOT="$(git -C "$WT_PATH" rev-parse --show-toplevel)" \
+  && jq -e . "$WT_ROOT/.wave/worker.json" \
+  && echo "MARCADOR CONFIRMADO EM: $WT_ROOT" \
+  || echo "PARE: marcador NAO confirmado em $WT_PATH"
+```
+
+São duas provas: que `$WT_PATH` é raiz de árvore git — e **qual**, porque o caminho impresso é o
+que tem que ser o do `--floor`/`cd` que sobe o agente —, e que o marcador é JSON válido lá
+dentro. **Falhou qualquer uma, o agente não sobe.** Sem marcador na árvore em que o worker roda,
+`guard-destructive` classifica a sessão como `other` e **não emite veredito nenhum**: o
+`gh pr merge` cai no caminho normal de permissão, que sob `--dangerously-skip-permissions` é
+execução direta. O procedimento completo está no passo 2a da skill `wave-orchestration`.
+
+Essa é a única vantagem que o disparo manual tem sobre um driver — a janela entre a árvore nascer
+e o marcador existir não chega a abrir —, e ela só vale com a confirmação feita.
 
 ### Acompanhamento
 
