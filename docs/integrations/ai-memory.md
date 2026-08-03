@@ -98,13 +98,18 @@ What it checks:
 | ai-memory container | the container exists and is running |
 | LLM backend | the backend the **server is actually configured with** answers. The provider is read from the container's own `AI_MEMORY_LLM_*` env, so `claude-sub` is checked against the shim's `/healthz`, `local` against Ollama's `/v1/models`. `anthropic`/`anthropic-oauth` have no local endpoint and are skipped; a zero-LLM install has no backend to check |
 | LLM model | the configured model is the one the backend serves (Ollama: actually pulled) |
+| ai-memory version | the running container reports a version **and** still runs the image `akitaonrails/ai-memory:latest` points at. A mismatch warns, because `ai-memory upgrade` pulls the new image without recreating the container — see [Upgrade](#upgrade--uninstall) |
 | `ai-memory status` | the server answers and reports the provider the container was started with |
 | `bootstrap --dry-run` | the server can collect sources — proves it reaches the LLM backend |
 | Wiki git history | `/data/wiki` has commits, i.e. capture is being committed |
+| Staged hooks | `~/.claude/settings.json` still points at ai-memory lifecycle hooks and every script it names is on disk and executable. Nothing is captured without them, however healthy the server is |
+| Managed skills | the `ai-memory-*` Agent Skills are installed **globally** (`~/.claude/skills/`). Finding them project-scoped in the repo's own `.claude/skills/` fails the check: that directory belongs to the harness installer |
 
-Exit codes: `0` all applicable checks passed · `1` something failed · `2` nothing failed but a prerequisite was missing (no docker, no CLI, no container) so part of the setup was **not verified** — the summary line names exactly what went unchecked. An unverified setup never reports success.
+The last two checks are client-side and run even when the container is down — a healthy server whose hooks got unstaged is exactly the silent failure this script exists to name.
 
-Env overrides (only needed when the local container is not the source of truth, e.g. a remote or native deploy): `AI_MEMORY_CONTAINER`, `AI_MEMORY_REPO`, `AI_MEMORY_LLM_PROVIDER`, `AI_MEMORY_LLM_BASE_URL`, `AI_MEMORY_LLM_MODEL`.
+Exit codes: `0` all applicable checks passed · `1` something failed · `2` nothing failed but a prerequisite was missing (no docker, no CLI, no container, no agent settings) so part of the setup was **not verified** — the summary line names exactly what went unchecked. An unverified setup never reports success.
+
+Env overrides (only needed when the local container is not the source of truth, e.g. a remote or native deploy): `AI_MEMORY_CONTAINER`, `AI_MEMORY_REPO`, `AI_MEMORY_IMAGE`, `AI_MEMORY_LLM_PROVIDER`, `AI_MEMORY_LLM_BASE_URL`, `AI_MEMORY_LLM_MODEL`, `CLAUDE_CONFIG_DIR`.
 
 ## Backups — `scripts/backup-ai-memory.mjs`
 
