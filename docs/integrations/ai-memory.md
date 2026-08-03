@@ -29,7 +29,7 @@ So this harness adds a small bridge:
 - **`scripts/claude-openai-shim.mjs`** — a zero-dependency OpenAI-compatible server (`/v1/chat/completions`, `/v1/models`, `/healthz`). It shells out to `claude -p --output-format json` and **strips `ANTHROPIC_API_KEY`** from the child env so the call uses your subscription, not pay-as-you-go billing. This is the same idea as the "claude CLI" backend in your `ghprai`, exposed as an HTTP endpoint ai-memory can talk to.
 - **LaunchAgent** (`com.my-configs.claude-openai-shim`) keeps the shim running on login/boot, so memory works in *every* Claude Code session, not just the one where you ran setup.
 - **ai-memory server** — Docker on loopback (`127.0.0.1:49374`), `openai-compat` provider pointed at the shim, model `claude-haiku-4-5` (its LLM work is summarisation/classification, so a Haiku-class model is plenty and easiest on subscription rate limits).
-- **Claude Code wiring** — `install-mcp` (so the agent can call `memory_query` / `memory_recent` / `memory_handoff_accept`), `install-hooks` (lifecycle capture), `install-instructions` (routing snippet). ai-memory merges these idempotently and preserves unrelated config, and this harness's `install.mjs` is symmetric: it only appends the hook entries declared in the harness's own `.claude/settings.json` (today `SessionStart` → `auto-update.mjs`, `UserPromptSubmit` → `orchestrator-reminder.mjs`, `PreCompact` → `preserve-orchestrator.mjs`) and never rewrites or removes an entry it did not add. Both sides therefore register a `SessionStart` hook on the same event and both run.
+- **Claude Code wiring** — `install-mcp` (so the agent can call `memory_query` / `memory_recent` / `memory_handoff_accept`), `install-hooks` (lifecycle capture), `install-instructions --skills-scope global` (the routing block bracketed by `<!-- ai-memory:start -->` / `<!-- ai-memory:end -->` in `CLAUDE.md`/`AGENTS.md`, **plus** ai-memory's managed Agent Skills). The scope flag is deliberate: since 1.18.0 that command also installs skills, and its default (`project`) would write them into the repo's own `.claude/skills/` — the directory `install.mjs` links one entry at a time exactly so that no tool takes the shared namespace over. `global` sends them to `~/.claude/skills/` instead, where they sit beside the harness's own links as five `ai-memory-*` entries. ai-memory merges these idempotently and preserves unrelated config, and this harness's `install.mjs` is symmetric: it only appends the hook entries declared in the harness's own `.claude/settings.json` (today `SessionStart` → `auto-update.mjs`, `UserPromptSubmit` → `orchestrator-reminder.mjs`, `PreCompact` → `preserve-orchestrator.mjs`) and never rewrites or removes an entry it did not add. Both sides therefore register a `SessionStart` hook on the same event and both run.
 
 ### Why this path is the sanctioned one (and the caveat)
 
@@ -171,6 +171,7 @@ The wiki is a git repo inside the data volume; push to a private remote and pull
 
 ```bash
 ai-memory upgrade            # self-upgrade wrapper + pull image + re-stage hooks
+cd <repo> && ai-memory install-instructions --skills-scope global   # refresh block + skills
 ai-memory uninstall --apply  # remove only ai-memory-owned MCP/hooks/instructions
 docker rm -f ai-memory       # stop + remove the server (data volume survives)
 
@@ -182,6 +183,8 @@ node scripts/backup-ai-memory.mjs --uninstall   # remove the backup LaunchAgent
 
 docker volume rm ai-memory-data   # destructive: erase all memory
 ```
+
+`upgrade` refreshes the wrapper, the image and the staged hook scripts — it leaves the routing block and the managed skills at the version that wrote them. A release that changes either ships new text, so re-run `install-instructions --skills-scope global` (or `node scripts/setup-ai-memory.mjs`, which ends with exactly that) in each project whose block you want current. Never hand-edit between the markers: re-running replaces the marked region in place and would silently drop your edit.
 
 ## Troubleshooting
 
