@@ -82,6 +82,57 @@ cd <repo> && ai-memory bootstrap
 
 Per-project isolation is by construction (`<wiki>/<workspace>/<project>/…`, keyed off `basename($cwd)`). Drop a `.ai-memory.toml` marker to override workspace/project for monorepos, worktrees, or work/personal splits.
 
+Reads default to the current project, and every default-scoped read also returns hits from **`_global`** — a reserved scope for standing preferences that hold everywhere ("always use pnpm", "never force-push"). Write one with `memory_write_page` and `scope: "global"`; it will surface in every project as `global_scope_hits`, so a preference is stated once instead of copied into each project's wiki.
+
+## Managed runs and workstreams — `ai-memory run`
+
+Hooks capture whatever session you happen to open. `ai-memory run` launches the agent itself, so the session is born inside a named **workstream** and gets the complete visible-event ledger that the plain hook path — sanitized, bounded observations — cannot produce.
+
+```bash
+ai-memory run claude                              # continue the newest managed session here
+ai-memory run claude --new purge-orca             # create and select a fresh workstream
+ai-memory run claude --workstream purge-orca      # rejoin an existing one
+ai-memory run claude --fresh                      # new native session inside the selected workstream
+```
+
+Harnesses: `claude`, `codex`, `opencode`, `pi`, `crush`, `omp`, `kimi`, `grok`, `antigravity`. Only the wrapper's own flags are consumed (`--new`, `--workstream`, `--fresh`, `--yolo`, `--workspace`, `--project`, `--executable`); every other argument is forwarded to the harness byte-for-byte and in order.
+
+A workstream runs one agent at a time, enforced by a lease the launcher renews while the process is alive. A run whose lease lapses is marked `expired`, so an agent that dies without cleaning up does not park the workstream forever.
+
+Inside a managed run, the ledger is searchable:
+
+```bash
+ai-memory workstream-search "wave dispatch" --limit 50 --json
+```
+
+`--workstream-id` defaults to `AI_MEMORY_WORKSTREAM_ID`, which managed child processes already carry, so you never pass it by hand from inside a run.
+
+> `run` is the one command the Docker wrapper cannot serve from a container — native harnesses and their transcript stores are host resources. The wrapper downloads a checksum-verified native client into `~/.cache/ai-memory/native-runner/` and executes that instead (macOS/Linux, x86_64/arm64; override with `AI_MEMORY_NATIVE_BIN`).
+
+## Per-project behaviour — `.ai-memory.toml`
+
+Beyond pinning workspace/project, the marker tunes what gets captured and injected:
+
+| Key | Effect |
+|---|---|
+| `[briefing] inject_on_session_start` | inject the project brief into the agent's context at SessionStart, alongside the pending handoff |
+| `[briefing] max_chars` | cap that injection; the block says so in place when it truncates |
+| `[capture] ignore_paths` | glob patterns, resolved against the directory holding the marker, whose files never reach capture — the place to keep secrets, fixtures and vendored trees out of the wiki |
+| `default_global` | make plain reads search every project by default instead of only the current one |
+
+`[capture]` is parsed as a real TOML table, and `ignore_paths` must be its first key or the whole marker is rejected as invalid. The briefing and recall keys are matched by name anywhere in the file, so their section headers are documentation for the reader rather than parser input.
+
+## Managed Agent Skills — `install-skills`
+
+Since 1.18.0, ai-memory ships its own routing as five Agent Skills (`ai-memory-retrieval`, `ai-memory-handoff`, `ai-memory-durable-pages`, `ai-memory-learning-maintenance`, `ai-memory-routing-install`) instead of one long block of instructions. `install-instructions` installs them as a side effect; `install-skills` is the same job on its own:
+
+```bash
+ai-memory install-skills --print --scope global   # preview the paths and bodies
+ai-memory install-skills --scope global           # ~/.claude/skills/ai-memory-*
+```
+
+`--scope project` writes into the repo's own `.claude/skills/` — **not** what this harness wants, because `install.mjs` owns that directory. Without `--force`, a same-named skill that lacks ai-memory's managed marker is preserved and the command exits with an error rather than overwriting it; `--agent` selects the directory family (`claude-code`, `agents`, `devin`, `grok`, `both`).
+
 ## Checking the install — `scripts/verify-ai-memory.mjs`
 
 Read-only end-to-end check of the whole chain, for when memory "stops working" and you need to know *which* link broke. It never writes to the wiki and never touches Docker or LaunchAgent state (`ai-memory bootstrap` is run with `--dry-run`, i.e. collect-and-estimate only).
@@ -190,6 +241,14 @@ docker volume rm ai-memory-data   # destructive: erase all memory
 ```
 
 `upgrade` refreshes the wrapper, the image and the staged hook scripts — it leaves the routing block and the managed skills at the version that wrote them. A release that changes either ships new text, so re-run `install-instructions --skills-scope global` (or `node scripts/setup-ai-memory.mjs`, which ends with exactly that) in each project whose block you want current. Never hand-edit between the markers: re-running replaces the marked region in place and would silently drop your edit.
+
+**A pulled image is not a running image.** `upgrade` stops at `docker pull`, and `setup-ai-memory.mjs` leaves an existing container alone on purpose (`startServer()` prints *"already exists — leaving it"*, so a re-run never destroys a working server behind your back). The two together mean the newly pulled version does not take effect until you recreate the container yourself:
+
+```bash
+docker rm -f ai-memory && node scripts/setup-ai-memory.mjs   # data volume survives
+```
+
+`node scripts/verify-ai-memory.mjs` warns when the running container no longer matches the image `akitaonrails/ai-memory:latest` points at, which is exactly this state.
 
 ## Troubleshooting
 
