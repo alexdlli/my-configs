@@ -5,12 +5,11 @@ description: >-
   projeto de tickets. Use quando o usuário pedir "plano de ondas", "quantas
   frentes dá pra tocar em paralelo", "o que dá pra começar agora", "monta o
   grafo desse projeto", ou ao orquestrar várias frentes com marcos de
-  sincronização. Lê os tickets de uma de duas fontes — projeto no Linear via
-  `orca linear`, ou GitHub Issues via `gh` — monta o grafo pelas relações reais
-  de bloqueio e apresenta as ondas ao humano. Também dispara **uma** onda por
-  vez em worktrees do Orca — um worktree e um agente por ticket — quando o
-  usuário pedir "dispara a onda 1", "roda essa onda", "abre os worktrees".
-  Nunca faz merge: isso é do humano.
+  sincronização. Lê os tickets de GitHub Issues via `gh`, monta o grafo pelas
+  relações reais de bloqueio e apresenta as ondas ao humano. Também cobre o
+  disparo **manual** de uma onda por vez — uma árvore e um agente por ticket —
+  quando o usuário pedir "dispara a onda 1", "roda essa onda", "abre os
+  worktrees". Nunca faz merge: isso é do humano.
 ---
 
 # Orquestração em ondas
@@ -30,9 +29,9 @@ bloqueador; nunca inferida de título, numeração ou ordem). Projeto sem
 `blockedBy` preenchido gera uma onda 1 gigante que mente sobre o paralelismo
 disponível — nesse caso, volte para `ticket-contract` antes de planejar.
 
-Onde a aresta mora depende da fonte: no Linear, na relação "blocked by"; no
-GitHub, na dependência nativa da issue **ou** no marcador `<!-- blocked-by: ...
--->` no corpo. Nos dois casos ela é declarada, nunca inferida.
+No GitHub a aresta mora na dependência nativa da issue **ou** no marcador
+`<!-- blocked-by: ... -->` no corpo. Nos dois casos ela é declarada, nunca
+inferida.
 
 **Não confunda dois artefatos de nome parecido:**
 
@@ -49,40 +48,19 @@ um ticket. Um não substitui o outro.
 Dois scripts, dois passos. Não recalcule ondas na cabeça e não reordene o
 resultado: o cálculo é do `graph.mjs` e é testado.
 
-### Escolher a fonte
+### A fonte é uma só: GitHub Issues
 
 **O `graph.mjs` é agnóstico de fonte.** Ele consome o formato normalizado e não
-sabe de onde veio. Só o primeiro passo muda:
-
-| Fonte | Leitor | Recorte |
-|---|---|---|
-| Linear (pessoal) | `tickets-linear.mjs` | O projeto (URL ou nome) |
-| GitHub Issues | `tickets-github.mjs` | `--repo` obrigatório, `--milestone`/`--label` opcionais |
-
-Como escolher, nesta ordem:
-
-1. **O usuário disse.** "plano de ondas do milestone 7" ou uma URL do Linear
-   resolve sozinho.
-2. **O tracker do repo**, por `node ~/.claude/hooks/session-context.mjs --json`
-   (campos `tracker` e `trackerSource`). Nunca adivinhe pelo nome do repo.
-3. **Na dúvida, pergunte.** Rodar o leitor errado devolve "projeto não
-   encontrado" ou um plano do repo inteiro — os dois custam uma rodada.
+sabe de onde veio. Quem conhece o tracker é só o primeiro passo, e existe um
+leitor: `tickets-github.mjs`, recortado por `--repo` mais `--milestone`/`--label`.
 
 Jira não tem leitor: lá a leitura é via agente `atlassian`, e não existe pipeline
-automatizado de ondas.
+automatizado de ondas. Um pedido de plano de ondas sobre um projeto do Jira volta
+como recusa explícita, não como plano vazio.
 
-### Linear
-
-```bash
-node ~/.claude/harness/scripts/waves/tickets-linear.mjs "<projeto>" --json > /tmp/wave-tickets.json
-node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
-```
-
-`<projeto>` é a URL ou o nome do projeto no Linear. O leitor distingue CLI
-ausente (3), app Orca fora do ar (4), Linear desconectado (5), projeto não
-encontrado ou ambíguo (6) e erro do `orca` (7).
-
-### GitHub Issues
+O que ainda se decide antes de rodar é o **recorte**, e ele não se adivinha pelo
+nome do repo: se o usuário não disse qual milestone ou label, **pergunte**. Rodar
+sem recorte devolve um plano do repo inteiro, que custa uma rodada e engana.
 
 ```bash
 node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> --milestone <n> --json > /tmp/wave-tickets.json
@@ -110,8 +88,8 @@ labels `est:` conflitantes. Leve o `! bad data:` do stderr ao humano.
 
 **Nunca use um pipe direto.** Num pipe, o código de saída do leitor some e um
 erro dele vira "plano vazio". Se o primeiro comando falhar, pare e reporte o
-motivo — nenhum dos dois leitores emite array vazio como sucesso, e leitura
-legítima de zero tickets vem anunciada no stderr.
+motivo — o leitor nunca emite array vazio como sucesso, e leitura legítima de
+zero tickets vem anunciada no stderr.
 
 O `graph.mjs` sai com 3 quando o plano está **incompleto** — ciclo de
 dependência ou `blockedBy` apontando para id inexistente. Nesse caso o plano

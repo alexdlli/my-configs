@@ -61,10 +61,10 @@ O tracker é detectado por `node ~/.claude/hooks/session-context.mjs --json` (ca
 e `trackerSource`), nunca adivinhado pelo nome do repo. Os sinais de ambiente que alimentam
 essa detecção estão em [`integrations/session-context.md`](integrations/session-context.md).
 
-**Assimetria deliberada entre trackers:** Linear (pessoal) e GitHub Issues têm leitura e
-escrita — o primeiro via CLI `orca linear`, o segundo via CLI `gh`; é onde os tickets nascem.
-Jira (trabalho) é **somente leitura**, via o agente `atlassian`: lá os tickets chegam prontos,
-e o papel do fluxo é normalizar e auditar contra o contrato, apontando os campos que faltam.
+**Assimetria deliberada entre trackers:** GitHub Issues (pessoal) tem leitura e escrita, via
+CLI `gh`; é onde os tickets nascem. Jira (trabalho) é **somente leitura**, via o agente
+`atlassian`: lá os tickets chegam prontos, e o papel do fluxo é normalizar e auditar contra o
+contrato, apontando os campos que faltam.
 
 ### Autoria
 
@@ -78,8 +78,7 @@ skill de origem do fluxo; a regra local vence.
 
 | Artefato | Papel |
 |---|---|
-| `scripts/waves/tickets-linear.mjs` | Lê um projeto do Linear via CLI `orca linear` e emite o formato normalizado. Somente leitura |
-| `scripts/waves/tickets-github.mjs` | Lê GitHub Issues via CLI `gh` e emite o mesmo formato normalizado. Somente leitura |
+| `scripts/waves/tickets-github.mjs` | Lê GitHub Issues via CLI `gh` e emite o formato normalizado. Somente leitura |
 | `scripts/waves/graph.mjs` | `planWaves()` — função pura que transforma tickets em ondas. Traz um wrapper stdin/stdout para o pipeline |
 | `.claude/skills/wave-orchestration/SKILL.md` | Como montar o grafo, como apresentar o plano e as regras invioláveis da onda |
 | `.claude/commands/wave-plan.md` | `/wave-plan` — roda o pipeline e imprime a tabela de ondas |
@@ -89,12 +88,12 @@ skill de origem do fluxo; a regra local vence.
 Além dos oito campos já descritos acima, o leitor emite dois campos que o grafo precisa:
 
 - `statusType` — o `type` do estado no tracker, normalizado para `completed` quando o ticket está
-  entregue (no Linear é o próprio `type`; no GitHub sai de `CLOSED` + `COMPLETED`). É o sinal
-  confiável de "mergeado"; o nome do estado é livre e varia por time.
+  entregue (no GitHub sai de `CLOSED` + `COMPLETED`). É o sinal confiável de "mergeado"; o nome
+  do estado é livre e varia por time.
 - `external` — `true` quando o ticket não pertence ao escopo lido e só está no registro porque
   alguém depende dele.
 
-O leitor do GitHub emite ainda um extra próprio, `blockedBySources`, que o `graph.mjs` ignora —
+O leitor emite ainda um extra próprio, `blockedBySources`, que o `graph.mjs` ignora —
 veja [Fonte GitHub Issues](#fonte-github-issues).
 
 ### Como o grafo decide a onda
@@ -121,7 +120,7 @@ veja [Fonte GitHub Issues](#fonte-github-issues).
 ### Pipeline
 
 ```bash
-node ~/.claude/harness/scripts/waves/tickets-linear.mjs "<projeto>" --json > /tmp/wave-tickets.json
+node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> --milestone <n> --json > /tmp/wave-tickets.json
 node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
 ```
 
@@ -129,25 +128,9 @@ node ~/.claude/harness/scripts/waves/graph.mjs --json < /tmp/wave-tickets.json
 some e uma falha dele chega ao planejador como entrada vazia — o modo de falha que faz um plano
 de ondas mentir. O `graph.mjs` recusa stdin vazia em vez de imprimir um plano de zero ondas.
 
-O primeiro passo é o único que conhece o tracker. Trocar `tickets-linear.mjs` por
-`tickets-github.mjs` não muda nada depois dele: o `graph.mjs` consome o formato normalizado e
-não sabe de onde veio.
-
-### Falha honesta
-
-`tickets-linear.mjs` nunca emite array vazio como sucesso. Códigos de saída:
-
-| Código | Situação |
-|---|---|
-| 2 | Uso errado (sem projeto, flag desconhecida) |
-| 3 | CLI `orca` não encontrada (respeita `ORCA_CLI_COMMAND`) |
-| 4 | App Orca fora do ar ou runtime inalcançável |
-| 5 | Orca rodando, mas Linear não conectado |
-| 6 | Projeto não encontrado, ou o texto casa com mais de um |
-| 7 | Erro do `orca` (código e mensagem do envelope repassados) |
-
-Também falha, em vez de truncar, quando o Linear devolve leitura parcial, `workspaceErrors`, ou
-mais páginas de issues do que o cursor consegue percorrer.
+O primeiro passo é o único que conhece o tracker, e a separação continua valendo mesmo com um
+leitor só: é ela que mantém o `graph.mjs` agnóstico e é onde outro tracker entraria, se um dia
+entrar. Os códigos de saída do leitor estão em [Falha honesta](#falha-honesta).
 
 `graph.mjs` sai com 2 para entrada inutilizável e com **3 quando o plano está incompleto**
 (ciclo ou id inexistente) — o plano é impresso, mas não é executável.
@@ -165,13 +148,14 @@ O grafo é coberto por fixtures — caminho simples, fan-in, ciclo de 2 e de 3 n
 bloqueador inexistente, externo aberto, externo já mergeado, órfão, conjunto vazio e
 determinismo com a entrada embaralhada.
 
-Nos leitores, a lógica pura é separada do I/O e testada sozinha: dada a resposta do CLI, qual é
-o array normalizado? Nenhum teste chama `orca` ou `gh`.
+No leitor, a lógica pura é separada do I/O e testada sozinha: dada a resposta do CLI, qual é
+o array normalizado? Nenhum teste chama `gh`.
 
 ## Fonte GitHub Issues
 
-`tickets-github.mjs` emite exatamente o mesmo formato normalizado que o leitor do Linear, então
-o `graph.mjs` não muda. O que muda é o recorte, a origem das arestas e a origem da estimativa.
+`tickets-github.mjs` é o único leitor de tickets, e emite o formato normalizado que o
+`graph.mjs` consome. O que ele resolve por conta própria é o recorte, a origem das arestas e a
+origem da estimativa.
 
 ### Comando
 
@@ -184,7 +168,7 @@ node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [-
 
 ### Escopo: não existe "projeto" no GitHub
 
-No Linear o recorte natural é o projeto. No GitHub não há equivalente, então o recorte é
+O GitHub não tem "projeto" no sentido de recorte de trabalho, então o recorte é
 `--milestone` ou `--label`. **Sem recorte, o escopo é o repo inteiro** — e isso vem anunciado
 em caixa alta no stderr, porque um plano de ondas do repo todo quando a pessoa queria um
 milestone é o tipo de erro que só aparece tarde:
