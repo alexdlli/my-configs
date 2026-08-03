@@ -326,18 +326,46 @@ allowlist.
 - **Simulador:** `portal devices` lista os dispositivos com runtime, estado de
   boot e qual portal já ocupa cada um; `portal create --simulator UDID` abre um.
   Valem os mesmos verbos, mais botão de hardware e `launch "com.bundle.id"`.
-  Coordenada de árvore e de `info` vem em **screen points, não pixels** — num
-  device 3x confundir os dois erra o toque por um fator 3. Skill
-  `maestri-portal-devices`.
+  Skill `maestri-portal-devices`.
+
+### Coordenada de simulador: são TRÊS espaços, não dois
+
+Medido num iPhone 17 Pro (iOS 26.5, device 3x). Confundir dois deles erra o toque
+por um fator 3, e o erro não dá erro: o tap acerta outro elemento e a corrida segue.
+
+| Fonte | Valor medido | Espaço | Serve para |
+|---|---|---|---|
+| header e árvore do `snapshot`, e os verbos `click` / `tap` | `screen: 402x874pt` | **screen points** | **tocar** |
+| `portal info` | `display: 1206x2622 px` | pixels nativos | pegar o `udid` e passar para o build. **Nunca** para tocar |
+| o PNG do modo fallback | `589x1280` | pixels da própria imagem | tocar **no modo imagem**, lidos direto da imagem, sem reescalar |
+
+1206/402 e 2622/874 dão **3.000 exato** — é fator de escala, não arredondamento.
+Confirmado por dois taps independentes, cada espaço candidato levando a um destino
+diferente: `click 201,371` (centro de `@e3 button "Accessibility"`) abriu
+Accessibility, e `click 201,319` (centro de `@e2 button "General"`) abriu General.
+Em pixel nativo os dois teriam caído na status bar ou num título não-tocável.
+
+**O `--help` do Maestri diz que a coordenada vai "in device pixels", e isso foi
+medido como errado para o toque.** É defeito upstream, não nosso: não "conserte"
+esta seção de volta para o que o `help` diz sem refazer a medição acima.
+
+O terceiro espaço só existe no **modo imagem**, e o modo se discrimina pelo header:
+em modo árvore ele é `app: <bundle>  screen: 402x874pt  elements: N`, sem mais
+nada; em modo imagem aparece a linha `accessibility:` (dizendo por que a árvore não
+existe) e a linha que declara o espaço literalmente — `coordinates: tap x,y in this
+image's own pixels (589x1280) — read them straight off the image, do not rescale`.
+A presença da linha `accessibility:` é o discriminador confiável.
+
+**Um device só foi medido.** `info` num device 2x (iPad) e o tap em modo fallback
+confirmado por acerto observado continuam **não verificados**.
 
 Duas regras que não mudam de ambiente. **Coordenada não sai de screenshot:**
 `snapshot` devolve ref e é por ref que se clica, a mesma descoberta-antes-do-toque
 que o `qa` aplica no argent. Quando o `snapshot` do simulador vem **imagem em vez
 de árvore**, a linha `accessibility:` do header nomeia o motivo, e o conserto é
 `portal launch` do bundle — que traz o app para debaixo do Maestri e devolve a
-árvore. A regra tem **exceção documentada**: nesse modo se toca por pixel lido da
-imagem devolvida, que vem capturada na resolução que o toque espera
-(`maestri-portal-devices`). Exceção com marcador próprio e resolução casada — não
-é licença para adivinhar pixel quando a árvore existe. E **artefato que existiu só
-no terminal não é artefato:** o screenshot vai para disco ou para uma nota,
-legendado com o passo que ele prova.
+árvore. Tocar por pixel lido da imagem é a exceção da seção acima: ela tem
+marcador de modo próprio e resolução declarada no header, e não é licença para
+adivinhar pixel quando a árvore existe. E **artefato que existiu só no terminal
+não é artefato:** o screenshot vai para disco ou para uma nota, legendado com o
+passo que ele prova.
