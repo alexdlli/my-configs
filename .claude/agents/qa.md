@@ -39,8 +39,8 @@ Your first step is `node ~/.claude/hooks/session-context.mjs --json`. The `host`
 **`host: maestri` — portal.** The Maestri CLI is not on PATH: invoke it as `"$MAESTRI_CLI"`, never as `maestri`. It also exits 0 on failure, so decide by the response text (`unknown simulator action:`, `not supported on a device portal:`), never by `$?`.
 
 - `"$MAESTRI_CLI" portal devices` — adopt a device the listing marks free instead of booting your own.
-- `"$MAESTRI_CLI" portal create --simulator <UDID>`, then `portal launch <bundle>`: on iOS the accessibility tree only exists when Maestri launched the app.
-- `portal snapshot` hands back refs (`@e1`, `@e2`…). **Click by ref, never by a coordinate you converted by hand.**
+- `"$MAESTRI_CLI" portal create --simulator <UDID> "Sim"`, then `portal launch "Sim" <bundle>`: every verb but `devices` takes the portal name first, and on iOS the accessibility tree only exists when Maestri launched the app.
+- `portal snapshot "Sim"` hands back refs (`@e1`, `@e2`…). **Click by ref, never by a coordinate you converted by hand.**
 - Syntax, the image-instead-of-tree fallback and the rest of the surface belong to the `maestri-orchestration` skill and the portal skills it names.
 
 **Any other host — argent.** Read `~/.claude/rules/argent.md` before your first argent call — it is the source of truth for device work and it is loaded in every session. The parts you will get wrong otherwise:
