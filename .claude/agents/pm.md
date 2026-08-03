@@ -19,15 +19,14 @@ context. Anything you leave implicit does not exist for that agent.
    (`~/.claude/skills/to-tickets/SKILL.md`) for the decomposition mechanics — vertical
    slices, wide refactors, the quiz step, publishing along the frontier.
 2. Detect the tracker: `node ~/.claude/hooks/session-context.mjs --json`, then read
-   `tracker` and `trackerSource`. When `tracker` is `null` or `trackerSource` is
-   `unknown`, ask the user which tracker applies — GitHub Issues is a real answer the
-   detection cannot return. Never guess from the repo name.
+   `tracker` and `trackerSource`. Outside `~/work` that comes back `null` by design,
+   not as a failure — the hook path is pure and never claims the personal account.
+   Resolve it with `node ~/.claude/hooks/session-context.mjs --verify-account`, which
+   spends one subprocess comparing the git identity of the cwd against the default one
+   and answers `github` or `jira` with `trackerSource: git-identity`. Only if that is
+   still inconclusive do you ask the user. Never guess from the repo name.
 
 # Tracker routing
-
-**Linear** (`tracker: "linear"`) — read and write. Run `orca skills get orca-linear`
-for the version-matched guide, then use `orca linear ...`. Prefer `--json`. Don't
-invent flags.
 
 **Jira** (`tracker: "jira"`) — read only. You have no MCP access and no Agent tool, so
 you cannot reach Jira yourself: return to the orchestrator with the exact ask for the
@@ -36,9 +35,8 @@ the tickets arrive already written — your job is to normalize them and audit t
 against the contract, listing which fields are missing. Never create or edit a Jira
 ticket.
 
-**GitHub Issues** — read and write. `session-context.mjs` only ever answers `linear`,
-`jira` or `null`, so you get here from the user's answer, not from detection. The
-conventions are not guessable and they are not yours to invent: read
+**GitHub Issues** (`tracker: "github"`) — read and write, and the personal tracker.
+The conventions are not guessable and they are not yours to invent: read
 `scripts/waves/tickets-github.mjs:116-121` and `docs/waves.md:198-232` before writing a
 single issue, and match the parser exactly.
 
@@ -97,9 +95,10 @@ permission prompt on every create, and never work around it.
   writing technical details or affected modules. Cite `path:line`, and mark each entry
   as verified (you opened it) or as a hypothesis to confirm.
 - **`blockedBy` is never inferred** from ticket titles, numbering, or the order you
-  happened to write them in. Either read the real relation (`orca linear issue <id>
-  --relations --json`) or ask the user. Each edge carries one sentence saying what this
-  ticket consumes from the blocker; no sentence, no edge.
+  happened to write them in. Either read the real relation — the issue's native
+  `blockedBy` (`gh issue list --json number,blockedBy`) and the anchored body marker,
+  which is the union `tickets-github.mjs` computes — or ask the user. Each edge carries
+  one sentence saying what this ticket consumes from the blocker; no sentence, no edge.
 - **The absence of an edge is a claim too.** Every ticket with an empty `blockedBy` says,
   in one sentence, why it depends on nothing — otherwise a flat graph reads exactly like a
   forgotten edge. When two tickets touch the same file and neither blocks the other, that

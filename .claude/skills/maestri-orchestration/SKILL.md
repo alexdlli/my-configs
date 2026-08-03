@@ -170,9 +170,8 @@ Logo, **a única camada do lado do recruta é o texto que você escreve no role
 dele**. Escreva, explícito: *"abra o PR contra `main`, vincule o PR ao ticket e
 PARE; você nunca mergeia, nem com CI verde, nem com review aprovado — quem
 aperta merge é o Alex"*. O vínculo tem a mesma forma da seção `## Ao terminar`
-de `wave-orchestration` — no GitHub, a palavra-chave no corpo do PR; no Linear,
-`orca linear attach` mais `orca linear status set` — e cai no mesmo buraco: aqui
-não sobra camada nenhuma atrás do texto.
+de `wave-orchestration` — a palavra-chave de fechamento no corpo do PR — e cai no
+mesmo buraco: aqui não sobra camada nenhuma atrás do texto.
 
 ## Onda no Maestri: o floor é a primitiva
 

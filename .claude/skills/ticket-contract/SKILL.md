@@ -6,9 +6,8 @@ description: >-
   ticket existente já serve como prompt de agente sem contexto implícito. Dispara
   em "criar tickets", "quebrar esse escopo", "esse ticket tá bom?", "montar o
   projeto", "transformar essa spec em tickets", "revisar o backlog antes de soltar
-  os agentes". Trackers pessoais: Linear via CLI `orca linear` e GitHub Issues via
-  CLI `gh`, com leitura e escrita. Tracker de trabalho: Jira via agente `atlassian`
-  (somente leitura).
+  os agentes". Tracker pessoal: GitHub Issues via CLI `gh`, com leitura e escrita.
+  Tracker de trabalho: Jira via agente `atlassian` (somente leitura).
 ---
 
 # Contrato de ticket
@@ -152,7 +151,7 @@ Por que este e não outro:
 
 - O número dá endereço estável. `grep '^## 7\.'` acha o acceptance criteria de qualquer
   ticket, em qualquer tracker, sem parser e sem convenção paralela.
-- Heading é o que sobrevive à renderização do GitHub e do Linear; tabela e lista de
+- Heading é o que sobrevive à renderização de qualquer tracker; tabela e lista de
   definição, não.
 - **O campo 1 é repetido no corpo de propósito**, mesmo com o tracker tendo campo de título
   próprio: o teste que define este contrato é colar **só o corpo** numa sessão nova, e sem
@@ -386,14 +385,11 @@ tracker:
 - `body` — o corpo com os 12 campos.
 
 Detecte o tracker com `node ~/.claude/hooks/session-context.mjs --json` e leia
-`tracker` / `trackerSource`. Nunca assuma pelo nome do repo. A detecção só responde
-`linear`, `jira` ou `null` — GitHub Issues é resposta legítima da pergunta que você faz ao
-usuário quando vem `null`, não um valor que o hook devolve.
-
-**Linear (pessoal) — leitura e escrita.** Use a CLI `orca linear`. Carregue o guia
-casado com o binário antes de rodar qualquer comando: `orca skills get orca-linear`
-(a skill `orca-linear` deste harness é só o stub de descoberta). Não invente flag a
-partir de memória.
+`tracker` / `trackerSource`. Nunca assuma pelo nome do repo. Fora de `~/work` o caminho
+puro responde `null` **de propósito** — ele não afirma a conta pessoal sem evidência.
+Quem resolve é `node ~/.claude/hooks/session-context.mjs --verify-account`, que gasta um
+subprocess comparando a identidade git do cwd com a default e devolve `github` ou `jira`,
+com `trackerSource: git-identity`. Só depois disso, se ainda restar dúvida, pergunte.
 
 **Jira (trabalho) — somente leitura.** Delegue ao agente `atlassian`, que é o único
 com acesso ao MCP da Atlassian. No trabalho os tickets chegam prontos: o papel aqui é
@@ -430,7 +426,7 @@ node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [-
 A sintaxe é do parser, não sua: `scripts/waves/tickets-github.mjs:116-121` (referência,
 separador, marcador, label) e `docs/waves.md:198-232`. Não invente variação.
 
-A assimetria é deliberada: Linear e GitHub têm escrita, Jira não. Não trate "criar ticket"
+A assimetria é deliberada: GitHub tem escrita, Jira não. Não trate "criar ticket"
 como capacidade disponível quando o tracker é Jira, sob nenhuma formulação do pedido.
 
 ## Autoria
