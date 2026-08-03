@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HOST_MAESTRI, HOST_PLAIN, detectContext } from './context.mjs';
+import { HOST_MAESTRI, HOST_PLAIN, describeDispatch, detectContext } from './context.mjs';
 
 const HOME = '/Users/tester';
 const OUTSIDE_WORK_CWD = `${HOME}/Developer/my-configs`;
@@ -84,6 +84,16 @@ test('every host explains its dispatch, available or not', () => {
     const { dispatch } = detectContext(env, OUTSIDE_WORK_CWD);
     assert.notEqual(dispatch.reason.trim(), '');
   }
+});
+
+// The list above is kept by hand, so it cannot catch a host added to detectHost
+// and nowhere else. This one does: the reason is a string for any host at all.
+test('a host with no reason of its own still explains its dispatch', () => {
+  const dispatch = describeDispatch('a-host-nobody-mapped');
+  assert.equal(dispatch.available, false);
+  assert.equal(dispatch.driver, null);
+  assert.equal(typeof dispatch.reason, 'string');
+  assert.notEqual(dispatch.reason.trim(), '');
 });
 
 test('dispatch availability does not depend on the working directory', () => {

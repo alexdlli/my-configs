@@ -84,8 +84,16 @@ function isUnderWorkRoot(env, cwd) {
 // The description is a property of the host alone: no CLI is probed, no process
 // is spawned. No host carries an automatic driver today, so every reason names
 // the manual procedure that replaces it.
-function describeDispatch(host) {
-  return { available: false, driver: null, reason: DISPATCH_REASON_BY_HOST[host] };
+//
+// A host with no entry in the map falls back to the plain reason instead of an
+// undefined one: the coordinator is told to read `reason`, and a host added to
+// detectHost without a reason of its own must still hand it a string.
+export function describeDispatch(host) {
+  return {
+    available: false,
+    driver: null,
+    reason: DISPATCH_REASON_BY_HOST[host] ?? DISPATCH_REASON_PLAIN,
+  };
 }
 
 export function detectContext(env = process.env, cwd = process.cwd()) {
