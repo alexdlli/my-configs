@@ -23,9 +23,11 @@ inventar um loader que não existe.
 `CLAUDE.md`. O OpenCode lê `AGENTS.md` (com fallback para `CLAUDE.md`); não há
 `@import`, então o ponteiro em prosa basta.
 
-## Invariante: merge é do humano
+## Invariante: o merge do PR é do humano
 
-Duas camadas, espelhando o Claude Code:
+A política é de [`../guard-destructive.md`](../guard-destructive.md); esta seção só
+descreve **como** ela é implementada no OpenCode. Duas camadas, espelhando o
+Claude Code:
 
 1. **`permission.bash`** em `.opencode/opencode.json` — catch-all `"*": "allow"`
    **primeiro**, depois `deny` para `git push --force` / `git commit --no-verify`
@@ -38,9 +40,17 @@ Duas camadas, espelhando o Claude Code:
    o índice antigo e deixa o deny inerte atrás do catch-all.
 2. **Plugin `guard-destructive`** (`tool.execute.before` + `throw`) — mesma
    classificação de `.claude/hooks/lib/destructive.mjs`. Fecha o envelope
-   `bash -c "…"`, pipe para shell, etc. Em **worker** nega merge; fora de worker
-   fica calado e o `ask` do config pede ao humano. Silêncio do plugin **só é
-   seguro** porque o fall-through de merge é `ask`, não o `"*": "allow"`.
+   `bash -c "…"`, pipe para shell, etc. Em **worker** nega `gh pr merge`; fora de
+   worker fica calado e o `ask` do config pede ao humano. Silêncio do plugin **só
+   é seguro** porque o fall-through de `gh pr merge` é `ask`, não o `"*": "allow"`.
+
+   Para `git merge` a mecânica se inverte, e de propósito: o plugin nega quando o
+   destino é protegido (`main`, `master`, `prod`, `staging`) e **sai da frente**
+   numa branch de controle (`integration/*`, `wave/*`). Um plugin sabe negar, não
+   sabe conceder — então a autonomia depende de `permission.bash` **não ter**
+   entrada para `git merge`, deixando o `"*": "allow"` cobrir o caso. Pôr um
+   `"git merge *": "ask"` ali passaria a perguntar também nas branches de
+   controle e desfaria a política; há teste fixando essa ausência.
 
 ### O buraco medido do `permission.bash` sozinho
 

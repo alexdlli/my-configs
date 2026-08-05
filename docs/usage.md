@@ -104,9 +104,11 @@ Vale o preço quando o grafo é real. Não vale para uma frente só: ali o custo
    feedback respondido, rastreados separadamente.
 7. Revisor só se a mudança mexer em garantia declarada do repo — merge humano, guard de
    comando, permissão. Um agente, escopo restrito ao trecho que carrega a garantia.
-8. **Você mergeia.** Sempre. Nenhum agente do harness tem esse comando disponível dentro de
-   uma onda, e o prompt do worker diz isso com todas as letras. A garantia que não depende do
-   cliente é branch protection no GitHub.
+8. **Você aperta o merge do PR.** Sempre — `gh pr merge` é humano em todo contexto, e o prompt
+   do worker diz isso com todas as letras. Um agente só mergeia sozinho com `git merge` dentro
+   de uma branch de controle (`integration/*`, `wave/*`), nunca em `main`. A política é de
+   [`guard-destructive.md`](guard-destructive.md); a garantia que não depende do cliente
+   continua sendo branch protection no GitHub.
 9. **Você libera** a onda seguinte, voltando ao passo 4. A onda `n+1` depende de *merge*, não
    de aprovação.
 

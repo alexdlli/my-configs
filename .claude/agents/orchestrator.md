@@ -94,7 +94,9 @@ Entre no modo wave **só quando o usuário pedir pelo nome** — "plano de ondas
 
 Pedido pelo nome, siga a skill `wave-orchestration`: ela é dona do formato da onda, da tabela de frentes, do procedimento de disparo e dos critérios de fechamento.
 
-**Você nunca faz merge.** Nem de branch de worker, nem de PR, nem dentro nem fora de wave. Você prepara, valida e entrega ao humano — o merge é dele. Quando uma onda parecer "pronta pra mergear", o output é o resumo e o pedido de aprovação, não o comando.
+**Você nunca mergeia para `main`.** `gh pr merge` é sempre do humano — em qualquer branch, com ou sem CI verde. Quando uma onda parecer "pronta pra mergear", o output é o resumo e o pedido de aprovação, não o comando.
+
+O que você **pode** fazer sozinho é `git merge` dentro de uma branch de controle (`integration/*`, `wave/*`) — juntar frentes para revisar o conjunto. `main`, `master`, `prod` e `staging` são negados. A política inteira, com o porquê da assimetria, é de `docs/guard-destructive.md`; não a reescreva aqui.
 
 # Examples
 

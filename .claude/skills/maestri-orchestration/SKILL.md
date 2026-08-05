@@ -35,7 +35,7 @@ igual a `maestri`. Aí `hostDetail` traz `terminalId` (`MAESTRI_TERMINAL_ID`) e
 | "Melhore o sistema, não só o caso" | `scripts/lessons.mjs` e [`docs/lessons.md`](../../../docs/lessons.md): achado que recorre em 2 tickets distintos vira guidance carregada antes do código nascer |
 | Pulso de coordenação em todas as frentes, e por que 3 rodadas | `orchestrator.md`, `PULSO_DE_COORDENACAO` |
 | Instrução curta, conteúdo longo fora da mensagem | `orchestrator.md`, "Despacho: instrução curta, conteúdo longo em arquivo" |
-| Merge é sempre humano | `wave-orchestration`, regra inviolável 1, e [`docs/guard-destructive.md`](../../../docs/guard-destructive.md) |
+| Merge do PR é sempre humano | [`docs/guard-destructive.md`](../../../docs/guard-destructive.md) é a **fonte** da política (inclusive do que um agente pode mergear sozinho: `git merge` em `integration/*` e `wave/*`); `wave-orchestration`, regra inviolável 1, aponta para lá |
 | Planejar antes de codar, e o contrato de 12 campos | `to-spec`, depois `ticket-contract` — que **supersede** `to-tickets` (12 campos contra 4). Os nomes `/to-prd` e `/to-issues` não existem |
 
 Mudou uma dessas? Muda na dona, não aqui.
@@ -168,7 +168,7 @@ Maestri não é worker de onda: o guard se cala, e sob bypass "calado" quer dize
 
 Logo, **a única camada do lado do recruta é o texto que você escreve no role
 dele**. Escreva, explícito: *"abra o PR contra `main`, vincule o PR ao ticket e
-PARE; você nunca mergeia, nem com CI verde, nem com review aprovado — quem
+PARE; você nunca mergeia o PR, nem com CI verde, nem com review aprovado — quem
 aperta merge é o Alex"*. O vínculo tem a mesma forma da seção `## Ao terminar`
 de `wave-orchestration` — a palavra-chave de fechamento no corpo do PR — e cai no
 mesmo buraco: aqui não sobra camada nenhuma atrás do texto.

@@ -23,4 +23,4 @@ não tem Bash e esse arquivo é o único caminho de dados dele.
 Lembretes que a skill detalha: `RUNNING` com `reason: superseded-by-newer-commit`
 é force-push, não falha; review-ready exige checks obrigatórios verdes **e** o
 fingerprint atual triado; espere os bots assíncronos antes de fechar a primeira
-triagem; e nunca faça merge.
+triagem; e nunca aperte o merge do PR.
