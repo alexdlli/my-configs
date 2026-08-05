@@ -184,7 +184,7 @@ _nenhuma_
 Hoje o loop só roda por CLI, na mão. O passo que falta é o revisor emitir o
 sinal sozinho, no momento em que escreve o achado. Como vai ser:
 
-1. **Quem emite.** A revisão adversarial, ao escrever cada Critical/Warning no
+1. **Quem emite.** O revisor, ao escrever cada Critical/Warning no
    laudo. O achado já traz o que o `record` precisa: a classe da falha vira
    `--signal`, o ticket em revisão vira `--ticket`, a correção proposta vira a
    frase do `--note`, e o `path:line` medido vira `--evidence`.

@@ -26,8 +26,8 @@ igual a `maestri`. Aí `hostDetail` traz `terminalId` (`MAESTRI_TERMINAL_ID`) e
 | Regra | Dona |
 |---|---|
 | Sintaxe completa de cada verbo — flags, ids curtos, o que é destrutivo | as skills que o app instala (`maestri`, `maestri-manager`, `maestri-routines`, `maestri-workspace`, `maestri-portal`, `maestri-portal-devices`) e `"$MAESTRI_CLI" help` |
-| Freio da revisão adversarial (só correção ou requisito declarado), aplicado na consolidação dos dois laudos | `adversarial-review`, "Freio de escopo: o que não entra no laudo" |
-| Teto de 3 iterações por achado, e o que escalar entrega | `adversarial-review`, "Teto de iteração por achado" |
+| Quando spawnar revisor, com que escopo, e o que nunca passar para ele | `orchestrator.md`, "Revisão" |
+| Teto de 3 iterações por achado, e o que escalar entrega | `wave-orchestration`, "Teto de iteração por achado" no prompt do worker |
 | `git stash` proibido com mais de uma árvore ativa | `wave-orchestration`, item 6 das "Regras invioláveis" |
 | Baseline antes de mexer, hipótese rotulada, achado fora de escopo vira PR próprio, verificar antes de reportar pronto | `wave-orchestration`, "O prompt padrão do worker" |
 | Verificação que sabe falhar (sensor de discriminação) | `ticket-contract`, "O sensor de discriminação" |

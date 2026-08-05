@@ -25,7 +25,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 
 Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force` and `git commit --no-verify` — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
-The harness ships <!-- docs-count:skills -->five skills — `ticket-contract`, `adversarial-review`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->six slash commands that drive them: `/sync-harness`, `/ticket-new`, `/review-adversarial`, `/wave-plan`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+The harness ships <!-- docs-count:skills -->four skills — `ticket-contract`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->five slash commands that drive them: `/sync-harness`, `/ticket-new`, `/wave-plan`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
 The ticket → dependency-graph → wave pipeline (`ticket-contract`, `wave-orchestration`, `/ticket-new`, `/wave-plan`, `/wave-status`) is **opt-in**: it runs when you ask for it by name, never by default. The default path is the orchestrator decomposing the request and delegating to specialists in a single response — several fronts in parallel is ordinary work, not a wave.
 
@@ -65,10 +65,10 @@ Removes only the links this installer created (matched by recorded target) and r
 ├── hooks/               # orchestrator-reminder, preserve-orchestrator, auto-update,
 │                        # session-context, guard-destructive
 │   └── lib/             # shared hook helpers (+ their tests)
-├── commands/            # /sync-harness /ticket-new /review-adversarial /wave-plan
-│                        # /wave-status /pr-babysit
-├── skills/              # ticket-contract, adversarial-review, wave-orchestration,
-│                        # pr-babysitting, maestri-orchestration — linked one by one
+├── commands/            # /sync-harness /ticket-new /wave-plan /wave-status
+│                        # /pr-babysit
+├── skills/              # ticket-contract, wave-orchestration, pr-babysitting,
+│                        # maestri-orchestration — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
