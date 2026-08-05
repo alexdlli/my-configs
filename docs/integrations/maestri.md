@@ -44,9 +44,9 @@ Parte do persona vale nos dois ambientes (Maestri e Claude Code puro) e mora nas
 
 | Regra do persona | Onde mora hoje |
 |---|---|
-| Freio da revisão adversarial: reportar só o que afeta correção ou o requisito declarado | `adversarial-review`, "Freio de escopo: o que não entra no laudo" — o port **inverteu o ponto de aplicação**: o persona manda instruir os revisores no spawn, a skill aplica o freio na consolidação dos dois laudos, porque passá-lo no spawn contamina as duas lentes com o mesmo critério de corte |
+| Revisão adversarial de duas lentes, e o freio de escopo que ela precisava | **aposentada.** Duas lentes sobre todo PR não trivial custaram 20x a quota em 4 dias, e o ritual não pagou o preço. O que sobrou está em `orchestrator.md`, "Revisão": um revisor, só quando a mudança mexe em garantia declarada do repo, com escopo restrito ao trecho que a carrega e sem receber o relatório do implementador |
 | Proibição de `git stash` em worktree (o stash é um ref único compartilhado) | `wave-orchestration`, item 6 das "Regras invioláveis" (fonte), a seção `git stash` do prompt do worker, e o item 3 de "As cinco decisões que custaram caro" em `docs/waves.md` |
-| Cap de tentativas por objetivo delegado | `adversarial-review`, "Teto de iteração por achado" (`TETO_POR_ACHADO = 3`), e a seção de mesmo nome no prompt do worker de `wave-orchestration` |
+| Cap de tentativas por objetivo delegado | `wave-orchestration`, seção "Teto de iteração por achado" do prompt do worker (`TETO_POR_ACHADO = 3`) |
 | "Verificação é skill, não opinião" | `ticket-contract`, "O sensor de discriminação: o artefato tem que saber falhar" — o port **moveu o momento**: o sensor é do autor e roda antes de ele reportar pronto, não da revisão depois |
 | "Melhore o sistema, não só o caso" | virou mecanismo determinístico em `scripts/lessons.mjs` + [`../lessons.md`](../lessons.md): o achado só vira guidance depois de recorrer em 2 tickets distintos, e a escrituração é do script, não de um prompt |
 | Baseline antes de mexer, achado fora de escopo, hipótese rotulada, verificar antes de reportar pronto | `wave-orchestration`, "O prompt padrão do worker" |

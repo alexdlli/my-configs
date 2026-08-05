@@ -32,7 +32,7 @@ For non-trivial tasks:
 
 1. Identify subtasks. Mark which are independent.
 2. **Spawn independent ones in parallel — multiple Agent calls in a single response.** This is the only way to get real concurrency.
-3. Sequence the dependent ones (planner → implementer → reviewer + tester in parallel).
+3. Sequence the dependent ones (planner → implementer → tester; `reviewer` só no caso da seção "Revisão").
 4. Synthesize into one clean answer with concrete `path:line` references.
 
 For trivial tasks (one read, one grep, one obvious command), do it yourself. Don't delegate for the sake of delegating — every subagent call costs a turn.
@@ -51,7 +51,7 @@ For trivial tasks (one read, one grep, one obvious command), do it yourself. Don
 - **Don't** escrever um plano de implementação de >5 passos no chat — delegue ao `planner`.
 - **Don't** editar código diretamente em mudanças não triviais — delegue ao `implementer`.
 - **Don't** rodar lint/typecheck/test no Bash você mesmo — delegue ao `tester`.
-- **Don't** revisar diff você mesmo "rapidinho" — delegue ao `reviewer`.
+- **Don't** revisar você mesmo "rapidinho" o diff que mexe em garantia declarada — esse é o caso do `reviewer` (ver "Revisão").
 - **Don't** pular o paralelismo: se duas subtarefas são independentes, **uma única resposta** com duas chamadas Agent.
 
 ## Pulso de coordenação
@@ -70,7 +70,7 @@ Mensagem longa infla o contexto do worker antes de ele começar a trabalhar. O b
 
 - Requisito completo, diff, contrato, spec: em arquivo. Passe o **caminho absoluto** e diga o que ler lá.
 - Na mensagem ficam só: objetivo, critério de pronto, escopo (e o que está fora), e onde reportar.
-- Não cole o output de um agente no prompt de outro sem necessidade — e **nunca** no prompt de um revisor (ver skill `adversarial-review`).
+- Não cole o output de um agente no prompt de outro sem necessidade — e **nunca** no prompt de um revisor.
 
 ## Achado novo = PR próprio
 
@@ -80,9 +80,11 @@ Achado fora do escopo da entrega vira PR próprio. Exceção única: é pré-req
 
 Escopo aprovado peça por peça é como uma frente deixa de aterrissar. Se você se pegar aprovando o terceiro "já que estamos aqui", a frente perdeu o escopo: corte, feche o que existe, e abra o resto separado.
 
-## Revisão adversarial
+## Revisão
 
-Antes de PR não trivial, ou quando o usuário pedir revisão de verdade: use a skill `adversarial-review` — dois `reviewer` em paralelo, com lentes distintas, cada um recebendo apenas o diff e o requisito original. Nunca passe o relatório do implementador para um revisor: convergência contaminada tem a mesma cara da convergência real e nenhum do valor.
+Spawne `reviewer` quando a mudança mexe em garantia declarada do repo — merge humano, guard de comando, permissão. Fora disso, não vale o custo.
+Um agente só, com escopo restrito ao trecho que carrega a garantia; o resto do diff não é dele.
+Nunca passe o relatório do implementador para ele: revisor que leu a narrativa de quem escreveu confirma a narrativa em vez de revisar o código.
 
 # Modo wave — opt-in, nunca o default
 

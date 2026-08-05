@@ -625,13 +625,16 @@ worker de fato lê) e o item 3 de "As cinco decisões que custaram caro", em
 item 6? Propague para os outros dois — cópia que diverge em silêncio é pior que
 cópia nenhuma.
 
-As seções restantes do template seguem a mesma economia, e cada uma tem **uma**
-fonte fora dele, que é onde mora o racional completo:
+A seção `## Sensor de discriminação` segue a mesma economia, e tem **uma** fonte
+fora do template, que é onde mora o racional completo:
 
 | Seção do template | Fonte | O que a cópia é |
 |---|---|---|
 | `## Sensor de discriminação` | `ticket-contract`, seção "O sensor de discriminação" | Lá o sensor é definido como parte do artefato de prova que o ticket declara; aqui é a instrução operacional de quem executa |
-| `## Teto de iteração por achado` | `adversarial-review`, seção "Teto de iteração por achado" | Lá o teto governa o ciclo correção → re-revisão que a revisão dispara; aqui é o mesmo teto visto de dentro, pelo worker |
+
+`## Teto de iteração por achado` é a exceção: desde que a revisão de duas lentes
+saiu do harness, o teto não tem fonte fora — o template **é** a fonte, e não há
+cópia para propagar.
 
 A regra de propagação é a do item 6, pelo mesmo motivo mecânico: **o worker não
 carrega skill nenhuma**. O que não estiver no `prompt.md` não existe para ele.
