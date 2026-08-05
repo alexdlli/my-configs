@@ -86,12 +86,12 @@ docs/
 ├── waves.md             # ticket contract, dependency graph, wave plan
 ├── guard-destructive.md # the PreToolUse guard: the three permission layers,
 │                        # what it blocks and what it deliberately doesn't
-└── integrations/        # session-context, maestri, ecotokens, ai-memory
+└── integrations/        # session-context, maestri, ecotokens, ai-memory, opencode
 ```
 
 ## Why
 
-Claude Code's default behavior is fine for one-off prompts but rough on multi-step work. The orchestrator + specialists pattern enforces parallel decomposition and keeps each agent focused. Installing globally means every Claude Code session in any directory benefits from this.
+Claude Code's default behavior is fine for one-off prompts but rough on multi-step work. The orchestrator + specialists pattern enforces parallel decomposition and keeps each agent focused. Installing globally means every Claude Code session in any directory benefits from this. The same install also exposes the harness to OpenCode (`~/.agents/skills` + `~/.config/opencode`).
 
 ## Credits
 
@@ -106,8 +106,9 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 | Maestri persona | Canonical copy of the Tech Lead / Maestro orchestration persona, its three measured defects, and the map of where each of its rules ended up now that it is ported to the `maestri-orchestration` skill | [`docs/integrations/maestri.md`](docs/integrations/maestri.md) |
 | EcoTokens | Optional Rust output filter | [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md) |
 | ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. `node scripts/setup-ai-memory.mjs`; the default `claude-sub` provider uses your Claude subscription through a local `claude -p` shim | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |
+| OpenCode | Same agents/skills/guard on the OpenCode surface; `.agents/` is skills-only | [`docs/integrations/opencode.md`](docs/integrations/opencode.md) |
 
-All <!-- docs-count:integrations -->four are optional and independent of the agent harness.
+All <!-- docs-count:integrations -->five are optional and independent of the agent harness.
 
 ## Notes
 

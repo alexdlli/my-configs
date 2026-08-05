@@ -162,11 +162,17 @@ function recordedPaths(sandbox) {
 }
 
 function declaredPaths({ home }, skills) {
+  // Claude metadata only records ~/.claude links. OpenCode links live in a
+  // separate metadata file under ~/.config/opencode.
   return [
     join(home, '.claude', 'harness'),
     ...HARNESS_DIRS.map((name) => join(home, '.claude', name)),
     ...skills.map((name) => join(home, '.claude', 'skills', name)),
   ].sort();
+}
+
+function agentsSkillLink({ home }, name) {
+  return join(home, '.agents', 'skills', name);
 }
 
 function plantForeignLink(sandbox, name) {
@@ -187,6 +193,7 @@ test('a link the harness still declares survives a re-install', () => {
 
     for (const name of [ALPHA, BETA]) {
       assert.equal(readlinkSync(skillLink(sandbox, name)), harnessSkill(sandbox, name));
+      assert.equal(readlinkSync(agentsSkillLink(sandbox, name)), harnessSkill(sandbox, name));
     }
     assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, [ALPHA, BETA]));
   });
@@ -374,5 +381,42 @@ test('retraction leaves the harness directory links alone', () => {
       );
     }
     assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, []));
+  });
+});
+
+test('harness skills are also linked into ~/.agents/skills for OpenCode', () => {
+  withSandbox([ALPHA, BETA], (sandbox) => {
+    install(sandbox);
+
+    for (const name of [ALPHA, BETA]) {
+      assert.equal(readlinkSync(agentsSkillLink(sandbox, name)), harnessSkill(sandbox, name));
+    }
+
+    declareSkills(sandbox.harness, [ALPHA]);
+    install(sandbox);
+
+    assert.equal(linkPresent(agentsSkillLink(sandbox, BETA)), false);
+    assert.equal(readlinkSync(agentsSkillLink(sandbox, ALPHA)), harnessSkill(sandbox, ALPHA));
+  });
+});
+
+test('OpenCode agent entries are linked one by one under ~/.config/opencode', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    const agentSrc = join(sandbox.harness, '.opencode', 'agent');
+    mkdirSync(agentSrc, { recursive: true });
+    writeFileSync(join(agentSrc, 'orchestrator.md'), '---\nmode: primary\n---\ncoord\n');
+    writeFileSync(
+      join(sandbox.harness, '.opencode', 'opencode.json'),
+      `${JSON.stringify({ default_agent: 'orchestrator', permission: { bash: { '*': 'allow', 'git push --force*': 'deny' } } }, null, 2)}\n`,
+    );
+
+    install(sandbox);
+
+    const dest = join(sandbox.home, '.config', 'opencode', 'agent', 'orchestrator.md');
+    assert.equal(readlinkSync(dest), join(agentSrc, 'orchestrator.md'));
+    const cfg = JSON.parse(readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'));
+    assert.equal(cfg.default_agent, 'orchestrator');
+    assert.equal(cfg.permission.bash['git push --force*'], 'deny');
+    assert.equal(cfg.permission.bash['*'], 'allow');
   });
 });

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "orchestrator",
+  "permission": {
+    "bash": {
+      "*": "allow",
+      "git push --force*": "deny",
+      "git push -f *": "deny",
+      "git push -f": "deny",
+      "git commit --no-verify*": "deny",
+      "git commit -n *": "deny",
+      "git commit -n": "deny"
+    },
+    "edit": "allow",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "task": "allow",
+    "skill": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "external_directory": {
+      "*": "ask",
+      "~/.agents/**": "allow",
+      "~/.claude/**": "allow",
+      "~/.config/opencode/**": "allow",
+      "/tmp/**": "allow"
+    },
+    "doom_loop": "ask"
+  }
+}

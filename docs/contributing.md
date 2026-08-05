@@ -7,18 +7,23 @@ Notes for working on this harness. It's small on purpose — settings, agents, h
 ```
 .claude/
   settings.json        # baseline merged into ~/.claude/settings.json
-  agents/              # one .md per agent
+  agents/              # one .md per agent (Claude Code)
   hooks/               # hook scripts (.mjs)
     lib/               # shared helpers used by more than one hook, with their tests
   commands/            # one .md per slash command; the directory is linked as a whole
   skills/              # one directory per skill (SKILL.md), linked entry by entry
+.opencode/
+  agent/               # OpenCode agents (permission: frontmatter, not tools:)
+  command/             # OpenCode slash commands
+  plugin/              # in-process plugins (guard-destructive)
+  opencode.json        # managed default_agent + permission deny slice
 docs/
   agent-system.md      # agents, skills, slash commands
   installation.md      # install, flags, conflicts, troubleshooting
   usage.md             # driving the harness day to day
   contributing.md      # this file
   waves.md             # ticket contract, dependency graph, wave plan
-  integrations/        # session-context.md, maestri.md, ecotokens.md, ai-memory.md
+  integrations/        # session-context, maestri, ecotokens, ai-memory, opencode
 scripts/
   install.mjs          # symlink + merge installer
   install.test.mjs     # link retraction, both directions: what the harness stopped declaring goes, what it still declares stays
