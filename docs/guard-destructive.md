@@ -12,9 +12,13 @@ As tres nao sao negadas igual. Desde a politica **ask-then-merge**:
 | `git push --force` | negado | negado |
 | `git commit --no-verify` | negado | negado |
 
-Arquivos: `.claude/hooks/guard-destructive.mjs` (o hook), `.claude/hooks/lib/destructive.mjs`
-(a classificacao pura do comando) e `.claude/hooks/lib/worker-context.mjs` (a deteccao de
-worker). Testes ao lado de cada um, em `.claude/hooks/lib/*.test.mjs`.
+Arquivos: `.claude/hooks/guard-destructive.mjs` (o hook Claude Code),
+`.claude/hooks/lib/destructive.mjs` (a classificacao pura do comando),
+`.claude/hooks/lib/worker-context.mjs` (a deteccao de worker) e
+`.opencode/plugin/guard-destructive.js` (o mesmo classificador via
+`tool.execute.before` no OpenCode). Testes ao lado de cada um, em
+`.claude/hooks/lib/*.test.mjs`; o buraco do `permission.bash` sozinho no OpenCode
+esta em `scripts/opencode-bash-c-hole.test.mjs`.
 
 ## Por que existe
 
