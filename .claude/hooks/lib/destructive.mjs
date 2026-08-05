@@ -1,13 +1,17 @@
 // Classification of the Bash commands the harness holds back: merging a PR,
-// force-pushing, and committing with the hooks skipped.
+// merging a branch, force-pushing, and committing with the hooks skipped.
 //
-// The three are not held back equally. Force-push and `--no-verify` are denied
-// in every context, no exception. Merge is scoped by context — `ask-then-merge`:
-// a wave worker never merges, and anywhere else the command falls through to
-// Claude Code's own permission prompt so Alex can approve it. That scoping is
-// not decided here: `classifyCommand` only reports which rule a command line
-// matches, and `isWorkerOnlyRule` says which rules the caller must weigh against
-// the session context (see lib/worker-context.mjs).
+// The four are not held back equally. Force-push and `--no-verify` are denied
+// in every context, no exception. `gh pr merge` is scoped by session context —
+// `ask-then-merge`: a wave worker never merges, and anywhere else the command
+// falls through to Claude Code's own permission prompt so Alex can approve it.
+// `git merge` is scoped by its destination instead, which is the branch the
+// session is standing on: allowed on a control branch, denied on a protected
+// one. None of that scoping is decided here — `classifyCommand` only reports
+// which rule a command line matches. `isWorkerOnlyRule` says which rules the
+// caller weighs against the session context (lib/worker-context.mjs), and
+// `isBranchScopedRule` which it weighs against the destination
+// (lib/merge-destination.mjs).
 //
 // Why this exists as code and not only as `permissions.deny`: the deny list is
 // string matching against the command as typed. It survives
@@ -41,11 +45,13 @@
 export const RULE_GH_PR_MERGE = 'gh-pr-merge';
 export const RULE_GIT_PUSH_FORCE = 'git-push-force';
 export const RULE_GIT_COMMIT_NO_VERIFY = 'git-commit-no-verify';
+export const RULE_GIT_MERGE = 'git-merge';
 
 const RULE_LABELS = {
   [RULE_GH_PR_MERGE]: 'gh pr merge',
   [RULE_GIT_PUSH_FORCE]: 'git push --force',
   [RULE_GIT_COMMIT_NO_VERIFY]: 'git commit --no-verify',
+  [RULE_GIT_MERGE]: 'git merge',
 };
 
 const RULE_GUIDANCE = {
@@ -55,15 +61,27 @@ const RULE_GUIDANCE = {
     'Force-pushing rewrites history someone else may already have. Push a normal commit; if the branch really needs a rewrite, ask Alex.',
   [RULE_GIT_COMMIT_NO_VERIFY]:
     'The commit hooks are the check, not an obstacle. Fix what they report; if the bypass is genuinely required, ask Alex.',
+  [RULE_GIT_MERGE]:
+    'A merge lands on the branch you are standing on, and this one is protected. Agents merge into control branches only (integration/*, wave/*). Switch to the control branch and merge there, or leave the merge to Alex.',
 };
 
 const UNDETERMINED_GUIDANCE =
   'The guard could not tell whether this session is a wave worker, and it denies the merge when it cannot tell. Report it and let Alex merge.';
 
+const UNDETERMINED_DESTINATION_GUIDANCE =
+  'The guard could not read which branch this merge would land on, and it denies the merge when it cannot tell. Check out the control branch explicitly, or let Alex merge.';
+
+const REDIRECTED_DESTINATION_GUIDANCE =
+  'This command points git at another repository (-C, --git-dir, --work-tree), so the branch it would land on is not the one this session is standing on and the guard cannot verify it. Run the merge from inside that checkout.';
+
 // Rules whose denial depends on the session context. Only merge is on this list;
 // putting a second rule here means deciding that the same command is acceptable
 // from the coordinator, which is a policy change, not a refactor.
 const WORKER_ONLY_RULES = new Set([RULE_GH_PR_MERGE]);
+
+// Rules whose denial depends on the branch the merge would land on, weighed by
+// the caller against lib/merge-destination.mjs.
+const BRANCH_SCOPED_RULES = new Set([RULE_GIT_MERGE]);
 
 const ALLOWED = { blocked: false };
 
@@ -75,6 +93,10 @@ const ENV_COMMAND = 'env';
 const HELP_FLAGS = new Set(['-h', '--help']);
 const FORCE_PUSH_FLAGS = new Set(['-f', '--force']);
 const NO_VERIFY_FLAGS = new Set(['-n', '--no-verify']);
+// `git merge --abort|--continue|--quit` finishes or undoes a merge already in
+// progress. It creates nothing, and blocking it would strand an agent that is
+// resolving a conflict the guard let it start.
+const MERGE_MAINTENANCE_FLAGS = new Set(['--abort', '--continue', '--quit']);
 // git options that consume the next argument, so the subcommand scan skips it.
 const GIT_VALUE_FLAGS = new Set([
   '-C',
@@ -84,6 +106,10 @@ const GIT_VALUE_FLAGS = new Set([
   '--namespace',
   '--exec-path',
 ]);
+// Options that move git to another checkout: the merge then lands on that
+// repository's HEAD, not the one the session can read. `-c` is config, not a
+// relocation, so it is deliberately absent.
+const REPO_REDIRECT_FLAGS = new Set(['-C', '--git-dir', '--work-tree']);
 
 // `-c`, and the clusters that carry it: `bash -lc`, `sh -ec`, `zsh -euc`.
 const SHELL_SCRIPT_FLAG = /^-[a-zA-Z]*c$/;
@@ -262,10 +288,17 @@ function classifyGh(argv) {
 function gitSubcommand(args) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (!arg.startsWith('-')) return { name: arg, args: args.slice(index + 1) };
+    if (!arg.startsWith('-')) {
+      return { name: arg, args: args.slice(index + 1), options: args.slice(0, index) };
+    }
     if (GIT_VALUE_FLAGS.has(arg)) index += 1;
   }
   return null;
+}
+
+// `--git-dir=x` and `--git-dir x` are the same relocation.
+function redirectsRepo(options) {
+  return options.some((option) => REPO_REDIRECT_FLAGS.has(option.split('=', 1)[0]));
 }
 
 function classifyGit(argv) {
@@ -278,6 +311,10 @@ function classifyGit(argv) {
   }
   if (subcommand.name === 'commit' && subcommand.args.some((arg) => NO_VERIFY_FLAGS.has(arg))) {
     return blockedBy(RULE_GIT_COMMIT_NO_VERIFY);
+  }
+  if (subcommand.name === 'merge') {
+    if (subcommand.args.some((arg) => MERGE_MAINTENANCE_FLAGS.has(arg))) return ALLOWED;
+    return { ...blockedBy(RULE_GIT_MERGE), redirected: redirectsRepo(subcommand.options) };
   }
   return ALLOWED;
 }
@@ -332,13 +369,26 @@ export function isWorkerOnlyRule(rule) {
 }
 
 /**
+ * @param {string} rule One of the exported `RULE_*` constants.
+ * @returns {boolean} True when the denial depends on the branch the merge lands on.
+ */
+export function isBranchScopedRule(rule) {
+  return BRANCH_SCOPED_RULES.has(rule);
+}
+
+/**
  * @param {{rule: string, wrapped: boolean}} finding Verdict from `classifyCommand`.
- * @param {{undetermined?: boolean}} [context] Set `undetermined` when the denial
- *   comes from not being able to tell whether this session is a worker.
+ * @param {{undetermined?: boolean, destination?: string}} [context] Set
+ *   `undetermined` when the denial comes from not being able to tell whether
+ *   this session is a worker; set `destination` to `'indeterminate'` or
+ *   `'redirected'` when the merge destination is what could not be established.
  * @returns {string} Reason shown to the agent, naming the rule and the way out.
  */
-export function denialReason(finding, { undetermined = false } = {}) {
+export function denialReason(finding, { undetermined = false, destination } = {}) {
   const origin = finding.wrapped ? 'wrapped in a shell' : 'called directly';
-  const guidance = undetermined ? UNDETERMINED_GUIDANCE : RULE_GUIDANCE[finding.rule];
+  let guidance = RULE_GUIDANCE[finding.rule];
+  if (undetermined) guidance = UNDETERMINED_GUIDANCE;
+  else if (destination === 'redirected') guidance = REDIRECTED_DESTINATION_GUIDANCE;
+  else if (destination === 'indeterminate') guidance = UNDETERMINED_DESTINATION_GUIDANCE;
   return `guard-destructive: blocked "${RULE_LABELS[finding.rule]}" (${origin}). ${guidance}`;
 }

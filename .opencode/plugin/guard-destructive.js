@@ -10,6 +10,13 @@
 // only in a wave worker. Non-worker merge falls through to permission.ask —
 // which is the OpenCode port of Claude Code's ask-then-merge (there the
 // fall-through default is ask; here bash "*" is allow, so merge must be ask).
+//
+// `git merge` is the one command an agent decides alone, and only when it
+// lands on a control branch (integration/*, wave/*); protected destinations
+// (main, master, prod, staging) are denied here by name. Deliberately absent
+// from permission.bash: an entry there would prompt on control branches too,
+// and a plugin can deny but never grant, so the autonomy has to come from the
+// permission layer staying quiet.
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -22,8 +29,18 @@ const BASH_TOOLS = new Set(['bash', 'Bash']);
 
 // Last-resort pattern when the shared classifier cannot load. Intentionally
 // coarse: false positives cost a blocked command; silent pass costs a merge.
+// `git merge` is in here too — without the lib there is no way to read the
+// destination branch, and an unverifiable merge is the case this refuses.
 const DESTRUCTIVE_LOOKALIKE =
-  /\bgh\b[\s\S]*\bpr\b[\s\S]*\bmerge\b|\bgit\b[\s\S]*\bpush\b[\s\S]*(\s-f\b|\s--force\b)|\bgit\b[\s\S]*\bcommit\b[\s\S]*(\s-n\b|\s--no-verify\b)/;
+  /\bgh\b[\s\S]*\bpr\b[\s\S]*\bmerge\b|\bgit\b[\s\S]*\bpush\b[\s\S]*(\s-f\b|\s--force\b)|\bgit\b[\s\S]*\bcommit\b[\s\S]*(\s-n\b|\s--no-verify\b)|\bgit\b[\s\S]*\bmerge\b/;
+
+// Every module loadClassifier imports. Probing for only one of them let a
+// candidate win the search and then fail the import: an installed harness older
+// than this plugin has destructive.mjs but not the newest module beside it, and
+// the whole classifier fell back to refusing anything destructive-looking. A
+// candidate now has to carry all of it to be chosen, so an older installed
+// harness is skipped in favour of the checkout instead of poisoning the load.
+const REQUIRED_LIB_MODULES = ['destructive.mjs', 'worker-context.mjs', 'merge-destination.mjs'];
 
 function resolveLibDir() {
   const candidates = [
@@ -31,7 +48,7 @@ function resolveLibDir() {
     path.resolve(__dirname, '..', '..', '.claude', 'hooks', 'lib'),
   ];
   for (const dir of candidates) {
-    if (existsSync(path.join(dir, 'destructive.mjs'))) return dir;
+    if (REQUIRED_LIB_MODULES.every((name) => existsSync(path.join(dir, name)))) return dir;
   }
   return null;
 }
@@ -41,7 +58,8 @@ async function loadClassifier() {
   if (!dir) return null;
   const destructive = await import(pathToFileURL(path.join(dir, 'destructive.mjs')).href);
   const worker = await import(pathToFileURL(path.join(dir, 'worker-context.mjs')).href);
-  return { destructive, worker };
+  const merge = await import(pathToFileURL(path.join(dir, 'merge-destination.mjs')).href);
+  return { destructive, worker, merge };
 }
 
 function refuseUnavailable(command) {
@@ -77,12 +95,23 @@ export default async ({ directory }) => {
         return;
       }
 
-      const { classifyCommand, denialReason, isWorkerOnlyRule } = loaded.destructive;
+      const {
+        classifyCommand,
+        denialReason,
+        isBranchScopedRule,
+        isWorkerOnlyRule,
+      } = loaded.destructive;
       const {
         CONTEXT_OTHER,
         CONTEXT_INDETERMINATE,
         detectWorkerContext,
       } = loaded.worker;
+      const {
+        DESTINATION_CONTROL,
+        DESTINATION_INDETERMINATE,
+        DESTINATION_OTHER,
+        classifyMergeDestination,
+      } = loaded.merge;
 
       let finding;
       try {
@@ -103,7 +132,22 @@ export default async ({ directory }) => {
         undetermined = context === CONTEXT_INDETERMINATE;
       }
 
-      throw new Error(denialReason(finding, { undetermined }));
+      let destination;
+      if (isBranchScopedRule(finding.rule)) {
+        if (finding.redirected) {
+          destination = 'redirected';
+        } else {
+          // A plugin can only deny or step aside — it cannot grant. Stepping
+          // aside IS the grant here, because permission.bash carries no
+          // `git merge` entry and `"*": "allow"` covers it. Adding one would
+          // prompt on control branches too and undo the autonomy.
+          const landing = classifyMergeDestination(process.env, directory);
+          if (landing === DESTINATION_CONTROL || landing === DESTINATION_OTHER) return;
+          if (landing === DESTINATION_INDETERMINATE) destination = 'indeterminate';
+        }
+      }
+
+      throw new Error(denialReason(finding, { undetermined, destination }));
     },
   };
 };

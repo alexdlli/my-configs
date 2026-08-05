@@ -17,6 +17,15 @@
 // approves it — that is the feature, not a gap. Force-push and `--no-verify` are
 // untouched by this and stay denied in every context.
 //
+// MERGE AUTONOMY, `git merge` only. A merge lands on the branch the session is
+// standing on, so this hook can read the destination offline and decide: allow
+// on a control branch (`integration/*`, `wave/*`), deny on a protected one
+// (`main`, `master`, `prod`, `staging`), stay silent in between so the
+// permission prompt decides. `gh pr merge` gets none of this and stays human —
+// its destination is the PR's base branch on GitHub, and establishing that
+// means a network call on every Bash command. The asymmetry is the point:
+// what the guard can verify offline is what it is allowed to grant.
+//
 // What: emits JSON on stdout in the shape Claude Code expects for PreToolUse
 // hooks, and nothing at all when the command is allowed:
 //   { "hookSpecificOutput": { "hookEventName": "PreToolUse",
@@ -39,14 +48,28 @@
 // Requires Node.js 24+.
 
 import process from 'node:process';
-import { classifyCommand, denialReason, isWorkerOnlyRule } from './lib/destructive.mjs';
+import {
+  classifyCommand,
+  denialReason,
+  isBranchScopedRule,
+  isWorkerOnlyRule,
+} from './lib/destructive.mjs';
 import {
   CONTEXT_INDETERMINATE,
   CONTEXT_OTHER,
   detectWorkerContext,
 } from './lib/worker-context.mjs';
+import {
+  DESTINATION_CONTROL,
+  DESTINATION_INDETERMINATE,
+  DESTINATION_OTHER,
+  classifyMergeDestination,
+} from './lib/merge-destination.mjs';
 
 const GUARDED_TOOL = 'Bash';
+
+const ALLOW_MERGE_REASON =
+  'guard-destructive: control branch (integration/* or wave/*) — merging here is the agent\'s to do.';
 
 async function readHookPayload() {
   if (process.stdin.isTTY) return null;
@@ -57,6 +80,17 @@ async function readHookPayload() {
   } catch {
     return null;
   }
+}
+
+function decide(permissionDecision, permissionDecisionReason) {
+  const output = {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision,
+      permissionDecisionReason,
+    },
+  };
+  process.stdout.write(`${JSON.stringify(output)}\n`);
 }
 
 async function main() {
@@ -75,14 +109,28 @@ async function main() {
     undetermined = context === CONTEXT_INDETERMINATE;
   }
 
-  const output = {
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'deny',
-      permissionDecisionReason: denialReason(finding, { undetermined }),
-    },
-  };
-  process.stdout.write(`${JSON.stringify(output)}\n`);
+  let destination;
+  if (isBranchScopedRule(finding.rule)) {
+    if (finding.redirected) {
+      destination = 'redirected';
+    } else {
+      const landing = classifyMergeDestination(process.env, payload?.cwd);
+      // A control branch is the one place the agent decides on its own, so the
+      // hook says `allow` outright instead of staying silent: silence would
+      // still cost Alex a prompt, and the point of the allowlist is that it
+      // does not.
+      if (landing === DESTINATION_CONTROL) {
+        decide('allow', ALLOW_MERGE_REASON);
+        return;
+      }
+      // Neither control nor protected: not the agent's call, not a refusal
+      // either. Falling through hands it to the permission prompt.
+      if (landing === DESTINATION_OTHER) return;
+      if (landing === DESTINATION_INDETERMINATE) destination = 'indeterminate';
+    }
+  }
+
+  decide('deny', denialReason(finding, { undetermined, destination }));
 }
 
 try {

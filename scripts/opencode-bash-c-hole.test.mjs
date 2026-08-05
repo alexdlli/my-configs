@@ -6,9 +6,10 @@
 // 3. The plugin default export is imported and driven: wrapped force-push throws,
 //    plain git status resolves. Delete the plugin and this file fails.
 
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -153,4 +154,108 @@ test('plugin stays silent on non-worker merge so permission ask can fire', async
   // permission.bash must still ask (not allow) for the literal form.
   const rules = loadHarnessBashRules();
   assert.equal(lastMatchingAction('gh pr merge 16', rules), 'ask');
+});
+
+// A plugin can deny or step aside; it cannot grant. So the autonomy to merge on
+// a control branch can only come from permission.bash having NO git merge rule:
+// add one and every control-branch merge starts prompting, which is the thing
+// the allowlist exists to avoid.
+test('permission.bash deliberately carries no git merge rule', () => {
+  const rules = loadHarnessBashRules();
+  assert.ok(
+    !rules.some((r) => r.pattern.startsWith('git merge')),
+    'a git merge entry here would prompt on control branches and undo the allowlist',
+  );
+  assert.equal(lastMatchingAction('git merge feat/x', rules), 'allow');
+});
+
+// The bug this catches: the plugin probed for one module and then imported
+// three. An installed harness older than the plugin satisfied the probe, won
+// the search, and failed the import — degrading the whole classifier to the
+// coarse fallback that refuses anything destructive-looking. Adding an import
+// without adding it to the probe list is how that comes back.
+test('the plugin probes for every lib module it goes on to import', () => {
+  const source = readFileSync(PLUGIN_PATH, 'utf8');
+  const declared = source.match(/REQUIRED_LIB_MODULES = \[([^\]]+)\]/);
+  assert.ok(declared, 'the plugin must declare REQUIRED_LIB_MODULES as an array literal');
+  const probed = new Set([...declared[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  const imported = new Set(
+    [...source.matchAll(/path\.join\(dir, '([^']+)'\)/g)].map((m) => m[1]),
+  );
+
+  assert.ok(imported.size > 0, 'the loader must resolve its modules through path.join(dir, ...)');
+  for (const name of imported) {
+    assert.ok(probed.has(name), `${name} is imported but never probed for`);
+    assert.ok(existsSync(join(ROOT, '.claude', 'hooks', 'lib', name)), `${name} missing from lib`);
+  }
+});
+
+let mergeRoot;
+let controlTree;
+let protectedTree;
+let savedProjectDir;
+
+function mergeWorktree(name, head) {
+  const gitDir = join(mergeRoot, 'repo', '.git', 'worktrees', name);
+  mkdirSync(gitDir, { recursive: true });
+  writeFileSync(join(gitDir, 'HEAD'), head);
+  const tree = join(mergeRoot, name);
+  mkdirSync(tree, { recursive: true });
+  writeFileSync(join(tree, '.git'), `gitdir: ${gitDir}\n`);
+  return tree;
+}
+
+before(() => {
+  mergeRoot = mkdtempSync(join(tmpdir(), 'opencode-merge-'));
+  protectedTree = join(mergeRoot, 'repo');
+  mkdirSync(join(protectedTree, '.git'), { recursive: true });
+  writeFileSync(join(protectedTree, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  controlTree = mergeWorktree('integ', 'ref: refs/heads/integration/harness-cleanup\n');
+
+  // The plugin reads CLAUDE_PROJECT_DIR as a second anchor. Leaving the real
+  // one set would let the branch this suite happens to run on decide the
+  // verdict, so `directory` is the only anchor for these cases.
+  savedProjectDir = process.env.CLAUDE_PROJECT_DIR;
+  delete process.env.CLAUDE_PROJECT_DIR;
+});
+
+after(() => {
+  if (savedProjectDir !== undefined) process.env.CLAUDE_PROJECT_DIR = savedProjectDir;
+  rmSync(mergeRoot, { recursive: true, force: true });
+});
+
+test('plugin blocks a merge onto a protected branch, wrapped or not', async () => {
+  const mod = await import(pathToFileURL(PLUGIN_PATH).href);
+  const hooks = await mod.default({ directory: protectedTree });
+
+  for (const command of ['git merge feat/x', 'bash -c "git merge feat/x"']) {
+    await assert.rejects(
+      () => hooks['tool.execute.before']({ tool: 'bash' }, { args: { command } }),
+      /git merge/,
+      command,
+    );
+  }
+});
+
+test('plugin steps aside for a merge onto a control branch', async () => {
+  const mod = await import(pathToFileURL(PLUGIN_PATH).href);
+  const hooks = await mod.default({ directory: controlTree });
+
+  await assert.doesNotReject(() =>
+    hooks['tool.execute.before']({ tool: 'bash' }, { args: { command: 'git merge feat/x' } }),
+  );
+});
+
+test('plugin refuses a merge whose destination it cannot verify', async () => {
+  const mod = await import(pathToFileURL(PLUGIN_PATH).href);
+  const hooks = await mod.default({ directory: controlTree });
+
+  await assert.rejects(
+    () =>
+      hooks['tool.execute.before'](
+        { tool: 'bash' },
+        { args: { command: 'git -C /elsewhere merge main' } },
+      ),
+    /another repository/,
+  );
 });

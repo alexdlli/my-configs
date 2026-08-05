@@ -1,20 +1,27 @@
 # Guard de comandos destrutivos
 
-Hook `PreToolUse` no matcher `Bash` que nega tres operacoes — `gh pr merge`, `git push --force`,
-`git commit --no-verify` — **inclusive quando elas vem envelopadas** em `bash -c`, `sh -c` ou num
-pipe para shell.
+Hook `PreToolUse` no matcher `Bash` que controla quatro operacoes — `gh pr merge`, `git merge`,
+`git push --force`, `git commit --no-verify` — **inclusive quando elas vem envelopadas** em
+`bash -c`, `sh -c` ou num pipe para shell.
 
-As tres nao sao negadas igual. Desde a politica **ask-then-merge**:
+> **Este doc e o dono da politica de merge.** Agente, skill, comando e prompt de worker
+> apontam para ca em vez de reescrever a regra. Onde um deles precisa ser auto-suficiente
+> — o prompt do worker, que roda sem carregar skill — a copia e declarada como copia e
+> aponta para ca como fonte. Mudou aqui, os pontos de copia mudam junto.
+
+As quatro nao sao controladas igual:
 
 | Regra | Worker de onda | Qualquer outro contexto |
 |---|---|---|
 | `gh pr merge` | negado | **o guard fica calado** — cai no prompt de permissao normal |
+| `git merge` | depende do **destino**, nao do worker: liberado em `integration/*` e `wave/*`, negado em `main`, `master`, `prod`, `staging` | idem |
 | `git push --force` | negado | negado |
 | `git commit --no-verify` | negado | negado |
 
 Arquivos: `.claude/hooks/guard-destructive.mjs` (o hook Claude Code),
 `.claude/hooks/lib/destructive.mjs` (a classificacao pura do comando),
-`.claude/hooks/lib/worker-context.mjs` (a deteccao de worker) e
+`.claude/hooks/lib/worker-context.mjs` (a deteccao de worker),
+`.claude/hooks/lib/merge-destination.mjs` (a resolucao da branch de destino) e
 `.opencode/plugin/guard-destructive.js` (o mesmo classificador via
 `tool.execute.before` no OpenCode). Testes ao lado de cada um, em
 `.claude/hooks/lib/*.test.mjs`; o buraco do `permission.bash` sozinho no OpenCode
@@ -79,12 +86,55 @@ combinado da politica. Duas consequencias praticas:
 | Camada | O que garante | Onde falha |
 |---|---|---|
 | `permissions.deny` (`.claude/settings.json`) | barra a forma literal de `git push --force` e `git commit --no-verify`, inclusive sob bypass. **Nao cobre mais merge** | e string: nao ve envelope |
-| Guard `PreToolUse` (este doc) | force-push e `--no-verify` em qualquer contexto; merge **so no worker** — literal **e** envelope, sob bypass, com mensagem acionavel | roda no cliente: quem controla o cliente desliga |
+| Guard `PreToolUse` (este doc) | force-push e `--no-verify` em qualquer contexto; `gh pr merge` **so no worker**; `git merge` conforme a branch de destino — literal **e** envelope, sob bypass, com mensagem acionavel | roda no cliente: quem controla o cliente desliga |
 | Prompt de permissao | merge fora do worker vira decisao do Alex na hora | **nao existe sob bypass** |
 | Instrucao no prompt do worker (`## Ao terminar`) | nao depende de camada de cliente nenhuma | e texto: um agente pode ignorar |
 | **Branch protection no GitHub** | **a unica garantia que nao depende do cliente** | — |
 
 A recomendacao continua sendo a ultima linha.
+
+## Autonomia de merge: `git merge` sim, `gh pr merge` nao
+
+O agente **pode** mergear sozinho numa branch de controle. A separacao nao e de confianca, e de
+**o que da para verificar sem rede**:
+
+- `git merge` **nao tem argumento de destino**: ele sempre aterrissa no `HEAD` atual. O guard le a
+  branch do checkout — duas leituras de arquivo, zero rede — e decide.
+- `gh pr merge` nomeia um PR cuja base mora no GitHub. Saber o destino exigiria uma chamada de
+  rede dentro de um hook `PreToolUse`, em **todo** comando Bash. Por isso ele continua sempre
+  humano, e por nenhum outro motivo.
+
+| Destino do `git merge` | Decisao |
+|---|---|
+| `integration/*`, `wave/*` | **liberado** — o hook emite `permissionDecision: "allow"` |
+| `main`, `master`, `prod`, `staging` | **negado**, por nome |
+| qualquer outra branch | guard calado — cai no prompt de permissao |
+| destino ilegivel (HEAD destacado, sem ancora, `.git` quebrado) | **negado** |
+| `git -C`, `--git-dir`, `--work-tree` | **negado**: apontam para outro repo, e o destino deixa de ser o que esta sessao consegue ler |
+
+**A lista de protegidas e explicita de proposito, nao por omissao.** Uma allowlist que nega `main`
+apenas por nao mencionar ela vira permissiva em silencio no dia em que alguem acrescentar um
+prefixo — e a branch que um agente nunca pode mergear seria justamente a que parou de ser
+nomeada. `PROTECTED_BRANCHES` existe para quebrar um teste quando isso acontecer.
+
+Por que uma branch de controle e diferente: ela existe **para** ser mergeada. Um merge errado ali
+se desfaz com um `git reset --hard` numa branch que mais ninguem puxou. O merge para `main`
+continua sendo do Alex, e o PR continua sendo o caminho.
+
+`git merge --abort`, `--continue` e `--quit` nao sao merge nenhum: terminam ou desfazem um merge ja
+em andamento. Barra-los prenderia um agente no meio de um conflito que o proprio guard deixou
+comecar.
+
+### As duas camadas concordam, por caminhos diferentes
+
+No Claude Code o hook **concede**: numa branch de controle ele imprime `permissionDecision: "allow"`,
+porque ficar calado ainda custaria um prompt ao Alex e o objetivo da allowlist e exatamente nao
+custar.
+
+No OpenCode um plugin **so sabe negar ou sair da frente** — nao existe conceder. Entao a autonomia
+vem da camada de permissao ficar quieta: `permission.bash` **nao tem** entrada para `git merge`, e
+o `"*": "allow"` cobre o caso. Acrescentar `"git merge *": "ask"` ali passaria a perguntar tambem
+nas branches de controle e desfaria a politica — tem teste fixando essa ausencia.
 
 ## Como o guard sabe que e um worker
 
@@ -137,7 +187,7 @@ merge, que e exatamente o resultado que a regra existe para evitar.
 
 ## O que ele pega
 
-Formas cobertas das tres regras:
+Formas cobertas das quatro regras:
 
 - literal: `gh pr merge 3`, `git push -f origin x`, `git commit --no-verify -m x`
 - envelope de shell: `bash -c '...'`, `sh -c`, `zsh -c`, `dash`, `ksh`, `fish`, cluster de flags
@@ -149,7 +199,11 @@ Formas cobertas das tres regras:
 - forma curta equivalente: `-f` para push, `-n` para commit (sinonimos exatos, nao ampliacao)
 
 Para `gh pr merge`, **todas** essas formas so viram negacao quando o contexto e worker (ou
-indeterminado). A classificacao do comando e a mesma; o que muda e o que se faz com ela.
+indeterminado). Para `git merge`, quando o destino e protegido (ou ilegivel). A classificacao do
+comando e a mesma nos dois casos; o que muda e o que se faz com ela.
+
+`git merge-base` e `git merge-file` nao sao `git merge`: a regra casa em token exato, entao eles
+passam liso.
 
 ## O que ele deliberadamente NAO pega
 
@@ -283,6 +337,16 @@ reais em `mkdtemp`: worktree com marcador, marcador truncado, marcador ilegivel,
 da raiz do repo, e o caso do worker que deu `cd` para fora. Os tres vereditos — `worker`,
 `other`, `indeterminate` — tem teste cada um, porque confundir `indeterminate` com `other` e
 exatamente o bug que liberaria um merge.
+
+`classifyMergeDestination(env, cwd)` idem, e o teste dela monta a arvore que importa: worktrees
+ligadas de verdade, cada uma com o proprio `HEAD` sob `.git/worktrees/<nome>`. E o caso que decide
+se o guard le a branch do worker ou a do checkout de onde ele foi cortado — ler a errada
+liberaria um merge para `main` achando que era `wave/3`. Tem teste tambem para HEAD destacado e
+para ancoras que discordam entre si.
+
+`guard-destructive.test.mjs` roda o **hook como processo**, do jeito que o Claude Code roda, porque
+a decisao que **concede** permissao nao existe dentro de nenhuma funcao pura: so aparece no
+stdout do hook. Um teste de unidade nunca a veria.
 
 ### O CI nao afirma a garantia, ele a executa
 

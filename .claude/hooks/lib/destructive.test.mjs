@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import {
   RULE_GH_PR_MERGE,
   RULE_GIT_COMMIT_NO_VERIFY,
+  RULE_GIT_MERGE,
   RULE_GIT_PUSH_FORCE,
   classifyCommand,
   denialReason,
+  isBranchScopedRule,
   isWorkerOnlyRule,
 } from './destructive.mjs';
 
@@ -125,6 +127,63 @@ test('merge is the only rule scoped to the worker context', () => {
   assert.equal(isWorkerOnlyRule(RULE_GH_PR_MERGE), true);
   assert.equal(isWorkerOnlyRule(RULE_GIT_PUSH_FORCE), false);
   assert.equal(isWorkerOnlyRule(RULE_GIT_COMMIT_NO_VERIFY), false);
+});
+
+test('git merge is classified, and wrapped forms are unwrapped like the rest', () => {
+  assertBlocked('git merge feat/opencode-harness', RULE_GIT_MERGE);
+  assertBlocked('git merge --no-ff origin/main', RULE_GIT_MERGE);
+  assert.equal(classifyCommand('bash -c "git merge main"').rule, RULE_GIT_MERGE);
+  assert.equal(classifyCommand('bash -c "git merge main"').wrapped, true);
+});
+
+// git merge is scoped by destination, gh pr merge by session. The two never
+// swap: gh pr merge's destination is remote state, and reading it would put a
+// network call in a PreToolUse hook.
+test('git merge is scoped by branch and gh pr merge is not', () => {
+  assert.equal(isBranchScopedRule(RULE_GIT_MERGE), true);
+  assert.equal(isBranchScopedRule(RULE_GH_PR_MERGE), false);
+  assert.equal(isBranchScopedRule(RULE_GIT_PUSH_FORCE), false);
+  assert.equal(isWorkerOnlyRule(RULE_GIT_MERGE), false);
+});
+
+// Finishing or undoing a merge already in progress creates nothing. Blocking
+// these would strand an agent halfway through a conflict the guard let it start.
+test('the merge maintenance flags are not a merge', () => {
+  assertAllowed('git merge --abort');
+  assertAllowed('git merge --continue');
+  assertAllowed('git merge --quit');
+});
+
+test('the merge lookalikes are not a merge', () => {
+  assertAllowed('git merge-base main HEAD');
+  assertAllowed('git merge-file a b c');
+  assertAllowed('git log --merges');
+  assertAllowed('git merge --help');
+});
+
+// -C/--git-dir/--work-tree move git to another checkout, so the branch the
+// merge lands on is not the one this session can read. Unverifiable, therefore
+// refused — and flagged separately so the message can say why.
+test('a merge pointed at another repository is flagged as unverifiable', () => {
+  assert.equal(classifyCommand('git -C /other/repo merge main').redirected, true);
+  assert.equal(classifyCommand('git --git-dir=/other/.git merge main').redirected, true);
+  assert.equal(classifyCommand('git --work-tree /other merge main').redirected, true);
+  assert.equal(classifyCommand('git merge main').redirected, false);
+  // -c sets config, it does not relocate the repo.
+  assert.equal(classifyCommand('git -c user.name=x merge main').redirected, false);
+});
+
+test('the merge denial explains the destination it could not accept', () => {
+  const finding = classifyCommand('git merge main');
+  const protectedReason = denialReason(finding);
+  assert.match(protectedReason, /git merge/);
+  assert.match(protectedReason, /integration\/\*/);
+
+  const unreadable = denialReason(finding, { destination: 'indeterminate' });
+  assert.match(unreadable, /could not read which branch/);
+
+  const redirected = denialReason(finding, { destination: 'redirected' });
+  assert.match(redirected, /another repository/);
 });
 
 test('the denial reason names the rule and what to do instead', () => {
