@@ -471,6 +471,11 @@ test('OpenCode bash deny is re-inserted last when the key already existed earlie
   });
 });
 
+// The orphan can only be left behind in a config that SURVIVES uninstall, so
+// the user config is seeded with a key of their own. Without it the installer
+// deletes the whole file and every assertion below becomes unreachable — the
+// earlier version of this test guarded them behind `if (file exists)` and so
+// proved nothing.
 test('OpenCode uninstall removes the synthesized catch-all and does not leave allow-all', () => {
   withSandbox([ALPHA], (sandbox) => {
     mkdirSync(join(sandbox.harness, '.opencode'), { recursive: true });
@@ -480,22 +485,25 @@ test('OpenCode uninstall removes the synthesized catch-all and does not leave al
         permission: { bash: { '*': 'allow', 'git push --force *': 'deny', 'gh pr merge *': 'ask' } },
       }, null, 2)}\n`,
     );
+    mkdirSync(join(sandbox.home, '.config', 'opencode'), { recursive: true });
+    const cfgPath = join(sandbox.home, '.config', 'opencode', 'opencode.json');
+    writeFileSync(cfgPath, `${JSON.stringify({ theme: 'tokyonight' }, null, 2)}\n`);
 
     install(sandbox);
-    const afterInstall = JSON.parse(
-      readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'),
-    );
+    const afterInstall = JSON.parse(readFileSync(cfgPath, 'utf8'));
     assert.equal(afterInstall.permission.bash['*'], 'allow');
     assert.equal(afterInstall.permission.bash['git push --force *'], 'deny');
 
     install(sandbox, '--uninstall');
 
-    const cfgPath = join(sandbox.home, '.config', 'opencode', 'opencode.json');
-    if (lstatSync(cfgPath, { throwIfNoEntry: false })) {
-      const after = JSON.parse(readFileSync(cfgPath, 'utf8'));
-      assert.equal(after.permission?.bash?.['*'], undefined, 'orphan * allow must not survive');
-      assert.equal(after.permission?.bash?.['git push --force *'], undefined);
-      assert.equal(after.permission?.bash?.['gh pr merge *'], undefined);
-    }
+    assert.ok(
+      lstatSync(cfgPath, { throwIfNoEntry: false }),
+      'a config holding a key of the user\'s own must survive uninstall',
+    );
+    const after = JSON.parse(readFileSync(cfgPath, 'utf8'));
+    assert.equal(after.theme, 'tokyonight', 'uninstall never touches what the user wrote');
+    assert.equal(after.permission?.bash?.['*'], undefined, 'orphan * allow must not survive');
+    assert.equal(after.permission?.bash?.['git push --force *'], undefined);
+    assert.equal(after.permission?.bash?.['gh pr merge *'], undefined);
   });
 });
