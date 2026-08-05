@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  RULE_ENDLESS_BACKGROUND_LOOP,
   RULE_GH_PR_MERGE,
   RULE_GIT_COMMIT_NO_VERIFY,
   RULE_GIT_MERGE,
@@ -171,6 +172,49 @@ test('a merge pointed at another repository is flagged as unverifiable', () => {
   assert.equal(classifyCommand('git merge main').redirected, false);
   // -c sets config, it does not relocate the repo.
   assert.equal(classifyCommand('git -c user.name=x merge main').redirected, false);
+});
+
+// The leak this closes: a backgrounded endless loop outlives the session that
+// started it, and nothing is left to kill it.
+test('an endless loop sent to the background is blocked', () => {
+  assertBlocked('while true; do sleep 1; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('while :; do echo hi; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('until false; do sleep 5; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('while [ 1 ]; do sleep 1; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('while true\ndo\n  sleep 1\ndone &', RULE_ENDLESS_BACKGROUND_LOOP);
+});
+
+// `nohup … &` is the shape that actually leaks, and the `&` lives in the outer
+// command while the loop lives in the inner script. The background flag has to
+// cross the wrapper or this whole rule misses its main case.
+test('backgrounding carries into the wrapped script', () => {
+  assertBlocked(`bash -c 'while true; do sleep 1; done' &`, RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('nohup bash -c "while true; do sleep 1; done" &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('setsid sh -c "until false; do sleep 1; done" &', RULE_ENDLESS_BACKGROUND_LOOP);
+});
+
+// Only a literally constant condition counts. A loop a variable can stop may
+// well terminate, and blocking it would be the false positive that costs more
+// than the leak.
+test('a loop that can end, or that stays in the foreground, is left alone', () => {
+  assertAllowed('while true; do sleep 1; done');
+  assertAllowed('while [ $i -lt 10 ]; do i=$((i+1)); done &');
+  assertAllowed('while read -r line; do echo $line; done &');
+  assertAllowed('for i in $(seq 1 30); do check && break; sleep 2; done &');
+  assertAllowed('npm run dev &');
+  assertAllowed(`echo 'while true; do sleep 1; done &'`);
+  assertAllowed('grep -rn "while true" docs/');
+});
+
+// There is no `timeout` on this machine and no `gtimeout` either (measured),
+// so the denial has to hand over the pattern that does work. A rule that only
+// forbids teaches the agent nothing and gets worked around.
+test('the loop denial names the substitute, because timeout does not exist here', () => {
+  const reason = denialReason(classifyCommand('while true; do sleep 1; done &'));
+  assert.match(reason, /endless background loop/);
+  assert.match(reason, /no `timeout` on this machine/);
+  assert.match(reason, /seq 1 30/);
+  assert.match(reason, /trap cleanup EXIT INT TERM HUP/);
 });
 
 test('the merge denial explains the destination it could not accept', () => {

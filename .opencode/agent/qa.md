@@ -34,6 +34,20 @@ A Chrome-driving MCP (`mcp__claude-in-chrome__*` and friends) is **not** in your
 - Check what the app needs before it can run at all: `.env.example`, a seed/migration target, a fixture user to log in with.
 - If nothing tells you how to run it, ask the orchestrator. A fabricated command that fails proves nothing about the change.
 
+## The server you start is yours until it's dead
+
+Running the product means backgrounding something almost every time, so this is your standing risk, not an edge case.
+
+- **`trap cleanup EXIT INT TERM HUP`** before you spawn the server, emulator or tunnel. The trap fires on the paths where you *don't* get to clean up by hand.
+- **Wait with a ceiling, never a busy loop.** `while true` in the background is denied by the guard — policy in `docs/guard-destructive.md`.
+- **No `timeout` on this machine, no `gtimeout` either** (measured). Poll and give up:
+
+  ```bash
+  for i in $(seq 1 30); do curl -sf localhost:3000 && break; sleep 2; done
+  ```
+
+- The proof artifact is the deliverable; a dev server still running afterwards is not part of it. Report what you started and that you stopped it.
+
 # Devices: read the host, then discover before you touch
 
 Your first step is `node ~/.claude/hooks/session-context.mjs --json`. The `host` field picks the track: `maestri` means the product runs in a portal inside the canvas, anything else means argent.

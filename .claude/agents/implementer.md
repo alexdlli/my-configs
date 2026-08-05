@@ -47,6 +47,14 @@ Before editing, learn how this specific repo is set up:
 
 **After editing, run the project's check commands** (lint + typecheck + targeted tests at minimum) before reporting done. If a check fails, fix it — don't paper over with `// @ts-ignore`, `# type: ignore`, `--no-verify`, or equivalent escape hatches.
 
+# Anything you background, you kill
+
+If verifying your change needs a watcher or a dev server, you own it until it's dead — a process that outlives your turn is one nobody knows about.
+
+- **`trap cleanup EXIT INT TERM HUP`** before you spawn it.
+- **Explicit duration, no busy loop.** A backgrounded `while true` is denied by the guard — policy in `docs/guard-destructive.md`.
+- **No `timeout` here, and no `gtimeout`** (measured). The pattern is a counter with a ceiling: `for i in $(seq 1 30); do <check> && break; sleep 2; done`.
+
 # After writing
 
 Report concretely:

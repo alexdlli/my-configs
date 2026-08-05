@@ -1,5 +1,6 @@
 // Classification of the Bash commands the harness holds back: merging a PR,
-// merging a branch, force-pushing, and committing with the hooks skipped.
+// merging a branch, force-pushing, committing with the hooks skipped, and
+// backgrounding a loop that never ends.
 //
 // The four are not held back equally. Force-push and `--no-verify` are denied
 // in every context, no exception. `gh pr merge` is scoped by session context —
@@ -27,6 +28,11 @@
 // false negative costs a command that branch protection on GitHub still
 // refuses. Branch protection is the real guarantee; this is the local net.
 //
+// The loop rule is the one that is not about history: a `while true` sent to
+// the background survives the session that started it, and nothing is left to
+// kill it. It is denied in every context, like force-push — only a literally
+// constant condition counts, so a loop a variable could stop is left alone.
+//
 // Deliberately NOT caught (see docs/guard-destructive.md):
 //   - command substitution: `$(gh pr merge 3)`, backticks
 //   - heredoc bodies — they are stripped before scanning, because docs and
@@ -46,12 +52,14 @@ export const RULE_GH_PR_MERGE = 'gh-pr-merge';
 export const RULE_GIT_PUSH_FORCE = 'git-push-force';
 export const RULE_GIT_COMMIT_NO_VERIFY = 'git-commit-no-verify';
 export const RULE_GIT_MERGE = 'git-merge';
+export const RULE_ENDLESS_BACKGROUND_LOOP = 'endless-background-loop';
 
 const RULE_LABELS = {
   [RULE_GH_PR_MERGE]: 'gh pr merge',
   [RULE_GIT_PUSH_FORCE]: 'git push --force',
   [RULE_GIT_COMMIT_NO_VERIFY]: 'git commit --no-verify',
   [RULE_GIT_MERGE]: 'git merge',
+  [RULE_ENDLESS_BACKGROUND_LOOP]: 'endless background loop',
 };
 
 const RULE_GUIDANCE = {
@@ -63,6 +71,8 @@ const RULE_GUIDANCE = {
     'The commit hooks are the check, not an obstacle. Fix what they report; if the bypass is genuinely required, ask Alex.',
   [RULE_GIT_MERGE]:
     'A merge lands on the branch you are standing on, and this one is protected. Agents merge into control branches only (integration/*, wave/*). Switch to the control branch and merge there, or leave the merge to Alex.',
+  [RULE_ENDLESS_BACKGROUND_LOOP]:
+    'A `while true` in the background outlives this session and nobody is left to kill it. There is no `timeout` on this machine (nor `gtimeout`), so the pattern is a counter with a ceiling: `for i in $(seq 1 30); do <check> && break; sleep 2; done`. Give it an explicit duration, and `trap cleanup EXIT INT TERM HUP` if it spawns anything.',
 };
 
 const UNDETERMINED_GUIDANCE =
@@ -88,7 +98,19 @@ const ALLOWED = { blocked: false };
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
 // Commands whose arguments become shell source when piped into a shell.
 const PIPE_WRITERS = new Set(['echo', 'printf']);
-const ENV_COMMAND = 'env';
+// Launchers that run the rest of the line unchanged. `nohup ... &` is the exact
+// shape of a process that outlives the session, so seeing through it matters
+// more here than anywhere else.
+const TRANSPARENT_LAUNCHERS = new Set(['env', 'nohup', 'setsid', 'stdbuf']);
+
+const BACKGROUND_OPERATOR = '&';
+const LOOP_KEYWORDS = new Set(['while', 'until']);
+const LOOP_BODY_KEYWORD = 'do';
+// Conditions that never stop the loop. `[ 1 ]` and `[[ 1 ]]` reduce to the same
+// thing once the test brackets are dropped.
+const ALWAYS_TRUE = new Set(['true', ':', '1']);
+const ALWAYS_FALSE = new Set(['false', '0']);
+const TEST_BRACKETS = new Set(['[', ']', '[[', ']]', 'test']);
 
 const HELP_FLAGS = new Set(['-h', '--help']);
 const FORCE_PUSH_FLAGS = new Set(['-f', '--force']);
@@ -233,12 +255,13 @@ function commandName(token) {
   return slash === -1 ? token.value : token.value.slice(slash + 1);
 }
 
-// `FOO=1 bash -c ...` and `env FOO=1 bash -c ...` reach the same shell.
+// `FOO=1 bash -c ...`, `env FOO=1 bash -c ...` and `nohup bash -c ...` all
+// reach the same shell.
 function stripEnvPrefix(tokens) {
   let start = 0;
   while (start < tokens.length) {
     const token = tokens[start];
-    if (ENV_ASSIGNMENT.test(token.value) || commandName(token) === ENV_COMMAND) {
+    if (ENV_ASSIGNMENT.test(token.value) || TRANSPARENT_LAUNCHERS.has(commandName(token))) {
       start += 1;
       continue;
     }
@@ -319,7 +342,49 @@ function classifyGit(argv) {
   return ALLOWED;
 }
 
-function classifySegment(segment, segments, index, depth) {
+// A `&` after this point in the line backgrounds what came before it. Anything
+// the outer level already backgrounded stays backgrounded inside the wrapper,
+// which is what makes `nohup bash -c 'while true; do …; done' &` reachable.
+function backgroundedFrom(segments, index, inherited) {
+  return (
+    inherited ||
+    segments.slice(index + 1).some((segment) => segment.precededBy === BACKGROUND_OPERATOR)
+  );
+}
+
+function loopCondition(tokens) {
+  const condition = [];
+  for (const token of tokens.slice(1)) {
+    if (!token.quoted && token.value === LOOP_BODY_KEYWORD) break;
+    condition.push(token.value);
+  }
+  return condition.filter((value) => !TEST_BRACKETS.has(value));
+}
+
+// Only a literally constant condition counts. Anything a variable could change
+// is a loop that may well terminate, and guessing costs the false positive this
+// guard cannot afford.
+function startsEndlessLoop(segment) {
+  const [head] = segment.tokens;
+  if (!head || head.quoted || !LOOP_KEYWORDS.has(head.value)) return false;
+  const condition = loopCondition(segment.tokens);
+  if (condition.length !== 1) return false;
+  return head.value === 'while'
+    ? ALWAYS_TRUE.has(condition[0])
+    : ALWAYS_FALSE.has(condition[0]);
+}
+
+function findEndlessBackgroundLoop(segments, backgrounded) {
+  for (let index = 0; index < segments.length; index += 1) {
+    if (!startsEndlessLoop(segments[index])) continue;
+    if (backgroundedFrom(segments, index, backgrounded)) {
+      return blockedBy(RULE_ENDLESS_BACKGROUND_LOOP);
+    }
+  }
+  return ALLOWED;
+}
+
+function classifySegment(segment, segments, index, depth, backgrounded) {
   const argv = stripEnvPrefix(segment.tokens);
   if (argv.length === 0) return ALLOWED;
   const name = commandName(argv[0]);
@@ -329,8 +394,9 @@ function classifySegment(segment, segments, index, depth) {
     let scripts = [];
     if (script !== null) scripts = [script];
     else if (segment.precededBy === PIPE) scripts = pipelineScripts(segments, index);
+    const inherited = backgroundedFrom(segments, index, backgrounded);
     for (const source of scripts) {
-      const finding = classify(source, depth + 1);
+      const finding = classify(source, depth + 1, inherited);
       if (finding.blocked) return { ...finding, wrapped: true };
     }
     return ALLOWED;
@@ -341,14 +407,14 @@ function classifySegment(segment, segments, index, depth) {
   return ALLOWED;
 }
 
-function classify(command, depth) {
+function classify(command, depth, backgrounded = false) {
   if (depth > MAX_WRAPPER_DEPTH || command.trim() === '') return ALLOWED;
   const segments = scan(stripHeredocBodies(command));
   for (let index = 0; index < segments.length; index += 1) {
-    const finding = classifySegment(segments[index], segments, index, depth);
+    const finding = classifySegment(segments[index], segments, index, depth, backgrounded);
     if (finding.blocked) return finding;
   }
-  return ALLOWED;
+  return findEndlessBackgroundLoop(segments, backgrounded);
 }
 
 /**

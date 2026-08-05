@@ -17,6 +17,7 @@ As quatro nao sao controladas igual:
 | `git merge` | depende do **destino**, nao do worker: liberado em `integration/*` e `wave/*`, negado em `main`, `master`, `prod`, `staging` | idem |
 | `git push --force` | negado | negado |
 | `git commit --no-verify` | negado | negado |
+| loop infinito em background | negado | negado |
 
 Arquivos: `.claude/hooks/guard-destructive.mjs` (o hook Claude Code),
 `.claude/hooks/lib/destructive.mjs` (a classificacao pura do comando),
@@ -136,6 +137,47 @@ vem da camada de permissao ficar quieta: `permission.bash` **nao tem** entrada p
 o `"*": "allow"` cobre o caso. Acrescentar `"git merge *": "ask"` ali passaria a perguntar tambem
 nas branches de controle e desfaria a politica — tem teste fixando essa ausencia.
 
+## Vazamento de processo: loop infinito em background
+
+Esta e a unica regra que nao e sobre historico. Um `while true` mandado para background
+**sobrevive a sessao que o iniciou** e nao sobra ninguem para mata-lo: o agente termina o turno,
+o processo fica. Negado em todo contexto, como force-push.
+
+Pega:
+
+- `while true; do ...; done &`, `while :; do ... done &`, `until false; do ... done &`,
+  `while [ 1 ]; do ... done &`
+- a mesma coisa envelopada, com o `&` do lado de fora: `nohup bash -c 'while true; ...' &`,
+  `setsid sh -c '...' &`. O flag de background **atravessa** o envelope — sem isso a regra
+  perderia justamente a forma que mais vaza.
+
+Nao pega, de proposito:
+
+| Nao pega | Por que |
+|---|---|
+| `while true` em **foreground** | trava a chamada do Bash e aparece na hora; nao vaza nada alem do turno |
+| `while [ $i -lt 10 ]`, `while read -r line` | condicao que uma variavel pode encerrar. Adivinhar aqui e o falso positivo caro |
+| `for i in $(seq 1 30); do ...; done &` | e exatamente o padrao que a regra quer que voce use |
+| `(while true; do ...; done) &` | subshell entre parenteses; o scanner nao abre parenteses |
+
+### O substituto, porque proibir sozinho nao ensina
+
+**Nao existe `timeout` nesta maquina, nem `gtimeout`** — medido, nao suposto (macOS 26.5.2,
+sem coreutils do Homebrew). Uma regra que so proibisse mandaria o agente para um comando que
+nao existe, e ele voltaria para o `while true`. Entao a negacao **entrega o padrao**:
+
+```bash
+for i in $(seq 1 30); do curl -sf localhost:3000 && break; sleep 2; done
+```
+
+Contador com teto: duracao maxima explicita (30 x 2s), sai cedo quando a condicao acontece, e
+termina sozinho quando nao acontece. Quem gera processo filho acrescenta
+`trap cleanup EXIT INT TERM HUP` — o trap e o que roda quando o turno acaba mal, que e quando
+o vazamento de fato acontece.
+
+A mesma clausula esta nos prompts de `tester`, `qa` e `implementer`, que sao os tres que rodam
+coisa de verdade.
+
 ## Como o guard sabe que e um worker
 
 Por um **marcador explicito**, nunca por nome de pasta. O dispatch de ondas escreve
@@ -220,6 +262,8 @@ Cada linha aqui e escolha, nao esquecimento:
 | a string dentro de outro comando | `echo "gh pr merge"`, `grep -rn 'git push --force' docs/`, `git commit -m "por que --no-verify e proibido"` — o comando e `echo`/`grep`/`commit`, e a regra so casa em token exato |
 | `env -i bash -c` | `env` seguido de flag propria; `env VAR=1` e o caso real |
 | aninhamento acima de 3 envelopes | quem escreve `bash -c "bash -c \"bash -c ...\""` nao esta distraido |
+| `(while true; do ...; done) &` | subshell entre parenteses; o scanner nao abre parenteses |
+| `while true` em foreground | trava a chamada e aparece na hora — nao e vazamento |
 
 ## Comportamento
 

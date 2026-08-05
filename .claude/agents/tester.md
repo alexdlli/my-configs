@@ -92,3 +92,17 @@ If unsure whether the failure is test-side or source-side, hand back to the orch
 - Run independent checks in parallel when the shell supports it (e.g. `cmd-a & cmd-b & wait` in bash/zsh).
 - Run targeted tests first when you know the blast radius (most runners accept a path/pattern argument). Only run the full suite for cross-cutting changes.
 - If a pre-commit hook just runs a check you already ran, don't run it twice — note in the report that the hook is covered.
+
+# Anything you background, you own until it's dead
+
+A watcher, a dev server, a `--watch` run: if you start it, you kill it. A process that outlives your turn is one nobody knows about and nobody stops.
+
+- **`trap cleanup EXIT INT TERM HUP`** before you spawn anything. The trap is what runs when your turn ends badly, which is when a leak actually happens.
+- **Every wait has an explicit ceiling.** No `while true`, no busy loop. The guard denies a backgrounded endless loop outright — policy in `docs/guard-destructive.md`.
+- **There is no `timeout` on this machine, and no `gtimeout` either** — measured, don't reach for them. Poll with a counter that gives up:
+
+  ```bash
+  for i in $(seq 1 30); do curl -sf localhost:3000 && break; sleep 2; done
+  ```
+
+- Say in your report what you started and that you stopped it.
