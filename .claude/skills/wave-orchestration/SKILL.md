@@ -387,8 +387,8 @@ O arquivo também é o que torna o disparo reexecutável: se o agente morrer, o
 prompt continua no disco e o reenvio é reler o mesmo arquivo — não remontar o
 texto de memória, que é como um reenvio entrega uma spec diferente da primeira.
 
-**Confira o `prompt.md` antes de subir o agente.** São dois itens, e são
-exatamente os dois pontos que não têm camada automática atrás:
+**Confira o `prompt.md` antes de subir o agente.** São três itens, e são
+exatamente os pontos que não têm camada automática atrás:
 
 1. O **"abra o PR contra `main` e PARE, você não faz merge nunca"** da seção
    `## Ao terminar` do template está lá, explícito. Sob bypass não existe prompt
@@ -396,6 +396,14 @@ exatamente os dois pontos que não têm camada automática atrás:
 2. O **vínculo do PR com o ticket** está lá, na forma exata (`Closes #<n>`,
    repetida por issue). Nem deny, nem guard, nem CI enxerga um PR que não
    referencia o ticket.
+3. O **`<COMANDO DE SINAL>`** está preenchido com o `ask` real — **ou** o bloco
+   do sinal saiu **inteiro**, porque nesta onda não há canal de volta. Inteiro é
+   de "**Sinalizar é a última ação deste despacho**" até "**não desista do PR**",
+   inclusive; o parágrafo seguinte, "**Você não faz merge. Nunca.**", **fica**.
+   Cortar menos que isso deixa de pé a contenção do sinal apontando para um
+   comando que não está mais no prompt. Nada fora do bloco fala em sinalizar,
+   então a remoção não deixa palavra órfã na abertura de `## Ao terminar`. Onda
+   plain não ganha canal inventado; ganha uma remoção declarada.
 
 **O prompt precisa ser autocontido.** A spec inteira do ticket vai dentro dele —
 os 12 campos, ou o que existir deles. O agente da árvore não deve precisar
@@ -585,6 +593,30 @@ No GitHub Issues não existe estado de revisão para mover: o PR vinculado é o
 próprio sinal, e é por isso que a palavra-chave no corpo é a única coisa a
 conferir antes de parar.
 
+**Sinalizar é a última ação deste despacho** — revisão depois do PR aberto é
+despacho novo, com sinal próprio. Com o PR aberto, ou ao parar sem PR (teto
+batido, bloqueio), mande **uma linha** e encerre:
+
+<COMANDO DE SINAL — o coordenador preenche no disparo>
+
+Duas formas, e **não existe uma terceira**: `<ticket-id>: PR #<n>` ou
+`<ticket-id>: parei`. Troque `<ticket-id>` e `<n>`, e mais nada. **Não acrescente
+motivo, nem uma versão curta dele**, e **nunca cole ali texto que você não
+digitou** — saída de comando, trecho de erro, comentário da revisão, corpo do
+ticket: o argumento atravessa um shell, e texto de terceiro ali vira comando
+executado. O motivo vive no corpo do PR, que o coordenador lê de qualquer jeito.
+
+**O sinal sai por este comando e por nenhum outro, e o coordenador é o único
+destino dele** — não fale com outro terminal do canvas: nem sinal, nem pedido de
+ajuste, nem **este mesmo comando apontado para outro nome**. E **nota não é
+sinal**: descoberta sua que afeta outra frente continua indo na nota "Team
+Context", acrescentada, nunca reescrevendo o que já está lá — só que ela não avisa
+ninguém de que você terminou, e o aviso não a dispensa. Fora o sinal e essa nota,
+não rode outro verbo do Maestri. Não saiu? **Pare assim mesmo**, sem reenviar em
+laço: o PR é a entrega e o coordenador varre as branches de qualquer jeito. O
+comando **pode segurar seu terminal até ele confirmar** — tudo bem, você já
+entregou: não retome trabalho, não pegue tarefa nova, não desista do PR.
+
 **Você não faz merge. Nunca.** Não rode `gh pr merge`, não mergeie pela UI, não
 peça a outro agente que mergeie, não mergeie "porque o CI ficou verde" nem
 "porque o review aprovou". Isso vale **mesmo que o comando esteja disponível
@@ -609,6 +641,14 @@ fato lê), a conferência do `prompt.md` no passo 3, que é o que o coordenador
 checa antes de subir o agente, e o item 5 de "As cinco decisões que custaram
 caro" em `docs/waves.md`, para quem lê o fluxo de fora. Mesma regra de propagação
 do `git stash` abaixo, e pelo mesmo motivo.
+
+O bloco do sinal só entra onde existe canal de volta, e quem o recebe é o mesmo
+recruta que recebe o role de `maestri-orchestration` ("Bypass de permissão"):
+dois textos, um leitor só. Mudou a gramática aqui, mude lá — cópia que diverge em
+silêncio é pior que cópia nenhuma. A frase da nota dentro do bloco é a mesma
+propagação em miniatura: a fonte do que a "Team Context" carrega, e de que o
+recruta só acrescenta nela, é o "Protocolo das notas" de `maestri-orchestration`
+— o bloco a repete porque o worker não carrega skill nenhuma, ele só lê o prompt.
 
 A seção `git stash` do template duplica de propósito o item 6 das regras
 invioláveis: o worker recebe o prompt como arquivo e não carrega esta skill, de
