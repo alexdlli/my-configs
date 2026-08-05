@@ -407,7 +407,17 @@ test('OpenCode agent entries are linked one by one under ~/.config/opencode', ()
     writeFileSync(join(agentSrc, 'orchestrator.md'), '---\nmode: primary\n---\ncoord\n');
     writeFileSync(
       join(sandbox.harness, '.opencode', 'opencode.json'),
-      `${JSON.stringify({ default_agent: 'orchestrator', permission: { bash: { '*': 'allow', 'git push --force*': 'deny' } } }, null, 2)}\n`,
+      `${JSON.stringify({
+        default_agent: 'orchestrator',
+        permission: {
+          bash: {
+            '*': 'allow',
+            'git push --force': 'deny',
+            'git push --force *': 'deny',
+            'gh pr merge *': 'ask',
+          },
+        },
+      }, null, 2)}\n`,
     );
 
     install(sandbox);
@@ -416,7 +426,76 @@ test('OpenCode agent entries are linked one by one under ~/.config/opencode', ()
     assert.equal(readlinkSync(dest), join(agentSrc, 'orchestrator.md'));
     const cfg = JSON.parse(readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'));
     assert.equal(cfg.default_agent, 'orchestrator');
-    assert.equal(cfg.permission.bash['git push --force*'], 'deny');
+    assert.equal(cfg.permission.bash['git push --force *'], 'deny');
+    assert.equal(cfg.permission.bash['gh pr merge *'], 'ask');
     assert.equal(cfg.permission.bash['*'], 'allow');
+    // findLast order: specific rules must be AFTER the catch-all.
+    assert.ok(
+      Object.keys(cfg.permission.bash).indexOf('*') <
+        Object.keys(cfg.permission.bash).indexOf('git push --force *'),
+    );
+  });
+});
+
+test('OpenCode bash deny is re-inserted last when the key already existed earlier', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    mkdirSync(join(sandbox.home, '.config', 'opencode'), { recursive: true });
+    writeFileSync(
+      join(sandbox.home, '.config', 'opencode', 'opencode.json'),
+      `${JSON.stringify({
+        permission: {
+          bash: {
+            'git push --force *': 'ask',
+            '*': 'allow',
+          },
+        },
+      }, null, 2)}\n`,
+    );
+    mkdirSync(join(sandbox.harness, '.opencode'), { recursive: true });
+    writeFileSync(
+      join(sandbox.harness, '.opencode', 'opencode.json'),
+      `${JSON.stringify({
+        permission: { bash: { '*': 'allow', 'git push --force *': 'deny' } },
+      }, null, 2)}\n`,
+    );
+
+    install(sandbox);
+
+    const bash = JSON.parse(
+      readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'),
+    ).permission.bash;
+    const keys = Object.keys(bash);
+    assert.equal(bash['git push --force *'], 'deny');
+    assert.ok(keys.indexOf('*') < keys.indexOf('git push --force *'), keys.join(','));
+    assert.equal(keys.at(-1), 'git push --force *');
+  });
+});
+
+test('OpenCode uninstall removes the synthesized catch-all and does not leave allow-all', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    mkdirSync(join(sandbox.harness, '.opencode'), { recursive: true });
+    writeFileSync(
+      join(sandbox.harness, '.opencode', 'opencode.json'),
+      `${JSON.stringify({
+        permission: { bash: { '*': 'allow', 'git push --force *': 'deny', 'gh pr merge *': 'ask' } },
+      }, null, 2)}\n`,
+    );
+
+    install(sandbox);
+    const afterInstall = JSON.parse(
+      readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'),
+    );
+    assert.equal(afterInstall.permission.bash['*'], 'allow');
+    assert.equal(afterInstall.permission.bash['git push --force *'], 'deny');
+
+    install(sandbox, '--uninstall');
+
+    const cfgPath = join(sandbox.home, '.config', 'opencode', 'opencode.json');
+    if (lstatSync(cfgPath, { throwIfNoEntry: false })) {
+      const after = JSON.parse(readFileSync(cfgPath, 'utf8'));
+      assert.equal(after.permission?.bash?.['*'], undefined, 'orphan * allow must not survive');
+      assert.equal(after.permission?.bash?.['git push --force *'], undefined);
+      assert.equal(after.permission?.bash?.['gh pr merge *'], undefined);
+    }
   });
 });

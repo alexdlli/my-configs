@@ -27,38 +27,40 @@ inventar um loader que não existe.
 
 Duas camadas, espelhando o Claude Code:
 
-1. **`permission.bash` deny** em `.opencode/opencode.json` — `git push --force*`
-   e `git commit --no-verify*`. `deny` sobrevive a `--yolo` /
-   `--dangerously-skip-permissions` (só `ask` vira `allow`). Matching usa
-   `findLast`: a **última** regra que casa vence, então o catch-all `*` vem
-   primeiro.
+1. **`permission.bash`** em `.opencode/opencode.json` — catch-all `"*": "allow"`
+   **primeiro**, depois `deny` para `git push --force` / `git commit --no-verify`
+   (com espaço após o flag — `--force*` também casaria `--force-with-lease`, que
+   o classificador deixa passar de propósito) e **`ask` para `gh pr merge`**
+   (ask-then-merge). `deny` e `ask` sobrevivem a `--yolo` de formas diferentes:
+   `deny` continua bloqueando; `ask` vira `allow` sob `--auto`/`--yolo`. Matching
+   usa `findLast`: a **última** regra que casa vence. O installer **delete+set**
+   cada padrão do harness para forçar inserção no fim — reassign sozinho preserva
+   o índice antigo e deixa o deny inerte atrás do catch-all.
 2. **Plugin `guard-destructive`** (`tool.execute.before` + `throw`) — mesma
    classificação de `.claude/hooks/lib/destructive.mjs`. Fecha o envelope
-   `bash -c "…"`, pipe para shell, etc.
-
-`gh pr merge` **não** está no deny do config (ask-then-merge): o plugin só nega
-em worker de onda (marcador `.wave/worker.json`); fora disso o comando chega ao
-prompt.
+   `bash -c "…"`, pipe para shell, etc. Em **worker** nega merge; fora de worker
+   fica calado e o `ask` do config pede ao humano. Silêncio do plugin **só é
+   seguro** porque o fall-through de merge é `ask`, não o `"*": "allow"`.
 
 ### O buraco medido do `permission.bash` sozinho
 
 O OpenCode parseia o comando com tree-sitter-bash e coleta cada nó `command`.
 Para `bash -c "git push --force origin x"`, o único `command` é o `bash`
 externo — a string entre aspas **não** vira comando filho. O padrão coletado é
-a linha inteira, que **não** casa com `git push --force*`.
+a linha inteira, que **não** casa com `git push --force *`.
 
-Isso está codificado em `scripts/opencode-bash-c-hole.test.mjs`: o permission
-layer sozinho deixa passar o wrap; o `classifyCommand` compartilhado não. O
-plugin é obrigatório, não opcional. Prosa dizendo que o invariante está coberto
-sem o plugin estaria mentindo.
+`scripts/opencode-bash-c-hole.test.mjs` lê os padrões de `.opencode/opencode.json`,
+afirma o miss do wrap no permission layer, **importa o plugin** e exige throw no
+force embrulhado / resolve em `git status`. Apagar o plugin ou a config quebra o
+teste. O plugin é obrigatório para o invariante sob wrap.
 
 ## Autonomia no dia a dia
 
-O config gerenciado põe `bash`/`edit`/tools de leitura em `allow` e só nega os
-destrutivos. `external_directory` libera `~/.agents`, `~/.claude`,
-`~/.config/opencode` e `/tmp`. Reinicie o OpenCode depois do install — config
-não é hot-reload. Para uma sessão pontual sem deny a contornar: `opencode --auto`
-(só transforma `ask` em `allow`; `deny` continua).
+O config gerenciado põe `bash`/`edit`/tools de leitura em `allow`, nega force e
+`--no-verify`, e pede (`ask`) em `gh pr merge`. `external_directory` libera
+`~/.agents`, `~/.claude`, `~/.config/opencode` e `/tmp`. Reinicie o OpenCode
+depois do install — config não é hot-reload. `opencode --auto` transforma `ask`
+em `allow` (merge passaria); `deny` continua.
 
 ## O que não porta
 

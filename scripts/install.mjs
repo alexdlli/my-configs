@@ -618,14 +618,51 @@ async function linkOpenCodeEntries(dryRun) {
   return { links, declaredPaths };
 }
 
+// Bash patterns the harness owns: deny and ask. The catch-all `"*": "allow"` is
+// structural (OpenCode findLast needs something before the specific rules) and
+// is tracked separately as synthesizedBashCatchAll so uninstall can remove it.
+const HARNESS_BASH_ACTIONS = new Set(['deny', 'ask']);
+
+function harnessBashRules(harnessBash) {
+  if (!isPlainObject(harnessBash)) return [];
+  return Object.entries(harnessBash).filter(
+    ([pattern, action]) => HARNESS_BASH_ACTIONS.has(action) && !(pattern === '*' && action === 'allow'),
+  );
+}
+
+function bashPatternKey(pattern, action) {
+  return `${action}\0${pattern}`;
+}
+
+function priorBashPatterns(priorMetadata) {
+  // New shape: [{pattern, action}]. Legacy: addedBashDenyPatterns as strings.
+  if (Array.isArray(priorMetadata.addedBashPatterns)) {
+    return priorMetadata.addedBashPatterns
+      .filter((entry) => entry && typeof entry.pattern === 'string' && HARNESS_BASH_ACTIONS.has(entry.action))
+      .map((entry) => ({ pattern: entry.pattern, action: entry.action }));
+  }
+  if (Array.isArray(priorMetadata.addedBashDenyPatterns)) {
+    return priorMetadata.addedBashDenyPatterns.map((pattern) => ({ pattern, action: 'deny' }));
+  }
+  return [];
+}
+
+// Assign so the key is always the LAST insertion: OpenCode findLast means the
+// last matching rule wins. Reassigning an existing key keeps its old index.
+function setBashRuleLast(bash, pattern, action) {
+  if (Object.hasOwn(bash, pattern)) delete bash[pattern];
+  bash[pattern] = action;
+}
+
 // Merge only the keys the harness owns into the user's OpenCode config.
 // MCP servers, plugins the user added, themes — untouched.
 function buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, priorMetadata) {
   const merged = cloneJson(userConfig);
   const added = {
     addedKeys: [],
-    addedBashDenyPatterns: [],
-    retractedBashDenyPatterns: [],
+    addedBashPatterns: [],
+    retractedBashPatterns: [],
+    synthesizedBashCatchAll: false,
   };
 
   if (Object.hasOwn(harnessConfig, 'default_agent')) {
@@ -646,39 +683,48 @@ function buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, priorMetadat
     }
   }
 
-  const harnessBash = harnessConfig?.permission?.bash;
-  const harnessDenyPatterns = isPlainObject(harnessBash)
-    ? Object.entries(harnessBash)
-        .filter(([, action]) => action === 'deny')
-        .map(([pattern]) => pattern)
-    : [];
+  const rules = harnessBashRules(harnessConfig?.permission?.bash);
+  const previouslyAdded = priorBashPatterns(priorMetadata);
+  const stillDeclared = new Set(rules.map(([pattern, action]) => bashPatternKey(pattern, action)));
+  const retract = previouslyAdded.filter(
+    (entry) => !stillDeclared.has(bashPatternKey(entry.pattern, entry.action)),
+  );
+  added.retractedBashPatterns = retract;
 
-  const previouslyAdded = Array.isArray(priorMetadata.addedBashDenyPatterns)
-    ? priorMetadata.addedBashDenyPatterns
-    : [];
-  const stillDeclared = new Set(harnessDenyPatterns);
-  const retract = previouslyAdded.filter((pattern) => !stillDeclared.has(pattern));
-  added.retractedBashDenyPatterns = retract;
-
-  if (harnessDenyPatterns.length > 0 || retract.length > 0) {
+  if (rules.length > 0 || retract.length > 0) {
     if (!isPlainObject(merged.permission)) merged.permission = {};
     if (typeof merged.permission.bash === 'string') {
-      // Preserve the user's blanket action as the catch-all; OpenCode findLast
-      // means deny patterns must come AFTER it.
       merged.permission.bash = { '*': merged.permission.bash };
     } else if (!isPlainObject(merged.permission.bash)) {
+      // Synthesize catch-all first. Tracked so uninstall does not leave a
+      // bare `"*": "allow"` that is less safe than OpenCode's default (ask).
       merged.permission.bash = { '*': 'allow' };
+      added.synthesizedBashCatchAll = true;
+    } else if (
+      !Object.hasOwn(merged.permission.bash, '*') &&
+      priorMetadata.synthesizedBashCatchAll
+    ) {
+      // Keep a catch-all we previously synthesized at the front if something
+      // deleted it between runs; still ours to retract on uninstall.
+      const rest = { ...merged.permission.bash };
+      merged.permission.bash = { '*': 'allow', ...rest };
+      added.synthesizedBashCatchAll = true;
+    } else if (priorMetadata.synthesizedBashCatchAll && merged.permission.bash['*'] === 'allow') {
+      added.synthesizedBashCatchAll = true;
     }
 
-    for (const pattern of retract) {
-      if (merged.permission.bash[pattern] === 'deny') delete merged.permission.bash[pattern];
+    for (const { pattern } of retract) {
+      delete merged.permission.bash[pattern];
     }
 
-    for (const pattern of harnessDenyPatterns) {
-      if (merged.permission.bash[pattern] === 'deny') continue;
-      merged.permission.bash[pattern] = 'deny';
-      added.addedBashDenyPatterns.push(pattern);
+    for (const [pattern, action] of rules) {
+      // Always delete-then-set so the rule is the last insertion (findLast).
+      setBashRuleLast(merged.permission.bash, pattern, action);
+      added.addedBashPatterns.push({ pattern, action });
     }
+  } else if (priorMetadata.synthesizedBashCatchAll) {
+    // Harness dropped every bash rule; keep the flag so uninstall can clean up.
+    added.synthesizedBashCatchAll = true;
   }
 
   // Only fill missing permission keys the harness declares — never overwrite.
@@ -714,15 +760,26 @@ function buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, priorMetadat
 
 function mergeOpenCodeMetadata(prior, added, links, retractedLinks) {
   const priorLinks = Array.isArray(prior?.addedLinks) ? prior.addedLinks : [];
-  const priorDeny = Array.isArray(prior?.addedBashDenyPatterns) ? prior.addedBashDenyPatterns : [];
   const priorKeys = Array.isArray(prior?.addedKeys) ? prior.addedKeys : [];
+  const priorPatterns = priorBashPatterns(prior);
+  const retractedKeys = new Set(
+    (added.retractedBashPatterns ?? []).map((e) => bashPatternKey(e.pattern, e.action)),
+  );
+  const patternMap = new Map();
+  for (const entry of priorPatterns) {
+    const key = bashPatternKey(entry.pattern, entry.action);
+    if (retractedKeys.has(key)) continue;
+    patternMap.set(key, entry);
+  }
+  for (const entry of added.addedBashPatterns ?? []) {
+    patternMap.set(bashPatternKey(entry.pattern, entry.action), entry);
+  }
   return {
     version: METADATA_VERSION,
     addedKeys: [...new Set([...priorKeys, ...added.addedKeys])],
-    addedBashDenyPatterns: unionWithout(
-      priorDeny,
-      added.addedBashDenyPatterns,
-      added.retractedBashDenyPatterns,
+    addedBashPatterns: [...patternMap.values()],
+    synthesizedBashCatchAll: Boolean(
+      added.synthesizedBashCatchAll || prior.synthesizedBashCatchAll,
     ),
     addedLinks: dedupeWithout(
       priorLinks,
@@ -809,9 +866,27 @@ async function runOpenCodeUninstall(opts) {
     }
   }
   if (isPlainObject(reverted.permission?.bash)) {
-    for (const pattern of raw.addedBashDenyPatterns ?? []) {
-      if (reverted.permission.bash[pattern] === 'deny') delete reverted.permission.bash[pattern];
+    for (const { pattern, action } of priorBashPatterns(raw)) {
+      if (reverted.permission.bash[pattern] === action) delete reverted.permission.bash[pattern];
     }
+    // Bare `"*": "allow"` is less safe than OpenCode's default (ask). Drop it
+    // when we synthesized it, and also when it is the only key left after our
+    // rules are gone (covers metadata written before synthesizedBashCatchAll).
+    const bashKeys = Object.keys(reverted.permission.bash);
+    const onlyOrphanAllow =
+      bashKeys.length === 1 &&
+      bashKeys[0] === '*' &&
+      reverted.permission.bash['*'] === 'allow';
+    if (raw.synthesizedBashCatchAll || onlyOrphanAllow) {
+      if (reverted.permission.bash['*'] === 'allow') delete reverted.permission.bash['*'];
+    }
+    if (Object.keys(reverted.permission.bash).length === 0) delete reverted.permission.bash;
+  }
+  if (isPlainObject(reverted.permission) && Object.keys(reverted.permission).length === 0) {
+    delete reverted.permission;
+  }
+  if (reverted.$schema === 'https://opencode.ai/config.json' && Object.keys(reverted).length === 1) {
+    delete reverted.$schema;
   }
 
   if (opts.dryRun) {
@@ -826,8 +901,15 @@ async function runOpenCodeUninstall(opts) {
     await fs.copyFile(OPENCODE_CONFIG_PATH, backupPath);
     console.log(`✓ backed up opencode.json → ${backupPath}`);
   }
-  await fs.writeFile(OPENCODE_CONFIG_PATH, `${JSON.stringify(reverted, null, 2)}\n`);
-  console.log(`✓ reverted ${OPENCODE_CONFIG_PATH}`);
+  if (Object.keys(reverted).length === 0) {
+    if (existsSync(OPENCODE_CONFIG_PATH)) {
+      await fs.unlink(OPENCODE_CONFIG_PATH);
+      console.log(`✓ removed empty ${OPENCODE_CONFIG_PATH}`);
+    }
+  } else {
+    await fs.writeFile(OPENCODE_CONFIG_PATH, `${JSON.stringify(reverted, null, 2)}\n`);
+    console.log(`✓ reverted ${OPENCODE_CONFIG_PATH}`);
+  }
   if (existsSync(OPENCODE_METADATA_PATH)) {
     await fs.unlink(OPENCODE_METADATA_PATH);
     console.log(`✓ removed ${OPENCODE_METADATA_PATH}`);

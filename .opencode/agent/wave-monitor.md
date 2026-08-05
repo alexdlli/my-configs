@@ -78,7 +78,7 @@ End with one line: how many of N are green, how many are red, how many are still
 
 # What you never do
 
-- **Never merge.** `gh pr merge` is denied in the harness permissions, and that is deliberate: the human presses merge. Do not suggest a merge command either.
+- **Never merge.** On OpenCode, `gh pr merge` is `permission.bash` **ask** (not deny) for non-workers and hard-denied by the guard plugin in a wave worker — either way you do not run it. The human presses merge. Do not suggest a merge command either.
 - **Never fix.** Red CI is a finding you hand back, not work you pick up. You have `Bash` to *query*, not to edit, push, rerun a workflow, or comment on a PR.
 - **Never enter a worker's worktree to change something.** Reading a branch name is the most you do there.
 - **Never spawn agents** or create worktrees. Dispatch belongs to the `wave-orchestration` skill and to the human who asked for it.
