@@ -14,8 +14,8 @@
 //   4. Wire Claude Code: install-mcp + install-hooks + install-instructions.
 //
 // Usage:
-//   node scripts/setup-ai-memory.mjs                      # claude-sub (default)
-//   node scripts/setup-ai-memory.mjs --provider codex-sub # ChatGPT/Codex OAuth
+//   node scripts/setup-ai-memory.mjs                      # ChatGPT/Codex OAuth (default)
+//   node scripts/setup-ai-memory.mjs --provider claude-sub # local claude -p shim
 //   node scripts/setup-ai-memory.mjs --provider anthropic # paid API key
 //   node scripts/setup-ai-memory.mjs --provider local     # Ollama/LM Studio
 //   node scripts/setup-ai-memory.mjs --provider none      # zero-LLM
@@ -24,7 +24,7 @@
 //   node scripts/setup-ai-memory.mjs -h | --help
 //
 // Providers:
-//   claude-sub      (default) openai-compat -> local claude -p shim -> your
+//   claude-sub      openai-compat -> local claude -p shim -> your
 //                   Claude subscription. Sanctioned CLI path; see
 //                   docs/integrations/ai-memory.md for the (in-flux) policy note.
 //                   Requires: `claude` in PATH, logged into your subscription,
@@ -67,6 +67,8 @@ const MAX_PORT = 65535;
 const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5';
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const LOCAL_MODEL = 'qwen3:8b';
+const DEFAULT_DOCKER_CPUS = '2';
+const DEFAULT_DOCKER_MEMORY = '2g';
 
 const PROVIDERS = ['claude-sub', 'codex-sub', 'anthropic', 'anthropic-oauth', 'local', 'none'];
 
@@ -84,7 +86,7 @@ Usage:
   node scripts/setup-ai-memory.mjs [options]
 
 Options:
-  --provider <p>  one of: ${PROVIDERS.join(', ')}   (default: claude-sub)
+  --provider <p>  one of: ${PROVIDERS.join(', ')}   (default: codex-sub)
   --port <n>      shim port for subscription backends (default: ${DEFAULT_PORT})
   --model <m>     LLM model override                  (provider-specific default)
   --no-server     skip starting the container (client-only)
@@ -97,7 +99,7 @@ in-flux subscription-policy caveat.`);
 
 function parseArgs(args) {
   const opts = {
-    provider: 'claude-sub',
+    provider: 'codex-sub',
     port: DEFAULT_PORT,
     model: null,
     server: true,
@@ -351,6 +353,8 @@ function startServer(opts) {
     [
       'run', '-d', '--name', CONTAINER,
       '--restart', 'unless-stopped',
+      '--cpus', env.AI_MEMORY_DOCKER_CPUS || DEFAULT_DOCKER_CPUS,
+      '--memory', env.AI_MEMORY_DOCKER_MEMORY || DEFAULT_DOCKER_MEMORY,
       '-p', `${BIND}:49374`,
       '-v', 'ai-memory-data:/data',
       ...flags,

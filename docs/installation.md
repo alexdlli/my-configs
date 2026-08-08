@@ -144,12 +144,12 @@ Metadata written before this scheme (`version: 1`) has no link records; uninstal
 
 ## Optional: ai-memory (long-term memory)
 
-Separate from the agent harness, [ai-memory](https://github.com/akitaonrails/ai-memory) gives every coding agent a shared, git-versioned markdown wiki so context survives across sessions and across agents. The default `claude-sub` provider routes ai-memory's LLM work through a local `claude -p` shim so it uses your Claude subscription (sanctioned CLI path). Prerequisites: Docker Desktop, the `claude` CLI logged into your subscription, and no `ANTHROPIC_API_KEY` exported.
+Separate from the agent harness, [ai-memory](https://github.com/akitaonrails/ai-memory) gives every coding agent a shared, git-versioned markdown wiki so context survives across sessions and across agents. The default `codex-sub` provider uses ai-memory's native OpenAI OAuth support with your ChatGPT/Codex subscription. Prerequisites: Docker Desktop and one `ai-memory auth login openai-oauth` login.
 
 ```bash
 node scripts/setup-ai-memory.mjs --dry-run    # preview
-node scripts/setup-ai-memory.mjs              # claude-sub (default)
-# or: --provider anthropic | local | none
+node scripts/setup-ai-memory.mjs              # codex-sub (default)
+# or: --provider claude-sub | anthropic | local | none
 ```
 
 Full walkthrough, provider table, the in-flux subscription-policy caveat, and multi-machine sync: [`integrations/ai-memory.md`](integrations/ai-memory.md).

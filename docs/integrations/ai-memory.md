@@ -10,6 +10,8 @@ Two ideas from the [article that prompted this](https://akitaonrails.com/en/2026
 
 ## How it's wired here — subscription providers
 
+The default is `codex-sub`: ai-memory's native `openai-oauth` provider uses the logged-in ChatGPT/Codex subscription directly. The Claude shim below remains available as an explicit fallback via `--provider claude-sub`; it is no longer started by a default install.
+
 The goal was to power ai-memory's LLM work (consolidation + auto-improve) with the **Claude subscription** rather than a paid API key, but through a *sanctioned* mechanism. ai-memory itself only ships two Claude options: `anthropic` (paid key) and `anthropic-oauth` (raw OAuth token spoofed against `/v1/messages` — unofficial, against ToS, fragile). Neither is what we want.
 
 So this harness adds a small bridge:
@@ -39,12 +41,12 @@ Anthropic's [Claude Code legal/compliance doc](https://code.claude.com/docs/en/l
 
 ## Install
 
-Prerequisites: Docker Desktop, Node.js 24+ (the harness installer requires it), and the `claude` CLI **logged into your subscription** (`claude` once interactively). Make sure `ANTHROPIC_API_KEY` is **not** exported in your shell, or Claude Code/the shim would bill the API instead of the subscription.
+Prerequisites for the default path: Docker Desktop, Node.js 24+ (the harness installer requires it), and an OpenAI OAuth login created once with `ai-memory auth login openai-oauth`. The Claude CLI is needed only for the explicit `claude-sub` fallback.
 
 ```bash
 cd ~/Developer/my-configs
 node scripts/setup-ai-memory.mjs --dry-run    # preview every command
-node scripts/setup-ai-memory.mjs              # claude-sub (default)
+node scripts/setup-ai-memory.mjs              # codex-sub (default)
 ```
 
 Verify:
@@ -59,21 +61,24 @@ Then open a new Claude Code session — the SessionStart hook fetches any pendin
 
 | Provider | What it uses | Notes |
 |---|---|---|
-| `claude-sub` *(default)* | Your Claude subscription via the local `claude -p` shim | Sanctioned CLI path; policy in flux (see above). Needs `claude` logged in, no `ANTHROPIC_API_KEY`. |
-| `codex-sub` | Native ai-memory `openai-oauth` provider using your ChatGPT/Codex subscription | Run `ai-memory auth login openai-oauth` once. No `OPENAI_API_KEY`; uses ai-memory's supported default `gpt-5.5`. |
+| `codex-sub` *(default)* | Native ai-memory `openai-oauth` provider using your ChatGPT/Codex subscription | Run `ai-memory auth login openai-oauth` once. No `OPENAI_API_KEY`; uses ai-memory's supported default `gpt-5.5`. |
+| `claude-sub` | Your Claude subscription via the local `claude -p` shim | Sanctioned CLI path; policy in flux (see above). Needs `claude` logged in, no `ANTHROPIC_API_KEY`. |
 | `anthropic` | Paid Platform API key | `ANTHROPIC_API_KEY` in env. Fully supported, ~$0.01–0.05/session with Haiku. |
 | `anthropic-oauth` | Raw OAuth token vs `/v1/messages` | **Unofficial / against ToS.** Fragile. Avoid unless you accept the ban risk. |
 | `local` | Ollama / LM Studio | `openai-compat` → `host.docker.internal:11434/v1`. Free, local, zero ToS risk. Pull the model first. |
 | `none` | Zero-LLM | FTS5 search + rule-based summaries + handoffs. No auto-improve. |
 
 ```bash
-node scripts/setup-ai-memory.mjs --provider codex-sub   # ChatGPT/Codex subscription
+node scripts/setup-ai-memory.mjs                         # ChatGPT/Codex subscription
+node scripts/setup-ai-memory.mjs --provider claude-sub  # Claude subscription fallback
 node scripts/setup-ai-memory.mjs --provider anthropic   # ANTHROPIC_API_KEY set
 node scripts/setup-ai-memory.mjs --provider local --model qwen3:8b
 node scripts/setup-ai-memory.mjs --provider none
 ```
 
 ## Day to day
+
+The container is capped at 2 CPUs and 2 GB RAM by default so it cannot crowd out Metro, Android Studio, Xcode, or other repositories. Override only when needed with `AI_MEMORY_DOCKER_CPUS` and `AI_MEMORY_DOCKER_MEMORY` (Docker memory syntax such as `3g`). Docker automatically selects the native ARM64 image on Apple Silicon; no hard-coded platform flag is needed.
 
 Hooks capture sessions; SessionStart fetches the pending handoff. Useful prompts: "where did we leave off?", "have we discussed X?" / "search memory for Y", "catch me up", "save a permanent note that we standardised on X". Adopt a pre-existing repo:
 
