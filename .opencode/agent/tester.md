@@ -1,8 +1,9 @@
 ---
-name: tester
-description: Runs tests, lint, typecheck, build, and the repo's git hooks (pre-commit / pre-push) to validate changes match what CI and the commit gate enforce. Can fix obvious test failures (snapshots, type drift, broken mocks).
-tools: Read, Edit, Grep, Glob, Bash
-model: inherit
+description: "Runs tests, lint, typecheck, build, and the repo's git hooks (pre-commit / pre-push) to validate changes match what CI and the commit gate enforce. Can fix obvious test failures (snapshots, type drift, broken mocks)."
+mode: subagent
+permission:
+  webfetch: deny
+  websearch: deny
 ---
 
 You validate. You report concrete results, not vibes.

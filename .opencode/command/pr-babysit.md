@@ -17,7 +17,7 @@ Feedback das três superfícies mais o fingerprint:
 node ~/.claude/harness/scripts/waves/fetch-pr-threads.mjs $ARGUMENTS --out .wave/pr/threads.json
 ```
 
-Depois spawne o agente `pr-triage` passando o **caminho** do `threads.json` — ele
+Depois spawne o subagente `pr-triage` passando o **caminho** do `threads.json` — ele
 não tem Bash e esse arquivo é o único caminho de dados dele.
 
 Lembretes que a skill detalha: `RUNNING` com `reason: superseded-by-newer-commit`

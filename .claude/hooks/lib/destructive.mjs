@@ -1,13 +1,18 @@
 // Classification of the Bash commands the harness holds back: merging a PR,
-// force-pushing, and committing with the hooks skipped.
+// merging a branch, force-pushing, committing with the hooks skipped, and
+// backgrounding a loop that never ends.
 //
-// The three are not held back equally. Force-push and `--no-verify` are denied
-// in every context, no exception. Merge is scoped by context — `ask-then-merge`:
-// a wave worker never merges, and anywhere else the command falls through to
-// Claude Code's own permission prompt so Alex can approve it. That scoping is
-// not decided here: `classifyCommand` only reports which rule a command line
-// matches, and `isWorkerOnlyRule` says which rules the caller must weigh against
-// the session context (see lib/worker-context.mjs).
+// The four are not held back equally. Force-push and `--no-verify` are denied
+// in every context, no exception. `gh pr merge` is scoped by session context —
+// `ask-then-merge`: a wave worker never merges, and anywhere else the command
+// falls through to Claude Code's own permission prompt so Alex can approve it.
+// `git merge` is scoped by its destination instead, which is the branch the
+// session is standing on: allowed on a control branch, denied on a protected
+// one. None of that scoping is decided here — `classifyCommand` only reports
+// which rule a command line matches. `isWorkerOnlyRule` says which rules the
+// caller weighs against the session context (lib/worker-context.mjs), and
+// `isBranchScopedRule` which it weighs against the destination
+// (lib/merge-destination.mjs).
 //
 // Why this exists as code and not only as `permissions.deny`: the deny list is
 // string matching against the command as typed. It survives
@@ -22,6 +27,11 @@
 // precision is what matters: a false positive blocks legitimate work, while a
 // false negative costs a command that branch protection on GitHub still
 // refuses. Branch protection is the real guarantee; this is the local net.
+//
+// The loop rule is the one that is not about history: a `while true` sent to
+// the background survives the session that started it, and nothing is left to
+// kill it. It is denied in every context, like force-push — only a literally
+// constant condition counts, so a loop a variable could stop is left alone.
 //
 // Deliberately NOT caught (see docs/guard-destructive.md):
 //   - command substitution: `$(gh pr merge 3)`, backticks
@@ -41,11 +51,15 @@
 export const RULE_GH_PR_MERGE = 'gh-pr-merge';
 export const RULE_GIT_PUSH_FORCE = 'git-push-force';
 export const RULE_GIT_COMMIT_NO_VERIFY = 'git-commit-no-verify';
+export const RULE_GIT_MERGE = 'git-merge';
+export const RULE_ENDLESS_BACKGROUND_LOOP = 'endless-background-loop';
 
 const RULE_LABELS = {
   [RULE_GH_PR_MERGE]: 'gh pr merge',
   [RULE_GIT_PUSH_FORCE]: 'git push --force',
   [RULE_GIT_COMMIT_NO_VERIFY]: 'git commit --no-verify',
+  [RULE_GIT_MERGE]: 'git merge',
+  [RULE_ENDLESS_BACKGROUND_LOOP]: 'endless background loop',
 };
 
 const RULE_GUIDANCE = {
@@ -55,26 +69,56 @@ const RULE_GUIDANCE = {
     'Force-pushing rewrites history someone else may already have. Push a normal commit; if the branch really needs a rewrite, ask Alex.',
   [RULE_GIT_COMMIT_NO_VERIFY]:
     'The commit hooks are the check, not an obstacle. Fix what they report; if the bypass is genuinely required, ask Alex.',
+  [RULE_GIT_MERGE]:
+    'A merge lands on the branch you are standing on, and this one is protected. Agents merge into control branches only (integration/*, wave/*). Switch to the control branch and merge there, or leave the merge to Alex.',
+  [RULE_ENDLESS_BACKGROUND_LOOP]:
+    'A `while true` in the background outlives this session and nobody is left to kill it. There is no `timeout` on this machine (nor `gtimeout`), so the pattern is a counter with a ceiling: `for i in $(seq 1 30); do <check> && break; sleep 2; done`. Give it an explicit duration, and `trap cleanup EXIT INT TERM HUP` if it spawns anything.',
 };
 
 const UNDETERMINED_GUIDANCE =
   'The guard could not tell whether this session is a wave worker, and it denies the merge when it cannot tell. Report it and let Alex merge.';
+
+const UNDETERMINED_DESTINATION_GUIDANCE =
+  'The guard could not read which branch this merge would land on, and it denies the merge when it cannot tell. Check out the control branch explicitly, or let Alex merge.';
+
+const REDIRECTED_DESTINATION_GUIDANCE =
+  'This command points git at another repository (-C, --git-dir, --work-tree), so the branch it would land on is not the one this session is standing on and the guard cannot verify it. Run the merge from inside that checkout.';
 
 // Rules whose denial depends on the session context. Only merge is on this list;
 // putting a second rule here means deciding that the same command is acceptable
 // from the coordinator, which is a policy change, not a refactor.
 const WORKER_ONLY_RULES = new Set([RULE_GH_PR_MERGE]);
 
+// Rules whose denial depends on the branch the merge would land on, weighed by
+// the caller against lib/merge-destination.mjs.
+const BRANCH_SCOPED_RULES = new Set([RULE_GIT_MERGE]);
+
 const ALLOWED = { blocked: false };
 
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
 // Commands whose arguments become shell source when piped into a shell.
 const PIPE_WRITERS = new Set(['echo', 'printf']);
-const ENV_COMMAND = 'env';
+// Launchers that run the rest of the line unchanged. `nohup ... &` is the exact
+// shape of a process that outlives the session, so seeing through it matters
+// more here than anywhere else.
+const TRANSPARENT_LAUNCHERS = new Set(['env', 'nohup', 'setsid', 'stdbuf']);
+
+const BACKGROUND_OPERATOR = '&';
+const LOOP_KEYWORDS = new Set(['while', 'until']);
+const LOOP_BODY_KEYWORD = 'do';
+// Conditions that never stop the loop. `[ 1 ]` and `[[ 1 ]]` reduce to the same
+// thing once the test brackets are dropped.
+const ALWAYS_TRUE = new Set(['true', ':', '1']);
+const ALWAYS_FALSE = new Set(['false', '0']);
+const TEST_BRACKETS = new Set(['[', ']', '[[', ']]', 'test']);
 
 const HELP_FLAGS = new Set(['-h', '--help']);
 const FORCE_PUSH_FLAGS = new Set(['-f', '--force']);
 const NO_VERIFY_FLAGS = new Set(['-n', '--no-verify']);
+// `git merge --abort|--continue|--quit` finishes or undoes a merge already in
+// progress. It creates nothing, and blocking it would strand an agent that is
+// resolving a conflict the guard let it start.
+const MERGE_MAINTENANCE_FLAGS = new Set(['--abort', '--continue', '--quit']);
 // git options that consume the next argument, so the subcommand scan skips it.
 const GIT_VALUE_FLAGS = new Set([
   '-C',
@@ -84,6 +128,10 @@ const GIT_VALUE_FLAGS = new Set([
   '--namespace',
   '--exec-path',
 ]);
+// Options that move git to another checkout: the merge then lands on that
+// repository's HEAD, not the one the session can read. `-c` is config, not a
+// relocation, so it is deliberately absent.
+const REPO_REDIRECT_FLAGS = new Set(['-C', '--git-dir', '--work-tree']);
 
 // `-c`, and the clusters that carry it: `bash -lc`, `sh -ec`, `zsh -euc`.
 const SHELL_SCRIPT_FLAG = /^-[a-zA-Z]*c$/;
@@ -207,12 +255,13 @@ function commandName(token) {
   return slash === -1 ? token.value : token.value.slice(slash + 1);
 }
 
-// `FOO=1 bash -c ...` and `env FOO=1 bash -c ...` reach the same shell.
+// `FOO=1 bash -c ...`, `env FOO=1 bash -c ...` and `nohup bash -c ...` all
+// reach the same shell.
 function stripEnvPrefix(tokens) {
   let start = 0;
   while (start < tokens.length) {
     const token = tokens[start];
-    if (ENV_ASSIGNMENT.test(token.value) || commandName(token) === ENV_COMMAND) {
+    if (ENV_ASSIGNMENT.test(token.value) || TRANSPARENT_LAUNCHERS.has(commandName(token))) {
       start += 1;
       continue;
     }
@@ -262,10 +311,17 @@ function classifyGh(argv) {
 function gitSubcommand(args) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (!arg.startsWith('-')) return { name: arg, args: args.slice(index + 1) };
+    if (!arg.startsWith('-')) {
+      return { name: arg, args: args.slice(index + 1), options: args.slice(0, index) };
+    }
     if (GIT_VALUE_FLAGS.has(arg)) index += 1;
   }
   return null;
+}
+
+// `--git-dir=x` and `--git-dir x` are the same relocation.
+function redirectsRepo(options) {
+  return options.some((option) => REPO_REDIRECT_FLAGS.has(option.split('=', 1)[0]));
 }
 
 function classifyGit(argv) {
@@ -279,10 +335,56 @@ function classifyGit(argv) {
   if (subcommand.name === 'commit' && subcommand.args.some((arg) => NO_VERIFY_FLAGS.has(arg))) {
     return blockedBy(RULE_GIT_COMMIT_NO_VERIFY);
   }
+  if (subcommand.name === 'merge') {
+    if (subcommand.args.some((arg) => MERGE_MAINTENANCE_FLAGS.has(arg))) return ALLOWED;
+    return { ...blockedBy(RULE_GIT_MERGE), redirected: redirectsRepo(subcommand.options) };
+  }
   return ALLOWED;
 }
 
-function classifySegment(segment, segments, index, depth) {
+// A `&` after this point in the line backgrounds what came before it. Anything
+// the outer level already backgrounded stays backgrounded inside the wrapper,
+// which is what makes `nohup bash -c 'while true; do …; done' &` reachable.
+function backgroundedFrom(segments, index, inherited) {
+  return (
+    inherited ||
+    segments.slice(index + 1).some((segment) => segment.precededBy === BACKGROUND_OPERATOR)
+  );
+}
+
+function loopCondition(tokens) {
+  const condition = [];
+  for (const token of tokens.slice(1)) {
+    if (!token.quoted && token.value === LOOP_BODY_KEYWORD) break;
+    condition.push(token.value);
+  }
+  return condition.filter((value) => !TEST_BRACKETS.has(value));
+}
+
+// Only a literally constant condition counts. Anything a variable could change
+// is a loop that may well terminate, and guessing costs the false positive this
+// guard cannot afford.
+function startsEndlessLoop(segment) {
+  const [head] = segment.tokens;
+  if (!head || head.quoted || !LOOP_KEYWORDS.has(head.value)) return false;
+  const condition = loopCondition(segment.tokens);
+  if (condition.length !== 1) return false;
+  return head.value === 'while'
+    ? ALWAYS_TRUE.has(condition[0])
+    : ALWAYS_FALSE.has(condition[0]);
+}
+
+function findEndlessBackgroundLoop(segments, backgrounded) {
+  for (let index = 0; index < segments.length; index += 1) {
+    if (!startsEndlessLoop(segments[index])) continue;
+    if (backgroundedFrom(segments, index, backgrounded)) {
+      return blockedBy(RULE_ENDLESS_BACKGROUND_LOOP);
+    }
+  }
+  return ALLOWED;
+}
+
+function classifySegment(segment, segments, index, depth, backgrounded) {
   const argv = stripEnvPrefix(segment.tokens);
   if (argv.length === 0) return ALLOWED;
   const name = commandName(argv[0]);
@@ -292,8 +394,9 @@ function classifySegment(segment, segments, index, depth) {
     let scripts = [];
     if (script !== null) scripts = [script];
     else if (segment.precededBy === PIPE) scripts = pipelineScripts(segments, index);
+    const inherited = backgroundedFrom(segments, index, backgrounded);
     for (const source of scripts) {
-      const finding = classify(source, depth + 1);
+      const finding = classify(source, depth + 1, inherited);
       if (finding.blocked) return { ...finding, wrapped: true };
     }
     return ALLOWED;
@@ -304,14 +407,14 @@ function classifySegment(segment, segments, index, depth) {
   return ALLOWED;
 }
 
-function classify(command, depth) {
+function classify(command, depth, backgrounded = false) {
   if (depth > MAX_WRAPPER_DEPTH || command.trim() === '') return ALLOWED;
   const segments = scan(stripHeredocBodies(command));
   for (let index = 0; index < segments.length; index += 1) {
-    const finding = classifySegment(segments[index], segments, index, depth);
+    const finding = classifySegment(segments[index], segments, index, depth, backgrounded);
     if (finding.blocked) return finding;
   }
-  return ALLOWED;
+  return findEndlessBackgroundLoop(segments, backgrounded);
 }
 
 /**
@@ -332,13 +435,26 @@ export function isWorkerOnlyRule(rule) {
 }
 
 /**
+ * @param {string} rule One of the exported `RULE_*` constants.
+ * @returns {boolean} True when the denial depends on the branch the merge lands on.
+ */
+export function isBranchScopedRule(rule) {
+  return BRANCH_SCOPED_RULES.has(rule);
+}
+
+/**
  * @param {{rule: string, wrapped: boolean}} finding Verdict from `classifyCommand`.
- * @param {{undetermined?: boolean}} [context] Set `undetermined` when the denial
- *   comes from not being able to tell whether this session is a worker.
+ * @param {{undetermined?: boolean, destination?: string}} [context] Set
+ *   `undetermined` when the denial comes from not being able to tell whether
+ *   this session is a worker; set `destination` to `'indeterminate'` or
+ *   `'redirected'` when the merge destination is what could not be established.
  * @returns {string} Reason shown to the agent, naming the rule and the way out.
  */
-export function denialReason(finding, { undetermined = false } = {}) {
+export function denialReason(finding, { undetermined = false, destination } = {}) {
   const origin = finding.wrapped ? 'wrapped in a shell' : 'called directly';
-  const guidance = undetermined ? UNDETERMINED_GUIDANCE : RULE_GUIDANCE[finding.rule];
+  let guidance = RULE_GUIDANCE[finding.rule];
+  if (undetermined) guidance = UNDETERMINED_GUIDANCE;
+  else if (destination === 'redirected') guidance = REDIRECTED_DESTINATION_GUIDANCE;
+  else if (destination === 'indeterminate') guidance = UNDETERMINED_DESTINATION_GUIDANCE;
   return `guard-destructive: blocked "${RULE_LABELS[finding.rule]}" (${origin}). ${guidance}`;
 }

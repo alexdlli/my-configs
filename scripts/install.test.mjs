@@ -162,11 +162,17 @@ function recordedPaths(sandbox) {
 }
 
 function declaredPaths({ home }, skills) {
+  // Claude metadata only records ~/.claude links. OpenCode links live in a
+  // separate metadata file under ~/.config/opencode.
   return [
     join(home, '.claude', 'harness'),
     ...HARNESS_DIRS.map((name) => join(home, '.claude', name)),
     ...skills.map((name) => join(home, '.claude', 'skills', name)),
   ].sort();
+}
+
+function agentsSkillLink({ home }, name) {
+  return join(home, '.agents', 'skills', name);
 }
 
 function plantForeignLink(sandbox, name) {
@@ -187,6 +193,7 @@ test('a link the harness still declares survives a re-install', () => {
 
     for (const name of [ALPHA, BETA]) {
       assert.equal(readlinkSync(skillLink(sandbox, name)), harnessSkill(sandbox, name));
+      assert.equal(readlinkSync(agentsSkillLink(sandbox, name)), harnessSkill(sandbox, name));
     }
     assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, [ALPHA, BETA]));
   });
@@ -374,5 +381,129 @@ test('retraction leaves the harness directory links alone', () => {
       );
     }
     assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, []));
+  });
+});
+
+test('harness skills are also linked into ~/.agents/skills for OpenCode', () => {
+  withSandbox([ALPHA, BETA], (sandbox) => {
+    install(sandbox);
+
+    for (const name of [ALPHA, BETA]) {
+      assert.equal(readlinkSync(agentsSkillLink(sandbox, name)), harnessSkill(sandbox, name));
+    }
+
+    declareSkills(sandbox.harness, [ALPHA]);
+    install(sandbox);
+
+    assert.equal(linkPresent(agentsSkillLink(sandbox, BETA)), false);
+    assert.equal(readlinkSync(agentsSkillLink(sandbox, ALPHA)), harnessSkill(sandbox, ALPHA));
+  });
+});
+
+test('OpenCode agent entries are linked one by one under ~/.config/opencode', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    const agentSrc = join(sandbox.harness, '.opencode', 'agent');
+    mkdirSync(agentSrc, { recursive: true });
+    writeFileSync(join(agentSrc, 'orchestrator.md'), '---\nmode: primary\n---\ncoord\n');
+    writeFileSync(
+      join(sandbox.harness, '.opencode', 'opencode.json'),
+      `${JSON.stringify({
+        default_agent: 'orchestrator',
+        permission: {
+          bash: {
+            '*': 'allow',
+            'git push --force': 'deny',
+            'git push --force *': 'deny',
+            'gh pr merge *': 'ask',
+          },
+        },
+      }, null, 2)}\n`,
+    );
+
+    install(sandbox);
+
+    const dest = join(sandbox.home, '.config', 'opencode', 'agent', 'orchestrator.md');
+    assert.equal(readlinkSync(dest), join(agentSrc, 'orchestrator.md'));
+    const cfg = JSON.parse(readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'));
+    assert.equal(cfg.default_agent, 'orchestrator');
+    assert.equal(cfg.permission.bash['git push --force *'], 'deny');
+    assert.equal(cfg.permission.bash['gh pr merge *'], 'ask');
+    assert.equal(cfg.permission.bash['*'], 'allow');
+    // findLast order: specific rules must be AFTER the catch-all.
+    assert.ok(
+      Object.keys(cfg.permission.bash).indexOf('*') <
+        Object.keys(cfg.permission.bash).indexOf('git push --force *'),
+    );
+  });
+});
+
+test('OpenCode bash deny is re-inserted last when the key already existed earlier', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    mkdirSync(join(sandbox.home, '.config', 'opencode'), { recursive: true });
+    writeFileSync(
+      join(sandbox.home, '.config', 'opencode', 'opencode.json'),
+      `${JSON.stringify({
+        permission: {
+          bash: {
+            'git push --force *': 'ask',
+            '*': 'allow',
+          },
+        },
+      }, null, 2)}\n`,
+    );
+    mkdirSync(join(sandbox.harness, '.opencode'), { recursive: true });
+    writeFileSync(
+      join(sandbox.harness, '.opencode', 'opencode.json'),
+      `${JSON.stringify({
+        permission: { bash: { '*': 'allow', 'git push --force *': 'deny' } },
+      }, null, 2)}\n`,
+    );
+
+    install(sandbox);
+
+    const bash = JSON.parse(
+      readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'),
+    ).permission.bash;
+    const keys = Object.keys(bash);
+    assert.equal(bash['git push --force *'], 'deny');
+    assert.ok(keys.indexOf('*') < keys.indexOf('git push --force *'), keys.join(','));
+    assert.equal(keys.at(-1), 'git push --force *');
+  });
+});
+
+// The orphan can only be left behind in a config that SURVIVES uninstall, so
+// the user config is seeded with a key of their own. Without it the installer
+// deletes the whole file and every assertion below becomes unreachable — the
+// earlier version of this test guarded them behind `if (file exists)` and so
+// proved nothing.
+test('OpenCode uninstall removes the synthesized catch-all and does not leave allow-all', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    mkdirSync(join(sandbox.harness, '.opencode'), { recursive: true });
+    writeFileSync(
+      join(sandbox.harness, '.opencode', 'opencode.json'),
+      `${JSON.stringify({
+        permission: { bash: { '*': 'allow', 'git push --force *': 'deny', 'gh pr merge *': 'ask' } },
+      }, null, 2)}\n`,
+    );
+    mkdirSync(join(sandbox.home, '.config', 'opencode'), { recursive: true });
+    const cfgPath = join(sandbox.home, '.config', 'opencode', 'opencode.json');
+    writeFileSync(cfgPath, `${JSON.stringify({ theme: 'tokyonight' }, null, 2)}\n`);
+
+    install(sandbox);
+    const afterInstall = JSON.parse(readFileSync(cfgPath, 'utf8'));
+    assert.equal(afterInstall.permission.bash['*'], 'allow');
+    assert.equal(afterInstall.permission.bash['git push --force *'], 'deny');
+
+    install(sandbox, '--uninstall');
+
+    assert.ok(
+      lstatSync(cfgPath, { throwIfNoEntry: false }),
+      'a config holding a key of the user\'s own must survive uninstall',
+    );
+    const after = JSON.parse(readFileSync(cfgPath, 'utf8'));
+    assert.equal(after.theme, 'tokyonight', 'uninstall never touches what the user wrote');
+    assert.equal(after.permission?.bash?.['*'], undefined, 'orphan * allow must not survive');
+    assert.equal(after.permission?.bash?.['git push --force *'], undefined);
+    assert.equal(after.permission?.bash?.['gh pr merge *'], undefined);
   });
 });

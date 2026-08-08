@@ -144,7 +144,9 @@ Limitação que muda o desenho: **`Monitor` não sobrevive ao fim da sessão** �
 daemon. Se a sessão vai acabar antes do CI, registre as duas chaves (`ciKey` e
 `reviewKey`) e o que já foi triado, e retome pelo passo 1 na sessão seguinte.
 
-## Nunca fazer merge
+## Nunca fazer merge do PR
 
-O ciclo entrega um PR review-ready e para. `gh pr merge` está negado nas
-permissões do harness, e isso é intencional: quem aperta merge é o humano.
+O ciclo entrega um PR review-ready e para. Quem aperta merge é o humano, e isso
+é intencional. Fonte da política — inclusive por que `gh pr merge` **não** está
+mais no `permissions.deny` e o que sobrou barrando o worker:
+[`docs/guard-destructive.md`](../../../docs/guard-destructive.md).

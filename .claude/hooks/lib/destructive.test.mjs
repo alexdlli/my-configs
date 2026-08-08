@@ -2,11 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  RULE_ENDLESS_BACKGROUND_LOOP,
   RULE_GH_PR_MERGE,
   RULE_GIT_COMMIT_NO_VERIFY,
+  RULE_GIT_MERGE,
   RULE_GIT_PUSH_FORCE,
   classifyCommand,
   denialReason,
+  isBranchScopedRule,
   isWorkerOnlyRule,
 } from './destructive.mjs';
 
@@ -125,6 +128,106 @@ test('merge is the only rule scoped to the worker context', () => {
   assert.equal(isWorkerOnlyRule(RULE_GH_PR_MERGE), true);
   assert.equal(isWorkerOnlyRule(RULE_GIT_PUSH_FORCE), false);
   assert.equal(isWorkerOnlyRule(RULE_GIT_COMMIT_NO_VERIFY), false);
+});
+
+test('git merge is classified, and wrapped forms are unwrapped like the rest', () => {
+  assertBlocked('git merge feat/opencode-harness', RULE_GIT_MERGE);
+  assertBlocked('git merge --no-ff origin/main', RULE_GIT_MERGE);
+  assert.equal(classifyCommand('bash -c "git merge main"').rule, RULE_GIT_MERGE);
+  assert.equal(classifyCommand('bash -c "git merge main"').wrapped, true);
+});
+
+// git merge is scoped by destination, gh pr merge by session. The two never
+// swap: gh pr merge's destination is remote state, and reading it would put a
+// network call in a PreToolUse hook.
+test('git merge is scoped by branch and gh pr merge is not', () => {
+  assert.equal(isBranchScopedRule(RULE_GIT_MERGE), true);
+  assert.equal(isBranchScopedRule(RULE_GH_PR_MERGE), false);
+  assert.equal(isBranchScopedRule(RULE_GIT_PUSH_FORCE), false);
+  assert.equal(isWorkerOnlyRule(RULE_GIT_MERGE), false);
+});
+
+// Finishing or undoing a merge already in progress creates nothing. Blocking
+// these would strand an agent halfway through a conflict the guard let it start.
+test('the merge maintenance flags are not a merge', () => {
+  assertAllowed('git merge --abort');
+  assertAllowed('git merge --continue');
+  assertAllowed('git merge --quit');
+});
+
+test('the merge lookalikes are not a merge', () => {
+  assertAllowed('git merge-base main HEAD');
+  assertAllowed('git merge-file a b c');
+  assertAllowed('git log --merges');
+  assertAllowed('git merge --help');
+});
+
+// -C/--git-dir/--work-tree move git to another checkout, so the branch the
+// merge lands on is not the one this session can read. Unverifiable, therefore
+// refused — and flagged separately so the message can say why.
+test('a merge pointed at another repository is flagged as unverifiable', () => {
+  assert.equal(classifyCommand('git -C /other/repo merge main').redirected, true);
+  assert.equal(classifyCommand('git --git-dir=/other/.git merge main').redirected, true);
+  assert.equal(classifyCommand('git --work-tree /other merge main').redirected, true);
+  assert.equal(classifyCommand('git merge main').redirected, false);
+  // -c sets config, it does not relocate the repo.
+  assert.equal(classifyCommand('git -c user.name=x merge main').redirected, false);
+});
+
+// The leak this closes: a backgrounded endless loop outlives the session that
+// started it, and nothing is left to kill it.
+test('an endless loop sent to the background is blocked', () => {
+  assertBlocked('while true; do sleep 1; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('while :; do echo hi; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('until false; do sleep 5; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('while [ 1 ]; do sleep 1; done &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('while true\ndo\n  sleep 1\ndone &', RULE_ENDLESS_BACKGROUND_LOOP);
+});
+
+// `nohup … &` is the shape that actually leaks, and the `&` lives in the outer
+// command while the loop lives in the inner script. The background flag has to
+// cross the wrapper or this whole rule misses its main case.
+test('backgrounding carries into the wrapped script', () => {
+  assertBlocked(`bash -c 'while true; do sleep 1; done' &`, RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('nohup bash -c "while true; do sleep 1; done" &', RULE_ENDLESS_BACKGROUND_LOOP);
+  assertBlocked('setsid sh -c "until false; do sleep 1; done" &', RULE_ENDLESS_BACKGROUND_LOOP);
+});
+
+// Only a literally constant condition counts. A loop a variable can stop may
+// well terminate, and blocking it would be the false positive that costs more
+// than the leak.
+test('a loop that can end, or that stays in the foreground, is left alone', () => {
+  assertAllowed('while true; do sleep 1; done');
+  assertAllowed('while [ $i -lt 10 ]; do i=$((i+1)); done &');
+  assertAllowed('while read -r line; do echo $line; done &');
+  assertAllowed('for i in $(seq 1 30); do check && break; sleep 2; done &');
+  assertAllowed('npm run dev &');
+  assertAllowed(`echo 'while true; do sleep 1; done &'`);
+  assertAllowed('grep -rn "while true" docs/');
+});
+
+// There is no `timeout` on this machine and no `gtimeout` either (measured),
+// so the denial has to hand over the pattern that does work. A rule that only
+// forbids teaches the agent nothing and gets worked around.
+test('the loop denial names the substitute, because timeout does not exist here', () => {
+  const reason = denialReason(classifyCommand('while true; do sleep 1; done &'));
+  assert.match(reason, /endless background loop/);
+  assert.match(reason, /no `timeout` on this machine/);
+  assert.match(reason, /seq 1 30/);
+  assert.match(reason, /trap cleanup EXIT INT TERM HUP/);
+});
+
+test('the merge denial explains the destination it could not accept', () => {
+  const finding = classifyCommand('git merge main');
+  const protectedReason = denialReason(finding);
+  assert.match(protectedReason, /git merge/);
+  assert.match(protectedReason, /integration\/\*/);
+
+  const unreadable = denialReason(finding, { destination: 'indeterminate' });
+  assert.match(unreadable, /could not read which branch/);
+
+  const redirected = denialReason(finding, { destination: 'redirected' });
+  assert.match(redirected, /another repository/);
 });
 
 test('the denial reason names the rule and what to do instead', () => {

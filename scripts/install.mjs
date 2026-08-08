@@ -49,6 +49,16 @@ const SELF_REFERENCE_LINK = path.join(TARGET_DIR, 'harness');
 const HARNESS_SKILLS_DIR = path.join(HARNESS_ROOT, '.claude', 'skills');
 const TARGET_SKILLS_DIR = path.join(TARGET_DIR, 'skills');
 
+// OpenCode reads skills from ~/.agents/skills (and also ~/.claude/skills).
+// Agents, commands and plugins are NOT under .agents/ — only skills are.
+// Those live under ~/.config/opencode/{agent,command,plugin}/.
+const AGENTS_SKILLS_DIR = path.join(HOME, '.agents', 'skills');
+const OPENCODE_DIR = path.join(HOME, '.config', 'opencode');
+const OPENCODE_CONFIG_PATH = path.join(OPENCODE_DIR, 'opencode.json');
+const OPENCODE_METADATA_PATH = path.join(OPENCODE_DIR, '.my-configs-managed.json');
+const HARNESS_OPENCODE_DIR = path.join(HARNESS_ROOT, '.opencode');
+const OPENCODE_ENTRY_DIRS = ['agent', 'command', 'plugin'];
+
 // Skills installed by other toolkits outside ~/.claude/skills. Claude Code only
 // loads what lives under ~/.claude/skills, so without a link these are inert.
 // Empty today; add `'<name>': '<absolute path>'` to expose one. A target that is
@@ -66,34 +76,30 @@ const CONFLICT_BACKUP = 'backup';
 const CONFLICT_SKIP = 'skip';
 
 function usage() {
-  console.log(`Install the personal Claude Code harness into ~/.claude/.
+  console.log(`Install the personal harness into ~/.claude/ and the OpenCode surface.
 
 Usage:
   node scripts/install.mjs [options]
 
 Options:
   --dry-run        Print the plan; do not touch the filesystem
-  --force-agent    Overwrite settings.agent even if user already set it
+  --force-agent    Overwrite settings.agent / OpenCode default_agent if set
   --uninstall      Remove symlinks and revert the keys this installer added
   -h, --help       Show this help
 
-What gets installed:
-  ~/.claude/harness  → symlink to the harness checkout root, so skills and hooks
-                     can reach scripts/** without hardcoding a clone path
-  ~/.claude/agents   → symlink to <harness>/.claude/agents
-  ~/.claude/hooks    → symlink to <harness>/.claude/hooks
-  ~/.claude/commands → symlink to <harness>/.claude/commands
-  ~/.claude/skills/<name> → one symlink per entry in <harness>/.claude/skills,
-                     plus any external skill the harness exposes (none today).
-                     Never the directory itself: it is shared with skills from
-                     plugins and other toolkits. A name that already exists and
-                     is not ours is reported and skipped, never overwritten.
-  ~/.claude/settings.json deep-merged: adds agent, permissions.allow entries,
-                     and every hook event declared by the harness settings. All
-                     other keys (theme, enabledPlugins, extraKnownMarketplaces,
-                     ...) are left untouched.
-  ~/.claude/.my-configs-managed.json records exactly what was added so that
-                     --uninstall can revert it without nuking user state.
+Claude Code (~/.claude/):
+  harness, agents, hooks, commands → directory symlinks into the checkout
+  skills/<name> → one symlink per harness skill (never the directory itself)
+  settings.json deep-merged (agent, permissions, hooks)
+  .my-configs-managed.json records what was added
+
+OpenCode:
+  ~/.agents/skills/<name> → same harness skills, one entry at a time
+    (.agents/ is skills-only; OpenCode does not read agents/commands from there)
+  ~/.config/opencode/agent|command|plugin/<entry> → one symlink each from
+    <harness>/.opencode/{agent,command,plugin}/
+  ~/.config/opencode/opencode.json deep-merged: default_agent + permission
+    deny rules the harness owns. MCP and other user keys are left untouched.
 
 What gets retracted:
   A link recorded in the metadata whose path the harness no longer declares is
@@ -549,25 +555,365 @@ async function skillSources() {
   };
 }
 
-async function linkSkills(sources, dryRun) {
-  if (sources.size === 0) return [];
-
-  if (!existsSync(TARGET_SKILLS_DIR)) {
-    if (dryRun) {
-      console.log(`→ would create ${TARGET_SKILLS_DIR}`);
-    } else {
-      await fs.mkdir(TARGET_SKILLS_DIR, { recursive: true });
-      console.log(`✓ created ${TARGET_SKILLS_DIR}`);
-    }
+async function ensureDir(dir, dryRun) {
+  if (existsSync(dir)) return;
+  if (dryRun) {
+    console.log(`→ would create ${dir}`);
+    return;
   }
+  await fs.mkdir(dir, { recursive: true });
+  console.log(`✓ created ${dir}`);
+}
+
+async function linkSkillsInto(targetDir, sources, dryRun) {
+  if (sources.size === 0) return [];
+  await ensureDir(targetDir, dryRun);
 
   const links = [];
   for (const [name, target] of sources) {
-    links.push(
-      await ensureLink(path.join(TARGET_SKILLS_DIR, name), target, dryRun, CONFLICT_SKIP),
-    );
+    links.push(await ensureLink(path.join(targetDir, name), target, dryRun, CONFLICT_SKIP));
   }
   return links;
+}
+
+async function linkSkills(sources, dryRun) {
+  return linkSkillsInto(TARGET_SKILLS_DIR, sources, dryRun);
+}
+
+// Same skills, second surface: OpenCode auto-loads ~/.agents/skills/**/SKILL.md.
+// Shared directory with 40+ third-party skills — one entry at a time, never overwrite.
+async function linkAgentsSkills(sources, dryRun) {
+  return linkSkillsInto(AGENTS_SKILLS_DIR, sources, dryRun);
+}
+
+async function opencodeEntryNames(subdir) {
+  const dir = path.join(HARNESS_OPENCODE_DIR, subdir);
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    die(`cannot read ${dir} (${err.code ?? err.message}).`);
+  }
+  return entries
+    .filter((entry) => !entry.name.startsWith('.'))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function linkOpenCodeEntries(dryRun) {
+  const links = [];
+  const declaredPaths = [];
+  for (const subdir of OPENCODE_ENTRY_DIRS) {
+    const names = await opencodeEntryNames(subdir);
+    const targetParent = path.join(OPENCODE_DIR, subdir);
+    if (names.length > 0) await ensureDir(targetParent, dryRun);
+    for (const name of names) {
+      const dest = path.join(targetParent, name);
+      const target = path.join(HARNESS_OPENCODE_DIR, subdir, name);
+      declaredPaths.push(dest);
+      links.push(await ensureLink(dest, target, dryRun, CONFLICT_SKIP));
+    }
+  }
+  return { links, declaredPaths };
+}
+
+// Bash patterns the harness owns: deny and ask. The catch-all `"*": "allow"` is
+// structural (OpenCode findLast needs something before the specific rules) and
+// is tracked separately as synthesizedBashCatchAll so uninstall can remove it.
+const HARNESS_BASH_ACTIONS = new Set(['deny', 'ask']);
+
+function harnessBashRules(harnessBash) {
+  if (!isPlainObject(harnessBash)) return [];
+  return Object.entries(harnessBash).filter(
+    ([pattern, action]) => HARNESS_BASH_ACTIONS.has(action) && !(pattern === '*' && action === 'allow'),
+  );
+}
+
+function bashPatternKey(pattern, action) {
+  return `${action}\0${pattern}`;
+}
+
+function priorBashPatterns(priorMetadata) {
+  // New shape: [{pattern, action}]. Legacy: addedBashDenyPatterns as strings.
+  if (Array.isArray(priorMetadata.addedBashPatterns)) {
+    return priorMetadata.addedBashPatterns
+      .filter((entry) => entry && typeof entry.pattern === 'string' && HARNESS_BASH_ACTIONS.has(entry.action))
+      .map((entry) => ({ pattern: entry.pattern, action: entry.action }));
+  }
+  if (Array.isArray(priorMetadata.addedBashDenyPatterns)) {
+    return priorMetadata.addedBashDenyPatterns.map((pattern) => ({ pattern, action: 'deny' }));
+  }
+  return [];
+}
+
+// Assign so the key is always the LAST insertion: OpenCode findLast means the
+// last matching rule wins. Reassigning an existing key keeps its old index.
+function setBashRuleLast(bash, pattern, action) {
+  if (Object.hasOwn(bash, pattern)) delete bash[pattern];
+  bash[pattern] = action;
+}
+
+// Merge only the keys the harness owns into the user's OpenCode config.
+// MCP servers, plugins the user added, themes — untouched.
+function buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, priorMetadata) {
+  const merged = cloneJson(userConfig);
+  const added = {
+    addedKeys: [],
+    addedBashPatterns: [],
+    retractedBashPatterns: [],
+    synthesizedBashCatchAll: false,
+  };
+
+  if (Object.hasOwn(harnessConfig, 'default_agent')) {
+    const harnessAgent = harnessConfig.default_agent;
+    if (Object.hasOwn(merged, 'default_agent')) {
+      if (merged.default_agent !== harnessAgent) {
+        if (!opts.forceAgent) {
+          die(
+            `opencode default_agent is already "${merged.default_agent}". ` +
+              `Re-run with --force-agent to overwrite to "${harnessAgent}".`,
+          );
+        }
+        merged.default_agent = harnessAgent;
+      }
+    } else {
+      merged.default_agent = harnessAgent;
+      added.addedKeys.push('default_agent');
+    }
+  }
+
+  const rules = harnessBashRules(harnessConfig?.permission?.bash);
+  const previouslyAdded = priorBashPatterns(priorMetadata);
+  const stillDeclared = new Set(rules.map(([pattern, action]) => bashPatternKey(pattern, action)));
+  const retract = previouslyAdded.filter(
+    (entry) => !stillDeclared.has(bashPatternKey(entry.pattern, entry.action)),
+  );
+  added.retractedBashPatterns = retract;
+
+  if (rules.length > 0 || retract.length > 0) {
+    if (!isPlainObject(merged.permission)) merged.permission = {};
+    if (typeof merged.permission.bash === 'string') {
+      merged.permission.bash = { '*': merged.permission.bash };
+    } else if (!isPlainObject(merged.permission.bash)) {
+      // Synthesize catch-all first. Tracked so uninstall does not leave a
+      // bare `"*": "allow"` that is less safe than OpenCode's default (ask).
+      merged.permission.bash = { '*': 'allow' };
+      added.synthesizedBashCatchAll = true;
+    } else if (
+      !Object.hasOwn(merged.permission.bash, '*') &&
+      priorMetadata.synthesizedBashCatchAll
+    ) {
+      // Keep a catch-all we previously synthesized at the front if something
+      // deleted it between runs; still ours to retract on uninstall.
+      const rest = { ...merged.permission.bash };
+      merged.permission.bash = { '*': 'allow', ...rest };
+      added.synthesizedBashCatchAll = true;
+    } else if (priorMetadata.synthesizedBashCatchAll && merged.permission.bash['*'] === 'allow') {
+      added.synthesizedBashCatchAll = true;
+    }
+
+    for (const { pattern } of retract) {
+      delete merged.permission.bash[pattern];
+    }
+
+    for (const [pattern, action] of rules) {
+      // Always delete-then-set so the rule is the last insertion (findLast).
+      setBashRuleLast(merged.permission.bash, pattern, action);
+      added.addedBashPatterns.push({ pattern, action });
+    }
+  } else if (priorMetadata.synthesizedBashCatchAll) {
+    // Harness dropped every bash rule; keep the flag so uninstall can clean up.
+    added.synthesizedBashCatchAll = true;
+  }
+
+  // Only fill missing permission keys the harness declares — never overwrite.
+  const harnessPerm = harnessConfig?.permission;
+  if (isPlainObject(harnessPerm)) {
+    if (!isPlainObject(merged.permission)) merged.permission = {};
+    for (const key of [
+      'external_directory',
+      'doom_loop',
+      'edit',
+      'read',
+      'glob',
+      'grep',
+      'list',
+      'task',
+      'skill',
+      'webfetch',
+      'websearch',
+    ]) {
+      if (!Object.hasOwn(harnessPerm, key)) continue;
+      if (Object.hasOwn(merged.permission, key)) continue;
+      merged.permission[key] = cloneJson(harnessPerm[key]);
+      added.addedKeys.push(`permission.${key}`);
+    }
+  }
+
+  if (!Object.hasOwn(merged, '$schema') && Object.keys(harnessConfig).length > 0) {
+    merged.$schema = 'https://opencode.ai/config.json';
+  }
+
+  return { merged, added };
+}
+
+function mergeOpenCodeMetadata(prior, added, links, retractedLinks) {
+  const priorLinks = Array.isArray(prior?.addedLinks) ? prior.addedLinks : [];
+  const priorKeys = Array.isArray(prior?.addedKeys) ? prior.addedKeys : [];
+  const priorPatterns = priorBashPatterns(prior);
+  const retractedKeys = new Set(
+    (added.retractedBashPatterns ?? []).map((e) => bashPatternKey(e.pattern, e.action)),
+  );
+  const patternMap = new Map();
+  for (const entry of priorPatterns) {
+    const key = bashPatternKey(entry.pattern, entry.action);
+    if (retractedKeys.has(key)) continue;
+    patternMap.set(key, entry);
+  }
+  for (const entry of added.addedBashPatterns ?? []) {
+    patternMap.set(bashPatternKey(entry.pattern, entry.action), entry);
+  }
+  return {
+    version: METADATA_VERSION,
+    addedKeys: [...new Set([...priorKeys, ...added.addedKeys])],
+    addedBashPatterns: [...patternMap.values()],
+    synthesizedBashCatchAll: Boolean(
+      added.synthesizedBashCatchAll || prior.synthesizedBashCatchAll,
+    ),
+    addedLinks: dedupeWithout(
+      priorLinks,
+      links.filter((l) => l.owned).map(({ path: dest, target }) => ({ path: dest, target })),
+      retractedLinks,
+      linkSignature,
+    ),
+  };
+}
+
+async function writeOpenCodeConfigAtomic(merged) {
+  await fs.mkdir(OPENCODE_DIR, { recursive: true });
+  const tmpPath = path.join(OPENCODE_DIR, '.opencode.json.tmp');
+  if (existsSync(OPENCODE_CONFIG_PATH)) {
+    const backupPath = `${OPENCODE_CONFIG_PATH}.backup-${Date.now()}`;
+    await fs.copyFile(OPENCODE_CONFIG_PATH, backupPath);
+    console.log(`✓ backed up previous opencode.json → ${backupPath}`);
+  }
+  await fs.writeFile(tmpPath, `${JSON.stringify(merged, null, 2)}\n`);
+  await fs.rename(tmpPath, OPENCODE_CONFIG_PATH);
+}
+
+async function runOpenCodeInstall(opts, skillSourcesMap) {
+  console.log();
+  console.log(`opencode: ${OPENCODE_DIR}`);
+  console.log(`agents skills: ${AGENTS_SKILLS_DIR}`);
+
+  const prior = await readJsonOrEmpty(OPENCODE_METADATA_PATH);
+  const agentsSkillLinks = await linkAgentsSkills(skillSourcesMap, opts.dryRun);
+  const { links: entryLinks, declaredPaths: entryDeclared } = await linkOpenCodeEntries(opts.dryRun);
+  const allNewLinks = [...agentsSkillLinks, ...entryLinks];
+
+  const skillDeclared = [...skillSourcesMap.keys()].map((name) =>
+    path.join(AGENTS_SKILLS_DIR, name),
+  );
+  // External skills declared for Claude still count as declared for agents skills
+  // only when they resolve through skillSourcesMap (same map).
+  const declaredPaths = new Set([
+    ...allNewLinks.map((l) => l.path),
+    ...skillDeclared,
+    ...entryDeclared,
+  ]);
+
+  const harnessConfig = await readJsonOrEmpty(path.join(HARNESS_OPENCODE_DIR, 'opencode.json'));
+  const userConfig = await readJsonOrEmpty(OPENCODE_CONFIG_PATH);
+  const { merged, added } = buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, prior);
+
+  const priorLinks = Array.isArray(prior?.addedLinks) ? prior.addedLinks : [];
+  const retractedLinks = await retractLinks(priorLinks, declaredPaths, opts.dryRun);
+
+  if (opts.dryRun) {
+    console.log('→ would merge opencode.json:');
+    console.log(JSON.stringify(merged, null, 2));
+    console.log('→ would write opencode metadata:');
+    console.log(JSON.stringify(mergeOpenCodeMetadata(prior, added, allNewLinks, retractedLinks), null, 2));
+    return;
+  }
+
+  await writeOpenCodeConfigAtomic(merged);
+  console.log(`✓ wrote ${OPENCODE_CONFIG_PATH}`);
+  const metadata = mergeOpenCodeMetadata(prior, added, allNewLinks, retractedLinks);
+  await fs.writeFile(OPENCODE_METADATA_PATH, `${JSON.stringify(metadata, null, 2)}\n`);
+  console.log(`✓ wrote ${OPENCODE_METADATA_PATH}`);
+}
+
+async function runOpenCodeUninstall(opts) {
+  const raw = await readJsonOrEmpty(OPENCODE_METADATA_PATH);
+  if (!raw.version) {
+    console.log('  no OpenCode metadata — nothing to revert there');
+    return;
+  }
+  for (const { path: dest, target } of raw.addedLinks ?? []) {
+    await removeManagedLink(dest, target, opts.dryRun);
+  }
+
+  const userConfig = await readJsonOrEmpty(OPENCODE_CONFIG_PATH);
+  const reverted = cloneJson(userConfig);
+  for (const key of raw.addedKeys ?? []) {
+    if (key.startsWith('permission.')) {
+      const permKey = key.slice('permission.'.length);
+      if (isPlainObject(reverted.permission)) delete reverted.permission[permKey];
+    } else {
+      delete reverted[key];
+    }
+  }
+  if (isPlainObject(reverted.permission?.bash)) {
+    for (const { pattern, action } of priorBashPatterns(raw)) {
+      if (reverted.permission.bash[pattern] === action) delete reverted.permission.bash[pattern];
+    }
+    // Bare `"*": "allow"` is less safe than OpenCode's default (ask). Drop it
+    // when we synthesized it, and also when it is the only key left after our
+    // rules are gone (covers metadata written before synthesizedBashCatchAll).
+    const bashKeys = Object.keys(reverted.permission.bash);
+    const onlyOrphanAllow =
+      bashKeys.length === 1 &&
+      bashKeys[0] === '*' &&
+      reverted.permission.bash['*'] === 'allow';
+    if (raw.synthesizedBashCatchAll || onlyOrphanAllow) {
+      if (reverted.permission.bash['*'] === 'allow') delete reverted.permission.bash['*'];
+    }
+    if (Object.keys(reverted.permission.bash).length === 0) delete reverted.permission.bash;
+  }
+  if (isPlainObject(reverted.permission) && Object.keys(reverted.permission).length === 0) {
+    delete reverted.permission;
+  }
+  if (reverted.$schema === 'https://opencode.ai/config.json' && Object.keys(reverted).length === 1) {
+    delete reverted.$schema;
+  }
+
+  if (opts.dryRun) {
+    console.log('→ would revert opencode.json to:');
+    console.log(JSON.stringify(reverted, null, 2));
+    console.log(`→ would delete ${OPENCODE_METADATA_PATH}`);
+    return;
+  }
+
+  if (existsSync(OPENCODE_CONFIG_PATH)) {
+    const backupPath = `${OPENCODE_CONFIG_PATH}.backup-${Date.now()}`;
+    await fs.copyFile(OPENCODE_CONFIG_PATH, backupPath);
+    console.log(`✓ backed up opencode.json → ${backupPath}`);
+  }
+  if (Object.keys(reverted).length === 0) {
+    if (existsSync(OPENCODE_CONFIG_PATH)) {
+      await fs.unlink(OPENCODE_CONFIG_PATH);
+      console.log(`✓ removed empty ${OPENCODE_CONFIG_PATH}`);
+    }
+  } else {
+    await fs.writeFile(OPENCODE_CONFIG_PATH, `${JSON.stringify(reverted, null, 2)}\n`);
+    console.log(`✓ reverted ${OPENCODE_CONFIG_PATH}`);
+  }
+  if (existsSync(OPENCODE_METADATA_PATH)) {
+    await fs.unlink(OPENCODE_METADATA_PATH);
+    console.log(`✓ removed ${OPENCODE_METADATA_PATH}`);
+  }
 }
 
 // Removes the symlinks a previous run of this installer created and the harness
@@ -624,15 +970,20 @@ async function runInstall(opts) {
   const harnessSettings = await readJsonOrEmpty(
     path.join(HARNESS_ROOT, '.claude', 'settings.json'),
   );
-  // Ahead of the retraction on purpose: this call can die() on an agent
+  // Ahead of the retraction on purpose: these calls can die() on an agent
   // conflict, and an install that exits non-zero must not have already deleted
-  // a link the metadata it never wrote still claims.
+  // a link the metadata it never wrote still claims. OpenCode is checked here
+  // too so a default_agent conflict cannot leave Claude half-written.
   const { merged, added } = buildMergedSettings(
     userSettings,
     harnessSettings,
     opts,
     priorMetadata,
   );
+  const opencodePrior = await readJsonOrEmpty(OPENCODE_METADATA_PATH);
+  const opencodeHarness = await readJsonOrEmpty(path.join(HARNESS_OPENCODE_DIR, 'opencode.json'));
+  const opencodeUser = await readJsonOrEmpty(OPENCODE_CONFIG_PATH);
+  buildMergedOpenCodeConfig(opencodeUser, opencodeHarness, opts, opencodePrior);
 
   const retractedLinks = await retractLinks(
     priorMetadata.addedLinks,
@@ -673,6 +1024,7 @@ async function runInstall(opts) {
     const metadata = mergeMetadata(prior, added);
     console.log('→ would write metadata:');
     console.log(JSON.stringify(metadata, null, 2));
+    await runOpenCodeInstall(opts, sources);
     console.log('\n(dry-run) nothing changed.');
     return;
   }
@@ -685,7 +1037,11 @@ async function runInstall(opts) {
   await fs.writeFile(METADATA_PATH, `${JSON.stringify(metadata, null, 2)}\n`);
   console.log(`✓ wrote ${METADATA_PATH}`);
 
-  console.log('\nDone. Open a new Claude Code session and run /agents to confirm orchestrator is active.');
+  await runOpenCodeInstall(opts, sources);
+
+  console.log(
+    '\nDone. Claude Code: new session + /agents. OpenCode: restart the session (config is load-once).',
+  );
 }
 
 async function removeManagedLink(dest, expectedTarget, dryRun) {
@@ -799,6 +1155,8 @@ async function runUninstall(opts) {
 
   await fs.unlink(METADATA_PATH);
   console.log(`✓ removed ${METADATA_PATH}`);
+
+  await runOpenCodeUninstall(opts);
 
   console.log('\nDone.');
 }

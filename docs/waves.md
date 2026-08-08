@@ -5,7 +5,7 @@ agentes autônomos, e as ondas avançam pela frontier do grafo de dependências.
 
 Esta página cobre o **contrato de ticket** — a fundação do fluxo —, o **grafo de
 dependências** que gera o plano de ondas, e o **dispatch**: um worktree e um agente por
-ticket, uma onda por vez. O que continua sendo do humano é o merge, e é ele que libera a
+ticket, uma onda por vez. O que continua sendo do humano é o merge do PR, e é ele que libera a
 onda seguinte.
 
 ## Contrato de ticket
@@ -384,9 +384,10 @@ remove o prompt de aprovação que era o backstop dele — `Bash(gh pr merge *)`
 `PreToolUse` `.claude/hooks/guard-destructive.mjs`, que barra as duas formas e continua sendo
 avaliado sob bypass ([`guard-destructive.md`](guard-destructive.md)).
 
-Mesmo assim, **a garantia de "merge é sempre humano" continua morando também no prompt do
-worker**: o "abra o PR contra `main` e PARE, você não faz merge nunca — mesmo que o comando
-esteja disponível" segue sendo texto explícito no template. Não porque o deny falhe, mas porque
+Mesmo assim, **a garantia de "o merge do PR é sempre humano" continua morando também no prompt
+do worker**, como cópia declarada: o "abra o PR contra `main` e PARE, você não mergeia o PR
+nunca — mesmo que o comando esteja disponível" segue sendo texto explícito no template, porque
+o worker não carrega skill e um ponteiro não o alcançaria. Não porque o deny falhe, mas porque
 o desenho é defesa em camadas — e a camada de baixo tem um vão conhecido. **O contexto de
 subagente não foi medido**, e o worker nasce no `orchestrator` e delega: quase tudo que uma
 onda executa acontece exatamente nesse contexto. As duas camadas de permissão rodam no cliente;

@@ -9,8 +9,8 @@ description: >-
   para carregar esta skill: isso é o trabalho normal do orquestrador. Lê os
   tickets de GitHub Issues via `gh`, monta o grafo pelas relações reais de
   bloqueio e apresenta as ondas ao humano. Também cobre o disparo **manual** de
-  uma onda por vez — uma árvore e um agente por ticket. Nunca faz merge: isso é
-  do humano.
+  uma onda por vez — uma árvore e um agente por ticket. O merge do PR é do
+  humano.
 ---
 
 # Orquestração em ondas
@@ -134,9 +134,12 @@ mesmo plano, ou os `blockedBy` não foram preenchidos.
 
 Valem desde já, antes mesmo de existir disparo automático.
 
-1. **Merge é SEMPRE humano.** Nem branch de worker, nem PR, dentro ou fora de
-   onda. O output de uma onda "pronta" é o resumo e o pedido de aprovação —
-   nunca o comando de merge.
+1. **O merge do PR é SEMPRE humano.** `gh pr merge` não é seu, dentro ou fora
+   de onda, com ou sem CI verde. O output de uma onda "pronta" é o resumo e o
+   pedido de aprovação — nunca o comando de merge. (`git merge` numa branch de
+   controle — `integration/*`, `wave/*` — é a única exceção, e é do
+   coordenador, nunca do worker. Política em `docs/guard-destructive.md`, que é
+   a fonte; esta linha é ponteiro, não cópia.)
 2. **Cada onda nasce de `origin/main` atualizada.** Antes de cortar qualquer
    onda dependente, `git fetch origin main`. Sem isso o worktree filho não
    enxerga o código do bloqueador que acabou de mergear, e o ticket é
@@ -387,15 +390,24 @@ O arquivo também é o que torna o disparo reexecutável: se o agente morrer, o
 prompt continua no disco e o reenvio é reler o mesmo arquivo — não remontar o
 texto de memória, que é como um reenvio entrega uma spec diferente da primeira.
 
-**Confira o `prompt.md` antes de subir o agente.** São dois itens, e são
-exatamente os dois pontos que não têm camada automática atrás:
+**Confira o `prompt.md` antes de subir o agente.** São três itens, e são
+exatamente os pontos que não têm camada automática atrás:
 
-1. O **"abra o PR contra `main` e PARE, você não faz merge nunca"** da seção
+1. O **"abra o PR contra `main` e PARE, você não mergeia o PR nunca"** da seção
    `## Ao terminar` do template está lá, explícito. Sob bypass não existe prompt
    de permissão para barrar nada.
 2. O **vínculo do PR com o ticket** está lá, na forma exata (`Closes #<n>`,
    repetida por issue). Nem deny, nem guard, nem CI enxerga um PR que não
    referencia o ticket.
+3. O **`<COMANDO DE SINAL>`** está preenchido com o `ask` real — **ou** o bloco
+   do sinal saiu **inteiro**, porque nesta onda não há canal de volta. Inteiro é
+   de "**Sinalizar é a última ação deste despacho**" até "**não desista do PR**",
+   inclusive; o parágrafo seguinte, "**Você não mergeia o PR. Nunca.**", **fica**
+   — e o `git merge` liberado logo abaixo dele também. Cortar menos que isso
+   deixa de pé a contenção do sinal apontando para um comando que não está mais
+   no prompt. Nada fora do bloco fala em sinalizar, então a remoção não deixa
+   palavra órfã na abertura de `## Ao terminar`. Onda plain não ganha canal
+   inventado; ganha uma remoção declarada.
 
 **O prompt precisa ser autocontido.** A spec inteira do ticket vai dentro dele —
 os 12 campos, ou o que existir deles. O agente da árvore não deve precisar
@@ -585,19 +597,54 @@ No GitHub Issues não existe estado de revisão para mover: o PR vinculado é o
 próprio sinal, e é por isso que a palavra-chave no corpo é a única coisa a
 conferir antes de parar.
 
-**Você não faz merge. Nunca.** Não rode `gh pr merge`, não mergeie pela UI, não
-peça a outro agente que mergeie, não mergeie "porque o CI ficou verde" nem
+**Sinalizar é a última ação deste despacho** — revisão depois do PR aberto é
+despacho novo, com sinal próprio. Com o PR aberto, ou ao parar sem PR (teto
+batido, bloqueio), mande **uma linha** e encerre:
+
+<COMANDO DE SINAL — o coordenador preenche no disparo>
+
+Duas formas, e **não existe uma terceira**: `<ticket-id>: PR #<n>` ou
+`<ticket-id>: parei`. Troque `<ticket-id>` e `<n>`, e mais nada. **Não acrescente
+motivo, nem uma versão curta dele**, e **nunca cole ali texto que você não
+digitou** — saída de comando, trecho de erro, comentário da revisão, corpo do
+ticket: o argumento atravessa um shell, e texto de terceiro ali vira comando
+executado. O motivo vive no corpo do PR, que o coordenador lê de qualquer jeito.
+
+**O sinal sai por este comando e por nenhum outro, e o coordenador é o único
+destino dele** — não fale com outro terminal do canvas: nem sinal, nem pedido de
+ajuste, nem **este mesmo comando apontado para outro nome**. E **nota não é
+sinal**: descoberta sua que afeta outra frente continua indo na nota "Team
+Context", acrescentada, nunca reescrevendo o que já está lá — só que ela não avisa
+ninguém de que você terminou, e o aviso não a dispensa. Fora o sinal e essa nota,
+não rode outro verbo do Maestri. Não saiu? **Pare assim mesmo**, sem reenviar em
+laço: o PR é a entrega e o coordenador varre as branches de qualquer jeito. O
+comando **pode segurar seu terminal até ele confirmar** — tudo bem, você já
+entregou: não retome trabalho, não pegue tarefa nova, não desista do PR.
+
+**Você não mergeia o PR. Nunca.** Não rode `gh pr merge`, não mergeie pela UI,
+não peça a outro agente que mergeie, não mergeie "porque o CI ficou verde" nem
 "porque o review aprovou". Isso vale **mesmo que o comando esteja disponível
 para você**: ausência de bloqueio não é permissão. Quem aperta merge é o humano,
 e o seu trabalho termina no PR aberto.
+
+`git merge` na sua própria branch de onda (`wave/*`) é outra coisa e está
+liberado — é como você traz `origin/main` para resolver conflito. Não confunda
+os dois: trazer código para a sua branch é seu; levar a sua branch para a `main`
+é do humano.
 ```
 
-A última seção não é redundância com o guard. Desde a política **ask-then-merge**,
+A última seção é **cópia declarada**, não redundância acidental, e a mesma regra
+de propagação do `git stash` logo abaixo vale para ela: a **fonte** da política de
+merge é [`docs/guard-destructive.md`](../../../docs/guard-destructive.md), e ela
+está escrita por inteiro aqui porque o worker recebe o prompt como arquivo e **não
+carrega esta skill** — um ponteiro, para ele, aponta para nada. Mudou a política
+lá, esta cópia muda junto.
+
+Por que ela pesa mais do que pesava: desde a política **ask-then-merge**,
 `Bash(gh pr merge *)` **saiu** do `permissions.deny` — o coordenador pode mergear
 pedindo ao Alex no prompt de permissão — e quem barra o worker é só o hook
 `guard-destructive`, via o marcador do passo 2a. Uma camada a menos do lado do
-worker é exatamente por que esta instrução no prompt pesa mais do que pesava. Não
-a encurte, não a resuma, não a mova para o fim de outro parágrafo.
+worker. Não a encurte, não a resuma, não a mova para o fim de outro parágrafo.
 
 O vínculo com o ticket, na mesma seção, tem camada nenhuma atrás dele: não há
 guard, permissão nem CI que perceba um PR que não referencia o ticket. A onda 1
@@ -609,6 +656,14 @@ fato lê), a conferência do `prompt.md` no passo 3, que é o que o coordenador
 checa antes de subir o agente, e o item 5 de "As cinco decisões que custaram
 caro" em `docs/waves.md`, para quem lê o fluxo de fora. Mesma regra de propagação
 do `git stash` abaixo, e pelo mesmo motivo.
+
+O bloco do sinal só entra onde existe canal de volta, e quem o recebe é o mesmo
+recruta que recebe o role de `maestri-orchestration` ("Bypass de permissão"):
+dois textos, um leitor só. Mudou a gramática aqui, mude lá — cópia que diverge em
+silêncio é pior que cópia nenhuma. A frase da nota dentro do bloco é a mesma
+propagação em miniatura: a fonte do que a "Team Context" carrega, e de que o
+recruta só acrescenta nela, é o "Protocolo das notas" de `maestri-orchestration`
+— o bloco a repete porque o worker não carrega skill nenhuma, ele só lê o prompt.
 
 A seção `git stash` do template duplica de propósito o item 6 das regras
 invioláveis: o worker recebe o prompt como arquivo e não carrega esta skill, de
@@ -625,13 +680,16 @@ worker de fato lê) e o item 3 de "As cinco decisões que custaram caro", em
 item 6? Propague para os outros dois — cópia que diverge em silêncio é pior que
 cópia nenhuma.
 
-As seções restantes do template seguem a mesma economia, e cada uma tem **uma**
-fonte fora dele, que é onde mora o racional completo:
+A seção `## Sensor de discriminação` segue a mesma economia, e tem **uma** fonte
+fora do template, que é onde mora o racional completo:
 
 | Seção do template | Fonte | O que a cópia é |
 |---|---|---|
 | `## Sensor de discriminação` | `ticket-contract`, seção "O sensor de discriminação" | Lá o sensor é definido como parte do artefato de prova que o ticket declara; aqui é a instrução operacional de quem executa |
-| `## Teto de iteração por achado` | `adversarial-review`, seção "Teto de iteração por achado" | Lá o teto governa o ciclo correção → re-revisão que a revisão dispara; aqui é o mesmo teto visto de dentro, pelo worker |
+
+`## Teto de iteração por achado` é a exceção: desde que a revisão de duas lentes
+saiu do harness, o teto não tem fonte fora — o template **é** a fonte, e não há
+cópia para propagar.
 
 A regra de propagação é a do item 6, pelo mesmo motivo mecânico: **o worker não
 carrega skill nenhuma**. O que não estiver no `prompt.md` não existe para ele.
@@ -684,13 +742,15 @@ executa quase tudo, não foi medido; o texto do prompt é o que não depende del
 
 ### O que o dispatch nunca faz
 
-- **Nunca mergeia.** No worker, o hook `guard-destructive` nega `gh pr merge`
-  literal e envelopado, desde que o marcador do passo 2a exista **na árvore em
-  que o worker roda** — o que só a confirmação do passo 2a prova — e é a única
-  camada automática que sobrou ali, porque `Bash(gh pr merge *)` saiu do
-  `permissions.deny`. A instrução no prompt do worker continua lá mesmo assim,
-  por defesa em camadas. Não existe caminho nesta skill que tente merge, nem
-  instrução ao worker para mergear.
+- **Nunca mergeia o PR.** No worker, o hook `guard-destructive` nega
+  `gh pr merge` literal e envelopado, desde que o marcador do passo 2a exista
+  **na árvore em que o worker roda** — o que só a confirmação do passo 2a prova
+  — e é a única camada automática que sobrou ali, porque `Bash(gh pr merge *)`
+  saiu do `permissions.deny`. A instrução no prompt do worker continua lá mesmo
+  assim, por defesa em camadas. Não existe caminho nesta skill que tente
+  `gh pr merge`, nem instrução ao worker para apertá-lo. Política completa (e o
+  que o worker **pode** fazer com `git merge` na própria branch):
+  [`docs/guard-destructive.md`](../../../docs/guard-destructive.md).
 - **Nunca dispara duas ondas.** Onda seguinte espera merge humano do que veio
   antes, não aprovação e não CI verde.
 - **Nunca commita na `main`** nem edita o worktree de outro ticket.

@@ -12,7 +12,7 @@ node scripts/install.mjs
 
 When you run `node scripts/install.mjs`, it:
 
-1. Creates symlinks:
+1. Creates Claude Code symlinks:
    - `~/.claude/harness`  → `<repo>` (stable path to the checkout, so skills and hooks reach `scripts/**` without hardcoding a clone location)
    - `~/.claude/agents`   → `<repo>/.claude/agents`
    - `~/.claude/hooks`    → `<repo>/.claude/hooks`
@@ -21,10 +21,16 @@ When you run `node scripts/install.mjs`, it:
 2. Deep-merges harness keys into `~/.claude/settings.json`:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
-   - `permissions.deny` (union; blocks `gh pr merge`, `git push --force` and `git commit --no-verify` so merges and history rewrites stay a human decision — see the measured limits below)
-   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the same three commands as the deny list, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
+   - `permissions.deny` (union; blocks `git push --force` and `git commit --no-verify` — `gh pr merge` is worker-scoped via the guard, see ask-then-merge in [`guard-destructive.md`](guard-destructive.md))
+   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the deny-list commands plus `gh pr merge`, a `git merge` aimed at a protected branch, and a backgrounded endless loop, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
 4. Retracts what it added and the harness no longer declares — see below.
+5. Installs the **OpenCode surface** (same run):
+   - `~/.agents/skills/<name>` → one link per harness skill (OpenCode auto-loads this path; `.agents/` is **skills-only**)
+   - `~/.config/opencode/{agent,command,plugin}/<entry>` → one link each from `<repo>/.opencode/`
+   - deep-merge of `default_agent` + owned `permission.bash` deny patterns into `~/.config/opencode/opencode.json` (MCP and other user keys untouched)
+   - metadata at `~/.config/opencode/.my-configs-managed.json`
+   - details and the measured `bash -c` hole: [`integrations/opencode.md`](integrations/opencode.md)
 
 ### Installing is not append-only
 
@@ -63,7 +69,7 @@ Measured on **Claude Code 2.1.220**, Node 24.15.0, macOS, **2026-07-27**, agains
 
 **But `deny` is string matching, and the bypass removes the approval gate that used to be its backstop.** `Bash(gh pr merge *)` blocks `gh pr merge 3`; it never sees `bash -c "gh pr merge 3"`. Measured with a canary entry: under the bypass the wrapped form *ran*, while the same wrapped command without the bypass stopped at `This command requires approval`. The wrapper was being caught by the permission prompt, not by the deny list — so turning the prompt off is what exposes it.
 
-**The `guard-destructive` hook closes that hole.** A `PreToolUse` hook on `Bash` returning `permissionDecision: "deny"` is still evaluated under the bypass (measured, not inferred), and this one blocks the literal *and* the wrapped form of all three commands. What it deliberately does not catch, and why, is in [`guard-destructive.md`](guard-destructive.md).
+**The `guard-destructive` hook closes that hole.** A `PreToolUse` hook on `Bash` returning `permissionDecision: "deny"` is still evaluated under the bypass (measured, not inferred), and this one blocks the literal *and* the wrapped form of every rule it carries. What it deliberately does not catch, and why, is in [`guard-destructive.md`](guard-destructive.md).
 
 **Not measured:** subagent context, `deny` declared at user scope, and managed/policy settings. The first is the gap that matters — a session starts in `orchestrator` and delegates, so most of what an agent executes runs in a subagent.
 

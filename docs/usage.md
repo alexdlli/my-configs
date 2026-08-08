@@ -55,7 +55,6 @@ de propósito **não** pega em [`guard-destructive.md`](guard-destructive.md).
 |---|---|---|
 | `/sync-harness` | nada | Atualiza o harness agora, ignorando só o throttle de 6h. Todas as outras checagens continuam valendo. Output verbatim |
 | `/ticket-new` | escopo, spec ou discussão (vazio: a conversa atual) | Spawna o `pm` com a skill `ticket-contract`. Apresenta a quebra e **espera aprovação** antes de publicar no tracker |
-| `/review-adversarial` | commit, branch ou tag base (vazio: `main`) | Spawna `reviewer` duas vezes em paralelo, cada um com uma lente distinta. Reporta achados convergentes, depois divergências, depois a cobertura de cada lente |
 | `/wave-plan` | `owner/repo` + milestone ou label | Tabela de ondas, mais os destaques que não cabem em célula: fan-in, bloqueado externamente, dado ruim |
 | `/wave-status` | número da onda, ou a lista de branches/tickets | Spawna o `wave-monitor` (`haiku`, contexto próprio) e devolve uma tabela compacta. Só reporta |
 | `/pr-babysit` | número, URL ou branch (vazio: o PR da branch atual) | Leva o PR a review-ready, rastreando CI e feedback como dois estados independentes |
@@ -72,7 +71,6 @@ o que o Claude lê para decidir quem acordar. Falar a frase certa basta.
 |---|---|
 | "quebra esse escopo em tickets" / "esse ticket tá bom?" / "monta o projeto" | Skill `ticket-contract` e o agente `pm` — **só nessas palavras**: tarefa comum não vira ticket |
 | "quantas frentes dá pra tocar em paralelo?" / "monta o grafo desse projeto" / "plano de ondas" | Skill `wave-orchestration` (planejamento; o disparo é manual) — **só nessas palavras**: tocar três frentes em paralelo é trabalho normal do orquestrador, não uma onda |
-| "revisa direito, com duas lentes" / "quero dois revisores" | Skill `adversarial-review`, que spawna `reviewer` duas vezes em paralelo |
 | "o CI falhou" / "por que o check está vermelho" / "responder o review" | Skill `pr-babysitting`, que delega a classificação das threads ao agente `pr-triage` |
 | "onde está definido X?" / "o que chama Y?" / "mapeia esse diretório" | Agente `cavecrew-investigator` (tabela `file:line`, saída comprimida) |
 | "valida essa task contra PROJ-123" / qualquer URL `*.atlassian.net` | Agente `atlassian` — o único com acesso MCP, e só em sinal explícito |
@@ -104,10 +102,13 @@ Vale o preço quando o grafo é real. Não vale para uma frente só: ali o custo
    **para**.
 6. `/wave-status` acompanha. `/pr-babysit <n>` leva cada PR até review-ready: CI verde e
    feedback respondido, rastreados separadamente.
-7. `/review-adversarial` antes de aprovar o que não é trivial.
-8. **Você mergeia.** Sempre. Nenhum agente do harness tem esse comando disponível dentro de
-   uma onda, e o prompt do worker diz isso com todas as letras. A garantia que não depende do
-   cliente é branch protection no GitHub.
+7. Revisor só se a mudança mexer em garantia declarada do repo — merge humano, guard de
+   comando, permissão. Um agente, escopo restrito ao trecho que carrega a garantia.
+8. **Você aperta o merge do PR.** Sempre — `gh pr merge` é humano em todo contexto, e o prompt
+   do worker diz isso com todas as letras. Um agente só mergeia sozinho com `git merge` dentro
+   de uma branch de controle (`integration/*`, `wave/*`), nunca em `main`. A política é de
+   [`guard-destructive.md`](guard-destructive.md); a garantia que não depende do cliente
+   continua sendo branch protection no GitHub.
 9. **Você libera** a onda seguinte, voltando ao passo 4. A onda `n+1` depende de *merge*, não
    de aprovação.
 
@@ -119,8 +120,9 @@ Números medidos aqui, não estimativa.
   multiplicativo: cada worker nasce no `orchestrator` e delega, então 5 tickets não são 5
   agentes. Duas ou três frentes por vez é o número realista para uma máquina só — a largura
   técnica da onda (o grafo) e a largura que a máquina aguenta são coisas diferentes.
-- **Revisão por lente: 60-70k tokens cada.** `/review-adversarial` são duas. Vale em mudança
-  não trivial; não vale em correção de typo.
+- **Uma passada de revisão: 60-70k tokens.** Duas lentes sobre todo PR não trivial consumiram
+  20x a quota em 4 dias — foi por isso que a revisão adversarial saiu do harness. Sobrou um
+  revisor, e só onde a mudança mexe em garantia declarada.
 - `wave-monitor` e `cavecrew-*` rodam em `haiku` e em contexto próprio justamente porque o
   volume que eles geram (payload de PR, varredura de arquivo) morre com eles.
 

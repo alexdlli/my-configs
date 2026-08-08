@@ -213,7 +213,7 @@ comportamento quebrado mede que alguém escreveu um teste, não que a entrega fu
 o sensor é do **autor** e roda **antes** de ele reportar pronto — não da revisão, depois.
 
 O lugar importa mais que a técnica. Na onda 1 deste repo, 6 Criticals saíram da revisão e 5
-eram evitáveis na geração; o do PR #10 apareceu porque uma lente inteira rodou mutação sobre o
+eram evitáveis na geração; o do PR #10 apareceu porque um revisor inteiro rodou mutação sobre o
 diff, e o autor teria achado o mesmo em segundos. A técnica estava certa e no lugar errado.
 
 O que o sensor é, por valor declarado:
@@ -246,8 +246,8 @@ Por que dentro do campo 8 e não um 13º campo: o artefato é o que prova o acce
 que é exatamente o que o campo 8 já carrega, e renumerar o contrato invalidaria toda
 referência a "os 12 campos" no harness.
 
-O modelo de revisão que consome esse campo é da skill `adversarial-review`. Aqui só se declara
-o valor e, quando `demonstrável`, o artefato que o sustenta.
+Quem consome esse campo depois é o agente `reviewer`. Aqui só se declara o valor e, quando
+`demonstrável`, o artefato que o sustenta.
 
 ## Bom vs ruim nos quatro campos mais errados
 
