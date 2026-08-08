@@ -254,6 +254,8 @@ function plistXml() {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>${escapeXml(AGENT_PATH)}</string>
+    <key>AI_MEMORY_BACKUP_DIR</key><string>${escapeXml(BACKUP_DIR)}</string>
+    <key>AI_MEMORY_BACKUP_KEEP</key><string>${escapeXml(String(BACKUP_RETENTION))}</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>StartCalendarInterval</key>

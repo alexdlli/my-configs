@@ -188,7 +188,7 @@ node scripts/backup-ai-memory.mjs --uninstall # unload + remove it
 
 Each run waits for the container to report healthy (up to 10 min), runs `ai-memory backup` *inside* it, copies the archive out to `~/ai-memory-backups/ai-memory-<YYYYMMDD>-<HHMMSS>.tar.gz`, removes the temporary archive from the volume (even when the copy fails), and prunes all but the newest 14. Restore with `ai-memory restore --from <archive>`.
 
-Env overrides: `AI_MEMORY_CONTAINER`, `AI_MEMORY_BACKUP_DIR`, `AI_MEMORY_BACKUP_KEEP`. The LaunchAgent (`com.my-configs.ai-memory-backup`) logs to `<backup dir>/backup.log`.
+Env overrides: `AI_MEMORY_CONTAINER`, `AI_MEMORY_BACKUP_DIR`, `AI_MEMORY_BACKUP_KEEP`. The installer persists the resolved backup directory and retention in the LaunchAgent, so scheduled runs use the same values even though they do not inherit your interactive shell environment. The LaunchAgent (`com.my-configs.ai-memory-backup`) logs to `<backup dir>/backup.log`.
 
 ## Getting the learning onto another computer (and keeping it synced)
 
