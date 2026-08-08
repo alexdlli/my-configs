@@ -8,7 +8,7 @@ Long sessions become long amnesia: you re-explain the architecture, the dead end
 
 Two ideas from the [article that prompted this](https://akitaonrails.com/en/2026/06/16/ai-memory-long-term-memory-karpathy-wiki-self-improvement-hermes-projects/): the **Karpathy LLM Wiki** (compile knowledge into stable queryable pages, don't retrieve over raw logs) and **Hermes-style auto-improve** (a background job reviews completed sessions, promotes durable lessons into the wiki with validation + an audit trail).
 
-## How it's wired here — `claude-sub` (default)
+## How it's wired here — subscription providers
 
 The goal was to power ai-memory's LLM work (consolidation + auto-improve) with the **Claude subscription** rather than a paid API key, but through a *sanctioned* mechanism. ai-memory itself only ships two Claude options: `anthropic` (paid key) and `anthropic-oauth` (raw OAuth token spoofed against `/v1/messages` — unofficial, against ToS, fragile). Neither is what we want.
 
@@ -26,7 +26,7 @@ So this harness adds a small bridge:
                                   `claude -p` (your Claude subscription)
 ```
 
-- **`scripts/claude-openai-shim.mjs`** — a zero-dependency OpenAI-compatible server (`/v1/chat/completions`, `/v1/models`, `/healthz`). It shells out to `claude -p --output-format json` and **strips `ANTHROPIC_API_KEY`** from the child env so the call uses your subscription, not pay-as-you-go billing. This is the same idea as the "claude CLI" backend in your `ghprai`, exposed as an HTTP endpoint ai-memory can talk to.
+- **`scripts/claude-openai-shim.mjs`** — a zero-dependency OpenAI-compatible server (`/v1/chat/completions`, `/v1/models`, `/healthz`) used only by `claude-sub`. It shells out to `claude -p` and strips `ANTHROPIC_API_KEY` so the CLI uses the logged-in subscription instead of pay-as-you-go API billing.
 - **LaunchAgent** (`com.my-configs.claude-openai-shim`) keeps the shim running on login/boot, so memory works in *every* Claude Code session, not just the one where you ran setup.
 - **ai-memory server** — Docker on loopback (`127.0.0.1:49374`), `openai-compat` provider pointed at the shim, model `claude-haiku-4-5` (its LLM work is summarisation/classification, so a Haiku-class model is plenty and easiest on subscription rate limits).
 - **Claude Code wiring** — `install-mcp` (so the agent can call `memory_query` / `memory_recent` / `memory_handoff_accept`), `install-hooks` (lifecycle capture), `install-instructions --skills-scope global` (the routing block bracketed by `<!-- ai-memory:start -->` / `<!-- ai-memory:end -->` in `CLAUDE.md`/`AGENTS.md`, **plus** ai-memory's managed Agent Skills). The scope flag is deliberate: since 1.18.0 that command also installs skills, and its default (`project`) would write them into the repo's own `.claude/skills/` — the directory `install.mjs` links one entry at a time exactly so that no tool takes the shared namespace over. `global` sends them to `~/.claude/skills/` instead, where they sit beside the harness's own links as five `ai-memory-*` entries. ai-memory merges these idempotently and preserves unrelated config, and this harness's `install.mjs` is symmetric: it only appends the hook entries declared in the harness's own `.claude/settings.json` (today `SessionStart` → `auto-update.mjs`, `UserPromptSubmit` → `orchestrator-reminder.mjs`, `PreCompact` → `preserve-orchestrator.mjs`) and never rewrites or removes an entry it did not add. Both sides therefore register a `SessionStart` hook on the same event and both run.
@@ -60,12 +60,14 @@ Then open a new Claude Code session — the SessionStart hook fetches any pendin
 | Provider | What it uses | Notes |
 |---|---|---|
 | `claude-sub` *(default)* | Your Claude subscription via the local `claude -p` shim | Sanctioned CLI path; policy in flux (see above). Needs `claude` logged in, no `ANTHROPIC_API_KEY`. |
+| `codex-sub` | Native ai-memory `openai-oauth` provider using your ChatGPT/Codex subscription | Run `ai-memory auth login openai-oauth` once. No `OPENAI_API_KEY`; uses ai-memory's supported default `gpt-5.5`. |
 | `anthropic` | Paid Platform API key | `ANTHROPIC_API_KEY` in env. Fully supported, ~$0.01–0.05/session with Haiku. |
 | `anthropic-oauth` | Raw OAuth token vs `/v1/messages` | **Unofficial / against ToS.** Fragile. Avoid unless you accept the ban risk. |
 | `local` | Ollama / LM Studio | `openai-compat` → `host.docker.internal:11434/v1`. Free, local, zero ToS risk. Pull the model first. |
 | `none` | Zero-LLM | FTS5 search + rule-based summaries + handoffs. No auto-improve. |
 
 ```bash
+node scripts/setup-ai-memory.mjs --provider codex-sub   # ChatGPT/Codex subscription
 node scripts/setup-ai-memory.mjs --provider anthropic   # ANTHROPIC_API_KEY set
 node scripts/setup-ai-memory.mjs --provider local --model qwen3:8b
 node scripts/setup-ai-memory.mjs --provider none

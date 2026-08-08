@@ -6,16 +6,16 @@
 // local `claude -p` shim that lets ai-memory use your Claude *subscription*
 // through the sanctioned CLI path instead of a paid API key.
 //
-// What it does (provider claude-sub, the default):
+// What it does (provider claude-sub or codex-sub):
 //   1. Install the ai-memory CLI wrapper into ~/.local/bin if missing.
-//   2. Install + load a LaunchAgent that keeps scripts/claude-openai-shim.mjs
-//      running on login/boot (so memory works in *every* future session).
-//   3. Start the ai-memory server container (loopback) with the openai-compat
-//      provider pointed at the shim.
+//   2. For claude-sub, install + load the local Claude subscription shim.
+//      For codex-sub, use ai-memory's native ChatGPT/Codex OAuth provider.
+//   3. Start the ai-memory server container on loopback with that provider.
 //   4. Wire Claude Code: install-mcp + install-hooks + install-instructions.
 //
 // Usage:
 //   node scripts/setup-ai-memory.mjs                      # claude-sub (default)
+//   node scripts/setup-ai-memory.mjs --provider codex-sub # ChatGPT/Codex OAuth
 //   node scripts/setup-ai-memory.mjs --provider anthropic # paid API key
 //   node scripts/setup-ai-memory.mjs --provider local     # Ollama/LM Studio
 //   node scripts/setup-ai-memory.mjs --provider none      # zero-LLM
@@ -64,10 +64,11 @@ const SHIM_LOG_DIR = path.join(HOME, '.local', 'share', 'ai-memory');
 const DEFAULT_PORT = 8787;
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
-const DEFAULT_MODEL = 'claude-haiku-4-5';
+const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5';
+const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const LOCAL_MODEL = 'qwen3:8b';
 
-const PROVIDERS = ['claude-sub', 'anthropic', 'anthropic-oauth', 'local', 'none'];
+const PROVIDERS = ['claude-sub', 'codex-sub', 'anthropic', 'anthropic-oauth', 'local', 'none'];
 
 // Credentials are handed to child processes through the environment, never
 // through argv: argv shows up in `ps`, and this script echoes every command it
@@ -84,8 +85,8 @@ Usage:
 
 Options:
   --provider <p>  one of: ${PROVIDERS.join(', ')}   (default: claude-sub)
-  --port <n>      shim port for claude-sub            (default: ${DEFAULT_PORT})
-  --model <m>     LLM model override                  (default: ${DEFAULT_MODEL})
+  --port <n>      shim port for subscription backends (default: ${DEFAULT_PORT})
+  --model <m>     LLM model override                  (provider-specific default)
   --no-server     skip starting the container (client-only)
   --dry-run       print every command; execute nothing
   -h, --help      show this help
@@ -122,7 +123,11 @@ function parseArgs(args) {
     die(`unknown --provider "${opts.provider}". Choose: ${PROVIDERS.join(', ')}`);
   }
   if (!opts.model) {
-    opts.model = opts.provider === 'local' ? LOCAL_MODEL : DEFAULT_MODEL;
+    opts.model = opts.provider === 'local'
+      ? LOCAL_MODEL
+      : opts.provider === 'codex-sub'
+        ? DEFAULT_CODEX_MODEL
+        : DEFAULT_CLAUDE_MODEL;
   }
   return opts;
 }
@@ -278,6 +283,14 @@ function providerDockerEnv(opts) {
         ],
         secretEnv: {},
       };
+    case 'codex-sub':
+      return {
+        flags: [
+          '-e', 'AI_MEMORY_LLM_PROVIDER=openai-oauth',
+          '-e', `AI_MEMORY_LLM_MODEL=${opts.model}`,
+        ],
+        secretEnv: {},
+      };
     case 'anthropic': {
       const key = env.ANTHROPIC_API_KEY;
       if (!key && !opts.dryRun) {
@@ -347,10 +360,12 @@ function startServer(opts) {
   );
 }
 
-function wireClaudeCode(opts) {
-  console.log('→ wiring Claude Code (MCP + hooks + instructions)');
+function wireAgents(opts) {
+  console.log('→ wiring Claude Code + Codex (MCP + hooks + instructions)');
   run('ai-memory', ['install-mcp', '--client', 'claude-code', '--apply'], opts);
   run('ai-memory', ['install-hooks', '--agent', 'claude-code', '--apply'], opts);
+  run('ai-memory', ['install-mcp', '--client', 'codex', '--apply'], opts);
+  run('ai-memory', ['install-hooks', '--agent', 'codex', '--apply'], opts);
   // Global skills scope on purpose: the default (`project`) writes ai-memory's
   // managed Agent Skills into <repo>/.claude/skills, the directory install.mjs
   // owns one entry at a time precisely so no tool takes over the namespace.
@@ -369,6 +384,7 @@ function main() {
   console.log(`ai-memory setup  (provider: ${opts.provider}, mode: ${opts.dryRun ? 'dry-run' : 'apply'})`);
   console.log(`server: ${opts.server ? `docker @ ${BIND}` : 'external (--no-server)'}`);
   if (opts.provider === 'claude-sub') console.log(`shim:   127.0.0.1:${opts.port} -> claude -p (model ${opts.model})`);
+  if (opts.provider === 'codex-sub') console.log(`oauth:  ChatGPT/Codex native provider (model ${opts.model})`);
   console.log();
 
   if (!opts.dryRun && !have('docker') && opts.server) {
@@ -385,7 +401,7 @@ function main() {
     startServer(opts);
   }
 
-  wireClaudeCode(opts);
+  wireAgents(opts);
 
   console.log();
   if (opts.dryRun) {

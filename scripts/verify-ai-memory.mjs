@@ -125,7 +125,7 @@ function containerLlmEnv() {
 // shim | ollama | remote-api | none | unknown
 function classifyBackend(provider, baseUrl) {
   if (!provider) return 'none';
-  if (provider === 'anthropic' || provider === 'anthropic-oauth') return 'remote-api';
+  if (provider === 'anthropic' || provider === 'anthropic-oauth' || provider === 'openai-oauth') return 'remote-api';
   if (provider !== 'openai-compat') return 'unknown';
   const url = parseUrl(baseUrl);
   if (!url) return 'unknown';

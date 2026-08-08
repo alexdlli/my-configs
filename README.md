@@ -105,7 +105,7 @@ Claude Code's default behavior is fine for one-off prompts but rough on multi-st
 | Session context | Terminal-host, account and tracker detection at session start, by environment variable — no process spawned | [`docs/integrations/session-context.md`](docs/integrations/session-context.md) |
 | Maestri persona | Canonical copy of the Tech Lead / Maestro orchestration persona, its three measured defects, and the map of where each of its rules ended up now that it is ported to the `maestri-orchestration` skill | [`docs/integrations/maestri.md`](docs/integrations/maestri.md) |
 | EcoTokens | Optional Rust output filter | [`docs/integrations/ecotokens.md`](docs/integrations/ecotokens.md) |
-| ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. `node scripts/setup-ai-memory.mjs`; the default `claude-sub` provider uses your Claude subscription through a local `claude -p` shim | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |
+| ai-memory | Long-term cross-agent memory wiki + Hermes auto-improve. Supports Claude via a local shim (`claude-sub`) or the native ChatGPT/Codex OAuth provider (`codex-sub`) | [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md) |
 | OpenCode | Same agents/skills/guard on the OpenCode surface; `.agents/` is skills-only | [`docs/integrations/opencode.md`](docs/integrations/opencode.md) |
 
 All <!-- docs-count:integrations -->five are optional and independent of the agent harness.
