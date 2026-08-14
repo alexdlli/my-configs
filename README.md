@@ -19,7 +19,7 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `pr-triage`    | Classifies PR feedback threads; never applies, never posts |
 | `wave-monitor` | Wave branch state in one compact table (haiku); never fixes, never merges |
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
-| `cavecrew-builder`      | Surgical 1-2 file edit                        |
+| `cavecrew-builder`      | Surgical 1-2 file edit (haiku)                |
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 | `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 

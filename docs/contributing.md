@@ -49,7 +49,7 @@ CLAUDE.md              # session-level guidance Claude reads automatically
    name: <name>
    description: <one-sentence routing hint — Claude reads this to decide when to spawn>
    tools: <comma-separated allowlist; omit to inherit all>
-   model: inherit
+   model: <haiku | sonnet | opus — never inherit; see agent-system.md>
    ---
 
    <system prompt body — focused, terse, no marketing>

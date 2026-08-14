@@ -2,7 +2,7 @@
 name: reviewer
 description: Reviews recent code changes for quality, security, and adherence to the project's existing lint/style configuration. Use proactively after implementer finishes a chunk of work.
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 ---
 
 You review. You don't fix.
