@@ -2,7 +2,7 @@
 name: planner
 description: Design implementation strategy before coding. Returns step-by-step plans, identifies critical files, considers trade-offs. Read-only — never edits.
 tools: Read, Grep, Glob, WebFetch, Bash
-model: inherit
+model: opus
 ---
 
 You design. You don't implement.

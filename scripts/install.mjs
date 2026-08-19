@@ -185,23 +185,97 @@ function rewriteHookEntries(entries) {
   });
 }
 
-function hookEntryScriptName(entry) {
+// Redirection, pipe or chaining. A command that runs our script and throws its
+// stdout away — `node <ours> > /dev/null`, `| head -0` — registers nothing: the
+// guard denies by writing JSON to stdout and always exits 0, so a discarded
+// decision is indistinguishable from allow. Only a bare invocation is read as
+// running the script; the answer for anything else is "not ours", which puts
+// our own entry on disk next to it.
+const SHELL_CONTROL = /[|&;<>`]/;
+
+// Resolves the script a hook command actually *executes*, or null when it does
+// not execute one we can name here. Only the executable position counts:
+// `node <script>`, or `<script>` itself when run through its shebang.
+//
+// Matching the basename anywhere in the string is what this replaces. A command
+// that merely mentions `guard-destructive.mjs` — an echo, a log path, a comment
+// in a wrapper — used to read as "the guard is already registered", and the
+// installer then skipped installing ours. That is the harness's one stated
+// guarantee (docs/guard-destructive.md) disappearing in silence.
+//
+// A relative path is null on purpose, and the command is NEVER absolutized on
+// the way in. `node .claude/hooks/guard-destructive.mjs` sitting in
+// ~/.claude/settings.json resolves at runtime against the session's cwd: in most
+// repos the file is not there and the hook silently does nothing, and where a
+// file of that name is there it belongs to another checkout. Reading it as our
+// hook is how the installer would decline to register the one that works.
+function hookCommandScriptPath(command) {
+  if (typeof command !== 'string' || SHELL_CONTROL.test(command)) return null;
+  const tokens = command.trim().split(/\s+/);
+  const candidate = path.basename(tokens[0]) === 'node' ? tokens[1] : tokens[0];
+  if (typeof candidate !== 'string' || !candidate.endsWith('.mjs')) return null;
+  const expanded = candidate.startsWith('~/') ? path.join(HOME, candidate.slice(2)) : candidate;
+  return path.isAbsolute(expanded) ? path.normalize(expanded) : null;
+}
+
+function hookEntryScriptPath(entry) {
   if (!isPlainObject(entry) || !Array.isArray(entry.hooks)) return null;
   for (const h of entry.hooks) {
-    if (typeof h?.command !== 'string') continue;
-    const match = h.command.match(/([\w.-]+\.mjs)/);
-    if (match) return match[1];
+    const scriptPath = hookCommandScriptPath(h?.command);
+    if (scriptPath) return scriptPath;
   }
   return null;
 }
 
-function userHasHookForScript(userEntries, scriptName) {
+// An entry running our script under a narrower matcher has NOT registered the
+// hook the harness declares: a guard wired to `Write` never fires on `Bash`.
+// Deciding that requires reading the matcher the way the client does, and the
+// client has three tiers — read out of the installed binary at
+// /opt/homebrew/Caskroom/claude-code/2.1.220/claude, next to the literal
+// "Invalid regex pattern in hook matcher:". Pin the version: this is client
+// behavior, and a future release can move it.
+//
+//   1. absent / empty / "*"          → match-all
+//   2. /^[a-zA-Z0-9_|]+$/            → exact `|`-separated LIST, `includes(tool)`
+//   3. anything else                 → unanchored regex
+//
+// Tier 2 is why "always a regex" was unsafe: `matcher: "as"` passes
+// /as/.test("Bash"), so a regex-only reading calls it covering — while the
+// client takes the list branch, `["as"].includes("Bash")` is false, and neither
+// their hook nor ours fires on Bash. Silent, exit 0, no guard.
+//
+// Coverage is decided per alternative of the matcher WE declare (ours are
+// literal alternations: `Bash`, `startup|resume|clear`, `auto|manual`). Anything
+// unevaluable — a broken regex, a non-string, a match-all entry of ours facing a
+// narrower one — counts as not covering, which installs ours.
+const EXACT_LIST_MATCHER = /^[a-zA-Z0-9_|]+$/;
+
+function matcherCovers(userMatcher, harnessMatcher) {
+  if (userMatcher === undefined || userMatcher === null) return true;
+  if (typeof userMatcher !== 'string') return false;
+  if (userMatcher === '' || userMatcher === '*') return true;
+  const triggers =
+    typeof harnessMatcher === 'string' ? harnessMatcher.split('|').filter(Boolean) : [];
+  if (triggers.length === 0) return false;
+  if (EXACT_LIST_MATCHER.test(userMatcher)) {
+    const listed = new Set(userMatcher.split('|'));
+    return triggers.every((trigger) => listed.has(trigger));
+  }
+  let userPattern;
+  try {
+    userPattern = new RegExp(userMatcher);
+  } catch {
+    return false;
+  }
+  return triggers.every((trigger) => userPattern.test(trigger));
+}
+
+function userRunsHookScript(userEntries, scriptPath, harnessMatcher) {
   if (!Array.isArray(userEntries)) return false;
   return userEntries.some((entry) => {
     if (!isPlainObject(entry) || !Array.isArray(entry.hooks)) return false;
-    return entry.hooks.some(
-      (h) => typeof h?.command === 'string' && h.command.includes(scriptName),
-    );
+    if (!matcherCovers(entry.matcher, harnessMatcher)) return false;
+    return entry.hooks.some((h) => hookCommandScriptPath(h?.command) === scriptPath);
   });
 }
 
@@ -310,8 +384,8 @@ function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata)
       const rewritten = rewriteHookEntries(harnessEntries);
       if (!Array.isArray(merged.hooks[event])) merged.hooks[event] = [];
       for (const entry of rewritten) {
-        const scriptName = hookEntryScriptName(entry);
-        if (scriptName && userHasHookForScript(merged.hooks[event], scriptName)) {
+        const scriptPath = hookEntryScriptPath(entry);
+        if (scriptPath && userRunsHookScript(merged.hooks[event], scriptPath, entry.matcher)) {
           continue;
         }
         merged.hooks[event].push(entry);

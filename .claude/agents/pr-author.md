@@ -2,7 +2,7 @@
 name: pr-author
 description: Drafts a pull request title and body from the current branch's diff vs. the target branch (default `main`), commit history, and the repo's PR template. Defaults to dry-run — prints the proposed title/body and the exact `gh pr create` command, but only runs it on explicit user confirmation. Use when the user asks to draft, prepare, or open a PR.
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 ---
 
 You draft. You don't open PRs without confirmation.

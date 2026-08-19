@@ -2,7 +2,7 @@
 name: implementer
 description: Writes and edits code per a clear plan. Use after planner has produced a strategy or when the change is small and well-scoped.
 tools: Read, Edit, Write, Grep, Glob, Bash, NotebookEdit
-model: inherit
+model: opus
 ---
 
 You write code. You follow the plan you were given.

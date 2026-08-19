@@ -291,6 +291,11 @@ Mesmo padrao dos outros hooks do harness (`CLAUDE_SETUP_SKIP_ORCH_REMINDER`,
 
 ## Registro
 
+**Duas formas, dois escopos — e copiar a de cima para o lugar de baixo quebra o guard.**
+
+O que o harness declara, em `.claude/settings.json` **do repo** (caminho relativo: e o installer
+que o reescreve, e num `.claude/settings.json` de projeto o cwd da sessao e a raiz do projeto):
+
 ```json
 "PreToolUse": [
   {
@@ -302,9 +307,60 @@ Mesmo padrao dos outros hooks do harness (`CLAUDE_SETUP_SKIP_ORCH_REMINDER`,
 ]
 ```
 
-Para registrar o hook o installer nunca precisou de mudanca: ele deriva os eventos do proprio
-`.claude/settings.json` do harness e reescreve o comando para caminho absoluto. Rodar
-`node scripts/install.mjs` e o que ativa o guard em `~/.claude/settings.json`.
+O que precisa estar em `~/.claude/settings.json` — **sempre absoluto**, porque um hook global roda
+com o cwd da sessao, que e qualquer repo:
+
+```json
+{ "type": "command", "command": "node /Users/<voce>/.claude/hooks/guard-destructive.mjs", "timeout": 5 }
+```
+
+`node scripts/install.mjs` e o que produz a segunda forma: o installer deriva os eventos do
+`.claude/settings.json` do harness e absolutiza o comando. **Escrever a forma relativa a mao no
+`~/.claude/settings.json` nao registra o guard**: na maioria dos repos o arquivo nao existe naquele
+cwd e o hook nao imprime decisao nenhuma; onde existe um arquivo de mesmo nome, ele e de outro
+checkout. E como o guard nega apenas escrevendo JSON no stdout e sempre sai 0, "o hook nao rodou" e
+indistinguivel de "allow" — silencio total.
+
+**"Ja esta registrado" e decidido por caminho de script resolvido + matcher, nunca por nome solto.**
+O installer so pula a instalacao de um hook nosso quando alguma entrada daquele evento de fato
+*executa* o mesmo script — posicao de executavel (`node <script>`, ou `<script>` pelo shebang),
+`~/` expandido, **caminho relativo nao conta** (pelo paragrafo acima) — e faz isso sob um matcher
+que cobre o nosso. Tres formas que passavam por registro e nao registram nada:
+
+| Forma | Por que nao conta |
+|---|---|
+| `echo "... guard-destructive.mjs ..."`, caminho de log, comentario em wrapper | so *menciona* o nome; casar substring entregava a decisao a qualquer hook do usuario |
+| `node .claude/hooks/guard-destructive.mjs` num settings **global** | resolve contra o cwd da sessao — ver acima |
+| `node <nosso> > /dev/null`, pipe, encadeamento | a negacao **e** o stdout; descartado, nao existe |
+
+### O matcher tem tres ramos, nao um
+
+"O matcher e regex" e **falso para dois dos tres ramos**, e foi essa premissa que deixou passar um
+caso inseguro. Lido do binario instalado (`/opt/homebrew/Caskroom/claude-code/2.1.220/claude`, perto
+do literal `Invalid regex pattern in hook matcher:`) — **e comportamento de cliente, pode mudar numa
+release; a versao esta citada para poder ser reconferida**:
+
+| Ramo | Matcher | Como o cliente decide |
+|---|---|---|
+| 1 | ausente, vazio, `"*"` | casa com tudo |
+| 2 | casa `^[a-zA-Z0-9_|]+$` | **lista exata** separada por `\|`, comparada com `includes(tool)` — **nao e regex** |
+| 3 | qualquer outra coisa | regex **nao ancorada** |
+
+O ramo 2 e a armadilha. `matcher: "as"` casa `/as/.test("Bash")`, entao uma leitura so-regex conclui
+"coberto" e o installer nao registra o nosso; mas o cliente pega a lista, `["as"].includes("Bash")` e
+falso, e o hook do usuario tambem nao dispara. Resultado medido: **nenhum guard em Bash**, exit 0,
+sem mensagem — a mesma perda silenciosa que a tabela acima existe para fechar. `"B"` e a mesma classe
+com uma letra; para os outros gatilhos do harness as instancias de uma letra sao `r`
+(`startup|resume|clear`) e `a` (`auto|manual`).
+
+Entao a cobertura nao e igualdade de string nem regex sempre: `Bash|Write` cobre o nosso `Bash` pelo
+ramo 2, `Write` nao cobre, e um guard registrado so em `Write` nunca dispara em Bash. A comparacao
+roda por alternativa do matcher que **nos** declaramos; matcher ilegivel conta como nao-cobre, e a
+direcao segura e sempre instalar o nosso.
+
+Casos em `scripts/install.test.mjs`: um teste por forma da tabela de formas, um por ramo do matcher
+(`Write` estreito, `as` e `B` no ramo 2, `*` no ramo 1), e dois que fixam a idempotencia (segunda run
+e no-op; matcher que ja cobre nao duplica).
 
 **Tirar `Bash(gh pr merge *)` do `deny`, porem, exigiu.** O merge de permissoes so sabia
 acrescentar, entao a entrada removida do harness continuava instalada para sempre em qualquer

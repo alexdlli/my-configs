@@ -24,7 +24,20 @@ const INSTALLER = fileURLToPath(new URL('./install.mjs', import.meta.url));
 // stopped declaring this skill" expressible at all: the real checkout's
 // .claude/skills cannot be edited to prove a retraction.
 const HARNESS_DIRS = ['agents', 'hooks', 'commands'];
-const HARNESS_SETTINGS = { agent: 'orchestrator', permissions: { allow: ['Bash(git status:*)'] } };
+const GUARD_SCRIPT = 'guard-destructive.mjs';
+const HARNESS_GUARD_COMMAND = `node .claude/hooks/${GUARD_SCRIPT}`;
+const HARNESS_SETTINGS = {
+  agent: 'orchestrator',
+  permissions: { allow: ['Bash(git status:*)'] },
+  hooks: {
+    PreToolUse: [
+      {
+        matcher: 'Bash',
+        hooks: [{ type: 'command', command: HARNESS_GUARD_COMMAND, timeout: 5 }],
+      },
+    ],
+  },
+};
 
 const ALPHA = 'alpha';
 const BETA = 'beta';
@@ -136,6 +149,27 @@ function createExternalSkill(sandbox, name) {
   mkdirSync(target, { recursive: true });
   writeFileSync(join(target, 'SKILL.md'), `# ${name} installed outside the harness\n`);
   return target;
+}
+
+function installedSettings({ home }) {
+  return JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
+}
+
+function seedUserSettings({ home }, settings) {
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  writeFileSync(
+    join(home, '.claude', 'settings.json'),
+    `${JSON.stringify(settings, null, 2)}\n`,
+  );
+}
+
+function hookCommands(sandbox, event) {
+  const entries = installedSettings(sandbox).hooks?.[event] ?? [];
+  return entries.flatMap((entry) => entry.hooks.map((h) => h.command));
+}
+
+function installedGuardCommand({ home }) {
+  return `node ${join(home, '.claude', 'hooks', GUARD_SCRIPT)}`;
 }
 
 function setInstalledAgent({ home }, agent) {
@@ -381,6 +415,191 @@ test('retraction leaves the harness directory links alone', () => {
       );
     }
     assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, []));
+  });
+});
+
+// The guarantee this file is protecting: a hook the harness declares must end
+// up registered. Deciding "already there" by looking for the script's basename
+// anywhere in a command handed that decision to any user hook that happened to
+// print the name — and the guard is the one hook that carries a promise.
+test('a user hook that only mentions the guard script still gets the guard installed', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    const mention = `echo "see .claude/hooks/${GUARD_SCRIPT}" >> /tmp/${GUARD_SCRIPT}.log`;
+    seedUserSettings(sandbox, {
+      hooks: {
+        PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: mention }] }],
+      },
+    });
+
+    install(sandbox);
+
+    const commands = hookCommands(sandbox, 'PreToolUse');
+    assert.ok(
+      commands.includes(installedGuardCommand(sandbox)),
+      `the guard must be registered; got ${JSON.stringify(commands)}`,
+    );
+    assert.ok(commands.includes(mention), 'the user hook is never displaced');
+    const entry = installedSettings(sandbox).hooks.PreToolUse.find((e) =>
+      e.hooks.some((h) => h.command === installedGuardCommand(sandbox)),
+    );
+    assert.equal(entry.matcher, 'Bash');
+  });
+});
+
+test('a second install does not register the guard hook twice', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    install(sandbox);
+    install(sandbox);
+
+    const guard = installedGuardCommand(sandbox);
+    assert.deepEqual(
+      hookCommands(sandbox, 'PreToolUse').filter((c) => c === guard),
+      [guard],
+      'installing twice must stay a no-op',
+    );
+  });
+});
+
+// The relative command is correct in a project's .claude/settings.json, where
+// the installer rewrites it. Sitting in ~/.claude/settings.json it resolves
+// against the session's cwd instead — absent in most repos, and belonging to
+// another checkout where a file of that name exists. Since the guard denies only
+// by writing to stdout and always exits 0, a hook that never ran is
+// indistinguishable from one that allowed.
+test('a relative guard command in ~/.claude does not stand in for the absolute one', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    seedUserSettings(sandbox, {
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [{ type: 'command', command: HARNESS_GUARD_COMMAND }] },
+        ],
+      },
+    });
+
+    install(sandbox);
+
+    const commands = hookCommands(sandbox, 'PreToolUse');
+    assert.ok(
+      commands.includes(installedGuardCommand(sandbox)),
+      `a cwd-relative command registers nothing; got ${JSON.stringify(commands)}`,
+    );
+    assert.ok(commands.includes(HARNESS_GUARD_COMMAND), 'the user hook is never displaced');
+  });
+});
+
+// Claude Code 2.1.220 reads a matcher in three tiers, so coverage is neither
+// string equality nor plain regex: absent/empty/"*" is match-all, a matcher of
+// /^[a-zA-Z0-9_|]+$/ is an exact `|`-separated list, and only the rest is a
+// regex. `Bash|Write` covers `Bash` through the list tier.
+test('a guard wired to another matcher does not count as registered for Bash', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    seedUserSettings(sandbox, {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Write',
+            hooks: [{ type: 'command', command: installedGuardCommand(sandbox) }],
+          },
+        ],
+      },
+    });
+
+    install(sandbox);
+
+    const bashEntries = installedSettings(sandbox).hooks.PreToolUse.filter(
+      (entry) =>
+        entry.matcher === 'Bash' &&
+        entry.hooks.some((h) => h.command === installedGuardCommand(sandbox)),
+    );
+    assert.equal(bashEntries.length, 1, 'the guard must be registered for Bash, not only Write');
+  });
+});
+
+test('a matcher whose alternation already covers Bash is not duplicated', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    const existing = {
+      matcher: 'Bash|Write',
+      hooks: [{ type: 'command', command: installedGuardCommand(sandbox) }],
+    };
+    seedUserSettings(sandbox, { hooks: { PreToolUse: [existing] } });
+
+    install(sandbox);
+
+    assert.deepEqual(
+      installedSettings(sandbox).hooks.PreToolUse,
+      [existing],
+      'the list tier covers every trigger we declare, so ours is redundant',
+    );
+  });
+});
+
+// The trap the regex-only reading walked into: as a regex `as` matches "Bash",
+// but the client takes the exact-list branch for /^[a-zA-Z0-9_|]+$/ and
+// `["as"].includes("Bash")` is false. Reading it as covering leaves NO guard on
+// Bash — neither theirs nor ours — with exit 0 and no message. `B` is the same
+// class with one letter; `r` and `a` are the equivalents for the harness's
+// startup|resume|clear and auto|manual matchers.
+for (const matcher of ['as', 'B']) {
+  test(`matcher "${matcher}" is an exact list to the client, so it does not cover Bash`, () => {
+    withSandbox([ALPHA], (sandbox) => {
+      seedUserSettings(sandbox, {
+        hooks: {
+          PreToolUse: [
+            { matcher, hooks: [{ type: 'command', command: installedGuardCommand(sandbox) }] },
+          ],
+        },
+      });
+
+      install(sandbox);
+
+      const bashEntries = installedSettings(sandbox).hooks.PreToolUse.filter(
+        (entry) =>
+          entry.matcher === 'Bash' &&
+          entry.hooks.some((h) => h.command === installedGuardCommand(sandbox)),
+      );
+      assert.equal(
+        bashEntries.length,
+        1,
+        `substring-matching "${matcher}" as a regex would leave Bash unguarded`,
+      );
+    });
+  });
+}
+
+test('matcher "*" is match-all to the client, so ours is not added on top', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    const existing = {
+      matcher: '*',
+      hooks: [{ type: 'command', command: installedGuardCommand(sandbox) }],
+    };
+    seedUserSettings(sandbox, { hooks: { PreToolUse: [existing] } });
+
+    install(sandbox);
+
+    assert.deepEqual(
+      installedSettings(sandbox).hooks.PreToolUse,
+      [existing],
+      '"*" is tier 1, not a regex that throws on compile',
+    );
+  });
+});
+
+// The guard's denial IS its stdout, so a command that discards stdout has
+// registered nothing at all.
+test('a guard invocation with its stdout discarded does not count as registered', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    const silenced = `${installedGuardCommand(sandbox)} > /dev/null 2>&1`;
+    seedUserSettings(sandbox, {
+      hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: silenced }] }] },
+    });
+
+    install(sandbox);
+
+    const commands = hookCommands(sandbox, 'PreToolUse');
+    assert.ok(
+      commands.includes(installedGuardCommand(sandbox)),
+      `a decision written to /dev/null is not a decision; got ${JSON.stringify(commands)}`,
+    );
   });
 });
 

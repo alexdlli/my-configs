@@ -7,21 +7,31 @@ This harness ships an orchestrator + <!-- docs-count:specialists -->15 specialis
 | Agent          | Role                                          | Tools                                              | Model   | my-setup persona |
 |----------------|-----------------------------------------------|----------------------------------------------------|---------|------------------|
 | `orchestrator` | Decomposes tasks, delegates in parallel, synthesizes | inherit (all)                              | inherit | sisyphus         |
-| `explorer`     | Read-only research, code search, doc reading  | Read, Grep, Glob, WebFetch, WebSearch, Bash        | inherit | librarian        |
-| `planner`      | Designs strategy, returns step-by-step plans  | Read, Grep, Glob, WebFetch, Bash                   | inherit | prometheus       |
-| `pm`           | Turns a spec or discussion into contract-compliant tickets + a `blockedBy` graph | Read, Grep, Glob, Bash, WebFetch | inherit | —                |
-| `implementer`  | Writes/edits code per a plan                  | Read, Edit, Write, Grep, Glob, Bash, NotebookEdit  | inherit | hephaestus       |
-| `reviewer`     | Reviews local diffs for quality and security  | Read, Grep, Glob, Bash                             | inherit | oracle           |
-| `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | inherit | —                |
-| `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | inherit | —                |
-| `pr-triage`    | Classifies a PR's open feedback threads from `threads.json`; recommends, never applies | Read, Grep, Glob             | inherit | —                |
+| `explorer`     | Read-only research, code search, doc reading  | Read, Grep, Glob, WebFetch, WebSearch, Bash        | sonnet  | librarian        |
+| `planner`      | Designs strategy, returns step-by-step plans  | Read, Grep, Glob, WebFetch, Bash                   | opus    | prometheus       |
+| `pm`           | Turns a spec or discussion into contract-compliant tickets + a `blockedBy` graph | Read, Grep, Glob, Bash, WebFetch | opus    | —                |
+| `implementer`  | Writes/edits code per a plan                  | Read, Edit, Write, Grep, Glob, Bash, NotebookEdit  | opus    | hephaestus       |
+| `reviewer`     | Reviews local diffs for quality and security  | Read, Grep, Glob, Bash                             | opus    | oracle           |
+| `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | opus    | —                |
+| `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | opus    | —                |
+| `pr-triage`    | Classifies a PR's open feedback threads from `threads.json`; recommends, never applies | Read, Grep, Glob             | sonnet  | —                |
 | `wave-monitor` | Reports the state of a wave's branches as one compact table; never fixes, never merges | Read, Bash                  | haiku   | —                |
-| `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | inherit | atlas            |
-| `qa`           | Runs the change and produces the artifact that proves it (screenshot, integration test, command output) | Read, Grep, Glob, Bash, `mcp__argent__*` | inherit | —                |
+| `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | sonnet  | atlas            |
+| `qa`           | Runs the change and produces the artifact that proves it (screenshot, integration test, command output) | Read, Grep, Glob, Bash, `mcp__argent__*` | sonnet  | —                |
 | `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
-| `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | inherit | — (caveman)      |
+| `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | haiku   | — (caveman)      |
 | `cavecrew-reviewer`     | Single-line, severity-tagged findings              | Read, Grep, Bash                       | haiku   | — (caveman)      |
-| `atlassian`    | Confluence search, Jira lookups, task validation | Read, `mcp__atlassian__*`                        | inherit | —                |
+| `atlassian`    | Confluence search, Jira lookups, task validation | Read, `mcp__atlassian__*`                        | sonnet  | —                |
+
+### Why every specialist pins its own model
+
+`orchestrator` is the only agent left on `inherit`, because it *is* the main session and that session runs on `opus[1m]`. Subagents run inside the same `claude` process, so `model: inherit` made each one carry a 1M-token context window it never fills — measured at roughly 500 MB of RSS of baseline per session. Pinning the model per agent caps that at what the role actually needs:
+
+- **`haiku`** — mechanical, bounded output: locate, list, one-line findings, a 1-2 file edit.
+- **`sonnet`** — reading and execution where a larger window buys nothing: research, running the suite, running the product, classifying threads, MCP lookups.
+- **`opus`** (no `[1m]`) — reasoning where quality is the point: planning, ticket writing, implementing, reviewing.
+
+The suffix matters: `opus` and `opus[1m]` are the same model with different context budgets, and only the main session needs the second.
 
 `atlassian` and `qa` are the only agents with MCP access, and each depends on a server this repo's installer does not manage: the Atlassian Rovo MCP for `atlassian`, argent for `qa`. Without the server, `atlassian` is inert entirely; `qa` loses less than it looks — it still runs a CLI or an endpoint through `Bash`, and on `host: maestri` the device track is a Maestri portal driven by `"$MAESTRI_CLI"`, which is `Bash` as well. argent is what `qa` needs on every other host, and for everything a portal does not cover (profiling, network logs, screenshot diff, TV targets).
 
@@ -119,6 +129,6 @@ The wave and PR commands invoke `scripts/waves/*` through the `~/.claude/harness
 - Start with `claude --agent default` (or whatever agent name you want) to override.
 
 **Adding a new specialist**
-- Create `.claude/agents/<name>.md` in this repo with frontmatter (`name`, `description`, `tools`, `model: inherit`).
+- Create `.claude/agents/<name>.md` in this repo with frontmatter (`name`, `description`, `tools`, and an explicit `model:` — `haiku`, `sonnet` or `opus` per [the table above](#roster); never `inherit`, which drags the session's 1M window into the subagent).
 - Update `orchestrator.md`'s roster section so it knows the new agent exists.
 - Update this doc's roster table.
