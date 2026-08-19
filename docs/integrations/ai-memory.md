@@ -109,7 +109,7 @@ A workstream runs one agent at a time, enforced by a lease the launcher renews w
 Inside a managed run, the ledger is searchable:
 
 ```bash
-ai-memory workstream-search "wave dispatch" --limit 50 --json
+ai-memory workstream-search "install retraction" --limit 50 --json
 ```
 
 `--workstream-id` defaults to `AI_MEMORY_WORKSTREAM_ID`, which managed child processes already carry, so you never pass it by hand from inside a run.

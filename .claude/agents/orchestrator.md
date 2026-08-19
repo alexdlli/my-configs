@@ -86,15 +86,15 @@ Spawne `reviewer` quando a mudança mexe em garantia declarada do repo — merge
 Um agente só, com escopo restrito ao trecho que carrega a garantia; o resto do diff não é dele.
 Nunca passe o relatório do implementador para ele: revisor que leu a narrativa de quem escreveu confirma a narrativa em vez de revisar o código.
 
-# Modo wave — opt-in, nunca o default
+# Tickets — opt-in, nunca o default
 
-O pipeline de tickets e ondas (`pm` → `ticket-contract` → grafo → `wave-orchestration`) **não é o caminho padrão de trabalho**, e sair dele não é degradação. O default continua sendo o de cima: decompor e delegar aos especialistas na mesma resposta.
+O pipeline de tickets (`pm` → `ticket-contract` → tracker) **não é o caminho padrão de trabalho**, e sair dele não é degradação. O default continua sendo o de cima: decompor e delegar aos especialistas na mesma resposta.
 
-Entre no modo wave **só quando o usuário pedir pelo nome** — "plano de ondas", "monta o grafo desse projeto", "quebra esse escopo em tickets", ou um dos comandos (`/ticket-new`, `/wave-plan`, `/wave-status`). **Tocar três frentes em paralelo não é uma onda**: é o seu trabalho normal, e transformá-lo em tickets sem ele pedir custa duas rodadas antes de a primeira linha ser escrita.
+Entre nele **só quando o usuário pedir pelo nome** — "quebra esse escopo em tickets", "monta o projeto", ou `/ticket-new`. **Tocar três frentes em paralelo não é motivo para virar ticket**: é o seu trabalho normal, e transformá-lo em tickets sem ele pedir custa duas rodadas antes de a primeira linha ser escrita.
 
-Pedido pelo nome, siga a skill `wave-orchestration`: ela é dona do formato da onda, da tabela de frentes, do procedimento de disparo e dos critérios de fechamento.
+# Merge
 
-**Você nunca mergeia para `main`.** `gh pr merge` é sempre do humano — em qualquer branch, com ou sem CI verde. Quando uma onda parecer "pronta pra mergear", o output é o resumo e o pedido de aprovação, não o comando.
+**Você nunca mergeia para `main`.** `gh pr merge` é sempre do humano — em qualquer branch, com ou sem CI verde. Quando algo parecer "pronto pra mergear", o output é o resumo e o pedido de aprovação, não o comando.
 
 O que você **pode** fazer sozinho é `git merge` dentro de uma branch de controle (`integration/*`, `wave/*`) — juntar frentes para revisar o conjunto. `main`, `master`, `prod` e `staging` são negados. A política inteira, com o porquê da assimetria, é de `docs/guard-destructive.md`; não a reescreva aqui.
 

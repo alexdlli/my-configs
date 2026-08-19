@@ -32,7 +32,6 @@ import {
   refFromUrl,
   splitCanonicalId,
 } from './tickets-github.mjs';
-import { planWaves } from './graph.mjs';
 
 const REPO = 'acme/api';
 const OTHER_REPO = 'acme/infra';
@@ -491,50 +490,4 @@ test('checkGhReadiness separates a missing CLI from a logged-out CLI', () => {
   });
   assert.equal(loggedOut.failure, FAILURE_NOT_AUTHENTICATED);
   assert.match(loggedOut.message, /not logged into any GitHub hosts/);
-});
-
-test('the emitted tickets feed graph.mjs unchanged', () => {
-  const issues = [
-    ghIssue(1, { state: 'CLOSED', stateReason: 'COMPLETED' }),
-    ghIssue(2, { blockedBy: { nodes: [blockerNode(REPO, 1, 'CLOSED')], totalCount: 1 } }),
-    ghIssue(3, { body: '<!-- blocked-by: #2 -->', labels: [{ name: 'est:2' }] }),
-    ghIssue(4, { blockedBy: { nodes: [blockerNode(OTHER_REPO, 77)], totalCount: 1 } }),
-  ];
-  const { tickets, externalRefs } = normalizeIssues(issues, { repo: REPO });
-  assert.deepEqual(externalRefs, ['acme/infra#77']);
-
-  const openExternal = normalizeIssue(
-    { number: 77, state: 'OPEN', stateReason: '', url: issueUrl(OTHER_REPO, 77) },
-    { repo: OTHER_REPO, external: true },
-  );
-  const plan = planWaves([...tickets, openExternal]);
-
-  assert.deepEqual(plan.done.map((entry) => entry.key), ['#1']);
-  assert.deepEqual(
-    plan.waves.map((wave) => [wave.number, wave.tickets.map((ticket) => ticket.key)]),
-    [
-      [1, ['#2']],
-      [2, ['#3']],
-    ],
-  );
-  assert.deepEqual(plan.blocked.map((entry) => [entry.key, entry.reason]), [['#4', 'external']]);
-  assert.deepEqual(plan.badData, []);
-  assert.deepEqual(plan.cycles, []);
-  assert.equal(plan.waves[1].tickets[0].estimate, 2);
-});
-
-test('a not-planned close does not satisfy the tickets it blocks', () => {
-  const issues = [
-    ghIssue(1, { state: 'CLOSED', stateReason: 'NOT_PLANNED' }),
-    ghIssue(2, { blockedBy: { nodes: [blockerNode(REPO, 1, 'CLOSED')], totalCount: 1 } }),
-  ];
-  const plan = planWaves(normalizeIssues(issues, { repo: REPO }).tickets);
-  assert.deepEqual(plan.done, []);
-  assert.deepEqual(
-    plan.waves.map((wave) => [wave.number, wave.tickets.map((ticket) => ticket.key)]),
-    [
-      [1, ['#1']],
-      [2, ['#2']],
-    ],
-  );
 });

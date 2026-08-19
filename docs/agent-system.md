@@ -1,6 +1,6 @@
 # Agent System
 
-This harness ships an orchestrator + <!-- docs-count:specialists -->15 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + <!-- docs-count:specialists -->14 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
@@ -15,7 +15,6 @@ This harness ships an orchestrator + <!-- docs-count:specialists -->15 specialis
 | `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | inherit | —                |
 | `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | inherit | —                |
 | `pr-triage`    | Classifies a PR's open feedback threads from `threads.json`; recommends, never applies | Read, Grep, Glob             | inherit | —                |
-| `wave-monitor` | Reports the state of a wave's branches as one compact table; never fixes, never merges | Read, Bash                  | haiku   | —                |
 | `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | inherit | atlas            |
 | `qa`           | Runs the change and produces the artifact that proves it (screenshot, integration test, command output) | Read, Grep, Glob, Bash, `mcp__argent__*` | inherit | —                |
 | `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
@@ -48,22 +47,21 @@ Subagents inherit the parent session's permission mode. You don't need to config
 | Accept-edits      | implementer and tester edit without prompts. Full pipeline runs cleanly. |
 | Default           | Subagents prompt for permission per tool, like the parent.          |
 
-Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`wave-monitor`/`qa`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. `qa` is the widest of them: it runs the product under test through `Bash` and drives a simulator or a browser — a Maestri portal on `host: maestri`, `mcp__argent__*` anywhere else — and still cannot edit a line of the repo; a flow that fails goes back to `implementer` as a finding, never as a patch. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `gh issue create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision. `wave-monitor` is the same shape from the other side: its `Bash` exists to query `pr-state.mjs`, `git` and `gh`, and the one command that would end a wave on its own — `gh pr merge` — is held back by two layers, not one. `permissions.deny` blocks the literal command as a string and does survive `--dangerously-skip-permissions`, but it never sees the wrapped form: under the bypass, `bash -c "gh pr merge 3"` has no approval prompt left to catch it. What closes the wrapper is the `PreToolUse` hook `.claude/hooks/guard-destructive.mjs`, which is still evaluated under the bypass. Both facts were measured rather than assumed — [`docs/guard-destructive.md`](docs/guard-destructive.md) carries the table. Both layers also run in the client, so "merge stays human" holds exactly as long as the worker runs this client; the guarantee that doesn't depend on it is branch protection on GitHub.
+Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`qa`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. `qa` is the widest of them: it runs the product under test through `Bash` and drives a simulator or a browser — a Maestri portal on `host: maestri`, `mcp__argent__*` anywhere else — and still cannot edit a line of the repo; a flow that fails goes back to `implementer` as a finding, never as a patch. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `gh issue create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision. The one command that would end a PR on its own — `gh pr merge` — is held back by two layers, not one. `permissions.deny` blocks the literal command as a string and does survive `--dangerously-skip-permissions`, but it never sees the wrapped form: under the bypass, `bash -c "gh pr merge 3"` has no approval prompt left to catch it. What closes the wrapper is the `PreToolUse` hook `.claude/hooks/guard-destructive.mjs`, which is still evaluated under the bypass. Both facts were measured rather than assumed — [`docs/guard-destructive.md`](docs/guard-destructive.md) carries the table. Both layers also run in the client, so "merge stays human" holds exactly as long as the worker runs this client; the guarantee that doesn't depend on it is branch protection on GitHub.
 
 `pr-triage` goes one step further and has no `Bash` at all. The thread bodies it reads are untrusted input — anyone who can comment on a PR writes text that lands in its context, and review comments routinely contain "run this" or "apply this patch". Denying it every writing and executing tool is what makes prompt injection through a comment a non-event: the worst a malicious comment can achieve is a wrong recommendation, which a human reads before anything happens.
 
 ## Skills
 
-Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. <!-- docs-count:skills -->Four ship with the harness, under `.claude/skills/`.
+Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. <!-- docs-count:skills -->Three ship with the harness, under `.claude/skills/`.
 
-Two of them — `ticket-contract` and `wave-orchestration` — are deliberately **opt-in**, and their descriptions say so. They load when the user names tickets, a graph or a wave; they do not load because the orchestrator happens to be running three fronts at once. That is ordinary delegation, and routing it through the ticket pipeline spends two rounds before any code exists.
+One of them — `ticket-contract` — is deliberately **opt-in**, and its description says so. It loads when the user names tickets; it does not load because the orchestrator happens to be running three fronts at once. That is ordinary delegation, and routing it through the ticket pipeline spends two rounds before any code exists.
 
 | Skill | What it owns |
 |-------|--------------|
 | `ticket-contract` | The 12 fields a ticket needs in order to work as a standalone agent prompt, plus the project-creation rules, the readiness check and the tracker adapter. Source of truth for the `pm` agent. |
-| `wave-orchestration` | Planning execution in waves from a ticket dependency graph: reading the tickets from GitHub Issues via `gh`, building the graph, presenting the plan, and the wave's non-negotiable rules. |
 | `pr-babysitting` | Driving an open PR to review-ready, tracking CI and feedback as two independent states. Uses `pr-state.mjs` and `fetch-pr-threads.mjs`, and delegates thread classification to `pr-triage`. |
-| `maestri-orchestration` | Orchestrating a team from inside a Maestri terminal. Deliberately narrow: it writes only what changes by being there — `"$MAESTRI_CLI"` instead of `maestri`, the fragile paste channel, the two shared notes, the recruit verbs, and the floor as the wave's isolation primitive — including how to tell an isolated floor from a degraded one, and what to do when it degraded. Everything that holds in both environments is referenced by owner, never restated. |
+| `maestri-orchestration` | Orchestrating a team from inside a Maestri terminal. Deliberately narrow: it writes only what changes by being there — `"$MAESTRI_CLI"` instead of `maestri`, the fragile paste channel, the two shared notes, the recruit verbs, and the floor as an isolation primitive — including how to tell an isolated floor from a degraded one, and what to do when it degraded. Everything that holds in both environments is referenced by owner, never restated. |
 
 ### Two different things are called a "contract"
 
@@ -73,10 +71,10 @@ The names are close enough to merge in a reader's head, so keep them apart:
 |---|---|---|
 | What it governs | Quality of the **ticket** — the 12 fields that make a ticket usable as an agent prompt | The **interface** between `implementer` and `tester` while one ticket is executed: signatures, types, error behavior, scenario list |
 | Who writes it | `pm`, when the project is created | Both agents, in parallel, before either writes code |
-| When it exists | Before the wave starts | Inside the execution of a single ticket |
+| When it exists | Before the work starts | Inside the execution of a single ticket |
 | Lifetime | Lives in the tracker | Working state; `.wave/` is gitignored |
 
-Neither replaces the other. The ticket contract decides whether work is ready to start; the wave contract keeps two parallel agents building and testing the same shape.
+Neither replaces the other. The ticket contract decides whether work is ready to start; the interface contract keeps two parallel agents building and testing the same shape.
 
 ### How skills are installed
 
@@ -94,11 +92,9 @@ One `.md` per command under `.claude/commands/`, symlinked as a whole directory 
 |---------|--------------|
 | `/sync-harness` | Force a harness update now, bypassing only the 6h throttle. All other safety checks still apply. |
 | `/ticket-new` | Turn a discussion, spec or raw scope into tickets that satisfy the ticket contract. Spawns `pm`; approval is required before anything is published to the tracker. |
-| `/wave-plan` | Read a GitHub repo slice (`--repo` plus a milestone or label), build its dependency graph, and print the wave plan via the `wave-orchestration` skill. |
-| `/wave-status` | Spawn `wave-monitor` for the branches of a running wave and print its table. Reports only: no fixing, no merging. |
 | `/pr-babysit` | Drive a PR to review-ready via the `pr-babysitting` skill, with CI and feedback tracked as separate states. |
 
-The wave and PR commands invoke `scripts/waves/*` through the `~/.claude/harness` symlink, so their paths are stable regardless of where the checkout lives. Their read-only invocations are pre-approved in `.claude/settings.json`; the tracker writes they may lead to (`gh issue create`, `gh issue edit`, `gh issue comment`) are not, and prompt every time.
+`/ticket-new` and `/pr-babysit` invoke `scripts/github/*` through the `~/.claude/harness` symlink, so their paths are stable regardless of where the checkout lives. Their read-only invocations are pre-approved in `.claude/settings.json`; the tracker writes they may lead to (`gh issue create`, `gh issue edit`, `gh issue comment`) are not, and prompt every time.
 
 ## Troubleshooting
 

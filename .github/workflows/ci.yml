@@ -71,7 +71,7 @@ jobs:
           # Node's matcher expands them instead of the shell.
           globs=(
             'scripts/*.test.mjs'
-            'scripts/waves/*.test.mjs'
+            'scripts/github/*.test.mjs'
             '.claude/hooks/lib/*.test.mjs'
           )
 
@@ -82,7 +82,7 @@ jobs:
           # number here is a deliberate test removal, which is exactly when a
           # human should be looking. A floor on the total would not do: a glob
           # can collapse to a single test while the sum still looks healthy.
-          min_pass_per_glob=(53 131 42)
+          min_pass_per_glob=(53 102 42)
 
           # The pair is the contract. Deleting a glob line without its floor is
           # how a whole suite stops running while the step stays green.
@@ -149,7 +149,7 @@ jobs:
           // The ask-then-merge policy took it out of permissions.deny so the
           // command can reach the permission prompt and Alex can approve a merge
           // from the coordinator. The merge guarantee did not go away, it moved
-          // one layer down: the PreToolUse guard denies it in a wave worker, and
+          // one layer down: the PreToolUse guard denies it in a worker, and
           // it sees the `bash -c` envelope a string deny never sees. Putting a
           // third entry back here re-breaks the policy — MERGE_GUARD_HOOK below
           // is the assertion that replaces it. See docs/guard-destructive.md.
@@ -286,7 +286,7 @@ jobs:
 
             const workerDecision = guardDecision(await sandboxRepo('worker', JSON.stringify({ ticket: 'ci', branch: 'ci' })));
             if (workerDecision !== 'deny') {
-              problems.push(`${MERGE_GUARD_HOOK.script} answered ${JSON.stringify(workerDecision)} for "${MERGE_COMMAND}" in a wave worker, expected "deny"`);
+              problems.push(`${MERGE_GUARD_HOOK.script} answered ${JSON.stringify(workerDecision)} for "${MERGE_COMMAND}" in a worker, expected "deny"`);
             }
 
             const coordinatorDecision = guardDecision(await sandboxRepo('coordinator'));

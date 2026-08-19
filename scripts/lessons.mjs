@@ -263,7 +263,7 @@ export function recordOccurrence(store, { signal, ticket, note, evidence = null,
  * Promote every candidate that has recurred in enough distinct tickets.
  *
  * Runs inside `record`, and stands alone for the case a single run cannot
- * reach: two waves record the same lesson in different tickets on different
+ * reach: two runs record the same lesson in different tickets on different
  * branches, and the merge produces a candidate with two tickets that no single
  * run ever saw. Re-deriving status from the ticket list repairs exactly that.
  *

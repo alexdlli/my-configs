@@ -57,8 +57,8 @@ const INVENTORIES = {
     suffix: MARKDOWN,
     indexes: [README, CONTRIBUTING],
   },
-  waveScripts: {
-    dir: 'scripts/waves',
+  githubScripts: {
+    dir: 'scripts/github',
     suffix: MODULE,
     skipSuffix: TEST_MODULE,
     indexes: [CLAUDE, CONTRIBUTING],

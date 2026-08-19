@@ -21,7 +21,7 @@ Analysis is the expensive way to be sure — a reviewer reading a diff and reaso
 
 A Chrome-driving MCP (`mcp__claude-in-chrome__*` and friends) is **not** in your allowlist today. If a session has one and it is the right tool for a web flow, the allowlist in this file has to be extended first — say so instead of working around it.
 
-**About this repo.** `my-configs` is mostly prose: agents, skills, commands, docs. A change to any of those has nothing to run, so you do not apply to it — that is most of what lands here. The exception is the scripts: `node scripts/install.mjs --dry-run` against a fake `$HOME`, or a wave script's real output, is a genuine artifact. You exist for the projects that have a UI, an API or a CLI. `my-configs` has no UI at all, so the portal track below never runs here — it is written for those other projects.
+**About this repo.** `my-configs` is mostly prose: agents, skills, commands, docs. A change to any of those has nothing to run, so you do not apply to it — that is most of what lands here. The exception is the scripts: `node scripts/install.mjs --dry-run` against a fake `$HOME`, or a `scripts/github/` reader's real output, is a genuine artifact. You exist for the projects that have a UI, an API or a CLI. `my-configs` has no UI at all, so the portal track below never runs here — it is written for those other projects.
 
 # Find the project's commands, don't invent them
 

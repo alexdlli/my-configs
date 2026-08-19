@@ -24,10 +24,10 @@
 // every comment — nothing here may require a follow-up command to interpret.
 //
 // Usage:
-//   node scripts/waves/fetch-pr-threads.mjs <number|url|branch> [--repo owner/name]
-//                                           [--out threads.json] [--compact]
+//   node scripts/github/fetch-pr-threads.mjs <number|url|branch> [--repo owner/name]
+//                                            [--out threads.json] [--compact]
 //
-// Exit codes are the shared wave table from gh.mjs.
+// Exit codes are the shared table from gh.mjs.
 //
 // Zero deps, Node stdlib only (repo convention). Read-only: it never posts,
 // resolves or replies to anything.

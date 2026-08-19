@@ -22,13 +22,13 @@ docs/
   installation.md      # install, flags, conflicts, troubleshooting
   usage.md             # driving the harness day to day
   contributing.md      # this file
-  waves.md             # ticket contract, dependency graph, wave plan
+  tickets.md           # ticket contract + the GitHub Issues reader
   integrations/        # session-context, maestri, ecotokens, ai-memory, opencode
 scripts/
   install.mjs          # symlink + merge installer
   install.test.mjs     # link retraction, both directions: what the harness stopped declaring goes, what it still declares stays
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
-  waves/               # wave pipeline: tickets-github, graph, gh, pr-state, fetch-pr-threads
+  github/              # read-only gh readers: tickets-github, gh, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
   verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
   backup-ai-memory.mjs # volume backup + rotation + LaunchAgent
@@ -117,7 +117,7 @@ Prose that says "five hooks", or a table that claims to list every agent, goes s
 | `commands` | `.claude/commands/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
 | `hooks` | `.claude/hooks/*.mjs` | `README.md`, `docs/installation.md` |
 | `integrations` | `docs/integrations/*.md` | `README.md`, `docs/contributing.md` |
-| `waveScripts` | `scripts/waves/*.mjs` minus `*.test.mjs` | `CLAUDE.md`, `docs/contributing.md` |
+| `githubScripts` | `scripts/github/*.mjs` minus `*.test.mjs` | `CLAUDE.md`, `docs/contributing.md` |
 
 Naming the entry is the point; the number is only its symptom. A new agent that nobody documented is the actual defect, and the failure says which file exists and which doc omits it. When a new doc becomes an index for an inventory, add it to that inventory's `indexes` in the test.
 
@@ -139,13 +139,13 @@ Three limits, all deliberate:
 
 ```bash
 node --test 'scripts/*.test.mjs'
-node --test 'scripts/waves/*.test.mjs'
+node --test 'scripts/github/*.test.mjs'
 node --test '.claude/hooks/lib/*.test.mjs'
 ```
 
 Both forms are validated. Quoting hands the glob to Node's own matcher instead of the shell; unquoted, the shell expands it first. Either works.
 
-**Never pass a directory to `node --test`.** On the Node in use here (24.15.0) it is broken for *any* directory: the positional is resolved by the CJS loader as a module and the runner never starts. The failure is not obvious — instead of erroring out, it reports the directory path itself as a single failing test named `scripts/waves`, with the message `'test failed'` and a plausible duration. So a suite that never ran looks like a suite that ran and failed. This has already cost two people time. Pass a glob or explicit file paths.
+**Never pass a directory to `node --test`.** On the Node in use here (24.15.0) it is broken for *any* directory: the positional is resolved by the CJS loader as a module and the runner never starts. The failure is not obvious — instead of erroring out, it reports the directory path itself as a single failing test named `scripts/github`, with the message `'test failed'` and a plausible duration. So a suite that never ran looks like a suite that ran and failed. This has already cost two people time. Pass a glob or explicit file paths.
 
 Every push to `main` and every pull request runs `.github/workflows/ci.yml` — `node --check` on every `.mjs` in the tree, the three globs above, and one install/uninstall cycle against a throwaway `$HOME`.
 

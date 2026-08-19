@@ -8,13 +8,13 @@ Use a skill `pr-babysitting` para acompanhar o PR indicado em `$ARGUMENTS`
 Estado do CI:
 
 ```
-node ~/.claude/harness/scripts/waves/pr-state.mjs $ARGUMENTS
+node ~/.claude/harness/scripts/github/pr-state.mjs $ARGUMENTS
 ```
 
 Feedback das três superfícies mais o fingerprint:
 
 ```
-node ~/.claude/harness/scripts/waves/fetch-pr-threads.mjs $ARGUMENTS --out .wave/pr/threads.json
+node ~/.claude/harness/scripts/github/fetch-pr-threads.mjs $ARGUMENTS --out .wave/pr/threads.json
 ```
 
 Depois spawne o agente `pr-triage` passando o **caminho** do `threads.json` — ele

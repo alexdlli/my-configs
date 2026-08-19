@@ -19,9 +19,9 @@
 // conclusion is RUNNING. `ci.reason` says which of the two happened.
 //
 // Usage:
-//   node scripts/waves/pr-state.mjs <number|url|branch> [--repo owner/name] [--compact]
+//   node scripts/github/pr-state.mjs <number|url|branch> [--repo owner/name] [--compact]
 //
-// Exit codes are the shared wave table from gh.mjs. The CI conclusion is
+// Exit codes are the shared table from gh.mjs. The CI conclusion is
 // deliberately NOT an exit code — a failed query must never be readable as a CI
 // verdict. Read `.ci.conclusion` for that.
 //

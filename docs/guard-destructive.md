@@ -38,9 +38,9 @@ A medicao da issue #2 respondeu a pergunta que estava aberta e abriu outra:
   portao de aprovacao que era o backstop dele. Sob bypass, `Bash(gh pr merge *)` barra a forma
   literal e **nao** barra `bash -c "gh pr merge 3"`.
 
-O dispatch de ondas roda os workers com o bypass ligado por padrao (ver `docs/waves.md`), entao
-esse furo nao e teorico: e o modo normal de operacao de N agentes sem ninguem olhando o
-terminal. Um hook `PreToolUse` devolvendo `permissionDecision: "deny"` continua sendo avaliado
+Um agente rodando sem ninguem olhando o terminal roda com o bypass ligado, entao esse furo nao
+e teorico: e o modo normal de operacao de qualquer frente despachada em paralelo. Um hook
+`PreToolUse` devolvendo `permissionDecision: "deny"` continua sendo avaliado
 sob bypass — foi medido, nao inferido — e e ele que fecha o envelope.
 
 ## Premissa: agente distraido, nao atacante
@@ -180,10 +180,14 @@ coisa de verdade.
 
 ## Como o guard sabe que e um worker
 
-Por um **marcador explicito**, nunca por nome de pasta. O dispatch de ondas escreve
-`.wave/worker.json` na raiz de cada worktree de worker (passo 2a da skill
-`wave-orchestration`), e o guard sobe procurando por ele. `w1-issue-3` e convencao do dispatch
-de hoje e vai mudar; o marcador e o contrato.
+Por um **marcador explicito**, nunca por nome de pasta. Quem despacha um agente numa worktree
+propria escreve `.wave/worker.json` na raiz dela, e o guard sobe procurando por ele. Nome de
+pasta e convencao e vai mudar; o marcador e o contrato.
+
+**Nenhum procedimento do harness escreve esse marcador hoje.** O dispatch de ondas, que era o
+unico, saiu na tag `pre-wave-removal`. O caminho de worker continua no guard e continua
+testado, porque o marcador e escrito a mao por quem sobe o agente — e um caminho de codigo que
+so acorda com o marcador presente nao custa nada enquanto ninguem o escreve.
 
 So a **presenca** e o fato de **ser JSON valido** contam. Os campos (`ticket`, `branch`,
 `createdAt`) sao para o humano que abre o worktree — cada campo que o guard exigisse seria mais
@@ -204,7 +208,7 @@ para tras. Os dois ancoras sao pesquisados e **qualquer veredito de worker vence
 
 De cada ancora, a busca sobe diretorio por diretorio ate a **raiz do repo** (o diretorio que
 contem `.git` — diretorio no checkout normal, arquivo numa worktree ligada), inclusive. As
-worktrees de onda ficam **dentro** do checkout do coordenador, e subir nunca as alcanca: por isso
+worktrees de worker ficam **dentro** do checkout do coordenador, e subir nunca as alcanca: por isso
 o coordenador nao vira worker por ter cinco delas ao lado.
 
 ### Falha fechada, e e o inverso do resto do hook

@@ -5,7 +5,7 @@
 //   { id, key, title, url, estimate, status, statusType, blockedBy, body, external }
 //
 // plus `blockedBySources`, a GitHub-only extra that records where each edge came
-// from (`native` | `marker` | `both`). graph.mjs ignores it.
+// from (`native` | `marker` | `both`), for debugging a wrong edge.
 //
 // `blockedBy` is the union of the native GitHub issue dependency (the `blockedBy`
 // field of `gh issue list --json`) and an anchored body marker,
@@ -57,8 +57,8 @@ const STATUS_CLOSED_COMPLETED = 'Closed (completed)';
 const STATUS_CLOSED_NOT_PLANNED = 'Closed (not planned)';
 const STATUS_CLOSED_NO_REASON = 'Closed (no reason)';
 
-// graph.mjs treats `completed` as "merged, satisfies whatever it blocks"; every
-// other type leaves the blocker open.
+// `completed` means "merged, satisfies whatever it blocks"; every other type
+// leaves the blocker open.
 const STATUS_TYPE_OPEN = 'open';
 const STATUS_TYPE_COMPLETED = 'completed';
 const STATUS_TYPE_CANCELED = 'canceled';
@@ -566,7 +566,7 @@ Estimates come from the conventional label \`est:<n>\` (\`est:3\`, \`est:0.5\`).
 
 Examples:
   node tickets-github.mjs --repo acme/api --milestone 7
-  node tickets-github.mjs --repo acme/api --label waves --json
+  node tickets-github.mjs --repo acme/api --label backend --json
 
 Exit codes:
   0 success   2 usage   3 gh CLI missing   4 GitHub unreachable or rate limited
@@ -635,7 +635,7 @@ async function listIssues(opts) {
   if (classified.data.length > ISSUE_FETCH_LIMIT) {
     fail({
       failure: FAILURE_TRUNCATED,
-      message: `more than ${ISSUE_FETCH_LIMIT} issues match this scope — narrow it with --milestone or --label instead of planning waves over a truncated repo`,
+      message: `more than ${ISSUE_FETCH_LIMIT} issues match this scope — narrow it with --milestone or --label instead of reading a truncated repo`,
     });
   }
   return classified.data;
@@ -650,7 +650,7 @@ function announceScope(opts, count) {
   );
   if (count === 0) {
     console.error(
-      'read succeeded and matched 0 issue(s) — an empty plan here means an empty scope, not a failed read',
+      'read succeeded and matched 0 issue(s) — an empty result here means an empty scope, not a failed read',
     );
   }
 }

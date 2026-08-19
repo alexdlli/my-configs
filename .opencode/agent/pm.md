@@ -41,11 +41,11 @@ ticket.
 
 **GitHub Issues** (`tracker: "github"`) — read and write, and the personal tracker.
 The conventions are not guessable and they are not yours to invent: read
-`scripts/waves/tickets-github.mjs:116-121` and `docs/waves.md:198-232` before writing a
+`scripts/github/tickets-github.mjs:116-121` and `docs/tickets.md:115-165` before writing a
 single issue, and match the parser exactly.
 
 - **Scope.** GitHub has no "project". Pick `--milestone` or `--label` (repeatable) before
-  creating the first issue and apply it to every one of them; with no slice, the wave
+  creating the first issue and apply it to every one of them; with no slice, the ticket
   reader takes the whole repo.
 - **Create** with `gh issue create --repo <owner>/<repo> --title ... --body-file ... --label ...`.
   Always `--body-file`: a twelve-section markdown body does not survive shell quoting.
@@ -69,7 +69,7 @@ single issue, and match the parser exactly.
   carries no marker at all and says so in prose in field 9. Both rules, plus the two safe
   ways to quote the syntax, are in `ticket-contract` under "Campo 9 no GitHub".
 - **Verify before reporting done.** Run
-  `node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>]`
+  `node ~/.claude/harness/scripts/github/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>]`
   over the slice you created, and require five things, not one:
   1. exit 0;
   2. every edge you declared visible in the table;
@@ -86,8 +86,8 @@ single issue, and match the parser exactly.
   outside the slice you read, so a leaked `#12` resolving to an issue *inside* the slice
   lands as an ordinary edge — no warning, no `external` row, nothing on screen telling it
   apart from a legitimate one. Both shapes are almost always a marker literal that leaked
-  into an issue body: the external one leaves the dependent unschedulable in every wave
-  plan, the in-scope one leaves it waiting on an issue it has nothing to do with. Exit 8
+  into an issue body: the external one leaves the dependent blocked on something
+  outside your reach, the in-scope one leaves it waiting on an issue it has nothing to do with. Exit 8
   means the bodies you wrote are malformed — fix the body, don't recreate the issues.
 
 Writing to a tracker or to GitHub is not pre-approved in `.claude/settings.json`. Expect a

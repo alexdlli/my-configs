@@ -1,8 +1,9 @@
 # Uso
 
 Guia de consulta: o que o harness faz sozinho, o que você digita, e o que dispara sem
-comando nenhum. Arquitetura e roster em [`agent-system.md`](agent-system.md); o fluxo de
-ondas em detalhe em [`waves.md`](waves.md); instalação em [`installation.md`](installation.md).
+comando nenhum. Arquitetura e roster em [`agent-system.md`](agent-system.md); o contrato de
+ticket e o leitor de issues em [`tickets.md`](tickets.md); instalação em
+[`installation.md`](installation.md).
 
 ## 1. Onde isso roda
 
@@ -17,12 +18,12 @@ O host é detectado por variável de ambiente, nunca por processo ou socket aber
 
 | Host | Detectado por | O que muda |
 |---|---|---|
-| Maestri | `MAESTRI_TERMINAL_ID` | Injeta o aviso de que `maestri` **não está no PATH** em zsh: toda invocação vai por `"$MAESTRI_CLI"`. A onda tem topologia nativa (`floor create` + `recruit --floor`), e o `qa` prova a entrega num portal do canvas em vez do argent |
-| Terminal comum | a variável ausente | Nada. A onda vira `git worktree` cortado à mão, e o `qa` usa o argent |
+| Maestri | `MAESTRI_TERMINAL_ID` | Injeta o aviso de que `maestri` **não está no PATH** em zsh: toda invocação vai por `"$MAESTRI_CLI"`. Frentes paralelas têm topologia nativa (`floor create` + `recruit --floor`), e o `qa` prova a entrega num portal do canvas em vez do argent |
+| Terminal comum | a variável ausente | Nada. Frente paralela vira `git worktree` cortado à mão, e o `qa` usa o argent |
 
-Agentes, skills, comandos e hooks são idênticos nos dois. **Nenhum dos dois tem dispatch de
-onda automático** — `dispatch.available` é `false` em ambos e o driver não existe; o que o
-campo carrega é a `reason`, que nomeia o procedimento manual daquele host.
+Agentes, skills, comandos e hooks são idênticos nos dois. **Nenhum dos dois tem dispatch
+automático** — `dispatch.available` é `false` em ambos e o driver não existe; o que o campo
+carrega é a `reason`, que nomeia o procedimento manual daquele host.
 
 ## 2. O que acontece sem eu pedir
 
@@ -43,7 +44,7 @@ O guard não trata os três comandos igual:
 |---|---|
 | `git push --force` | Em todo contexto, sem exceção |
 | `git commit --no-verify` | Em todo contexto, sem exceção |
-| `gh pr merge` | **Só em worker de onda**, identificado pelo marcador `.wave/worker.json`. Fora dele o comando cai no prompt de permissão — que é exatamente onde você aprova o merge |
+| `gh pr merge` | **Só em worker**, identificado pelo marcador `.wave/worker.json`. Fora dele o comando cai no prompt de permissão — que é exatamente onde você aprova o merge |
 
 Ele falha aberto em erro interno (guard que nega por bug próprio mata o Bash da sessão). A
 exceção deliberada é não conseguir dizer se a sessão é worker: aí nega. Detalhes e o que ele
@@ -55,8 +56,6 @@ de propósito **não** pega em [`guard-destructive.md`](guard-destructive.md).
 |---|---|---|
 | `/sync-harness` | nada | Atualiza o harness agora, ignorando só o throttle de 6h. Todas as outras checagens continuam valendo. Output verbatim |
 | `/ticket-new` | escopo, spec ou discussão (vazio: a conversa atual) | Spawna o `pm` com a skill `ticket-contract`. Apresenta a quebra e **espera aprovação** antes de publicar no tracker |
-| `/wave-plan` | `owner/repo` + milestone ou label | Tabela de ondas, mais os destaques que não cabem em célula: fan-in, bloqueado externamente, dado ruim |
-| `/wave-status` | número da onda, ou a lista de branches/tickets | Spawna o `wave-monitor` (`haiku`, contexto próprio) e devolve uma tabela compacta. Só reporta |
 | `/pr-babysit` | número, URL ou branch (vazio: o PR da branch atual) | Leva o PR a review-ready, rastreando CI e feedback como dois estados independentes |
 
 Comando novo fica vivo assim que o checkout é atualizado — o diretório inteiro é
@@ -70,11 +69,9 @@ o que o Claude lê para decidir quem acordar. Falar a frase certa basta.
 | Frase | O que acorda |
 |---|---|
 | "quebra esse escopo em tickets" / "esse ticket tá bom?" / "monta o projeto" | Skill `ticket-contract` e o agente `pm` — **só nessas palavras**: tarefa comum não vira ticket |
-| "quantas frentes dá pra tocar em paralelo?" / "monta o grafo desse projeto" / "plano de ondas" | Skill `wave-orchestration` (planejamento; o disparo é manual) — **só nessas palavras**: tocar três frentes em paralelo é trabalho normal do orquestrador, não uma onda |
 | "o CI falhou" / "por que o check está vermelho" / "responder o review" | Skill `pr-babysitting`, que delega a classificação das threads ao agente `pr-triage` |
 | "onde está definido X?" / "o que chama Y?" / "mapeia esse diretório" | Agente `cavecrew-investigator` (tabela `file:line`, saída comprimida) |
 | "valida essa task contra PROJ-123" / qualquer URL `*.atlassian.net` | Agente `atlassian` — o único com acesso MCP, e só em sinal explícito |
-| "como está a onda 2?" / "quais tickets estão verdes?" | Agente `wave-monitor` |
 
 Se o agente errado (ou nenhum) acordar, o conserto é editar o `description:` dele, não
 inventar um roteador.
@@ -82,63 +79,65 @@ inventar um roteador.
 ## 5. Do "tenho uma ideia" ao merge — o caminho longo, e ele é opt-in
 
 **Este fluxo não é o padrão.** O padrão é pedir a coisa e o orquestrador decompor e delegar
-na mesma resposta, sem ticket e sem onda. O caminho abaixo existe para o projeto que vale
-tickets — várias frentes com dependência real entre elas, executadas por agentes que nascem
-sem contexto — e ele só começa quando **você** o chama pelo nome ou por um dos comandos.
+na mesma resposta, sem ticket nenhum. O caminho abaixo existe para o escopo que vale tickets
+— várias frentes com dependência real entre elas, executadas por agentes que nascem sem
+contexto — e ele só começa quando **você** o chama pelo nome ou por `/ticket-new`.
 
-Vale o preço quando o grafo é real. Não vale para uma frente só: ali o custo de virar ticket
-é duas rodadas antes de a primeira linha ser escrita.
+Não vale para uma frente só: ali o custo de virar ticket é duas rodadas antes de a primeira
+linha ser escrita.
 
 1. **Você** descreve o escopo. `/ticket-new` → o `pm` quebra em tickets com os 12 campos do
    contrato. O ticket **é** o prompt: o que não estiver escrito não existe para quem executa.
 2. **Você aprova** a quebra. Só então ela é publicada no tracker.
-3. `/wave-plan` lê os tickets do GitHub Issues via `gh`, monta o grafo pelo
-   `blockedBy` declarado e imprime as ondas. Plano de uma onda só costuma significar
-   `blockedBy` não preenchido, não projeto plano.
-4. **Você escolhe** a onda. O disparo é manual: um worktree (ou floor) por ticket, cortado de
-   uma `origin/main` recém-buscada, com um agente em cada e o prompt vindo de arquivo.
-5. Cada worker executa no seu worktree: baseline antes de editar, `git stash` proibido (o
+3. **Você escolhe** o que entra agora, lendo o `blockedBy` declarado. O disparo é manual: um
+   worktree (ou floor) por ticket, cortado de uma `origin/main` recém-buscada, com um agente
+   em cada e o prompt vindo de arquivo.
+4. Cada worker executa no seu worktree: baseline antes de editar, `git stash` proibido (o
    stash é um ref único compartilhado entre worktrees), commit, push, PR contra `main` — e
    **para**.
-6. `/wave-status` acompanha. `/pr-babysit <n>` leva cada PR até review-ready: CI verde e
-   feedback respondido, rastreados separadamente.
-7. Revisor só se a mudança mexer em garantia declarada do repo — merge humano, guard de
+5. `/pr-babysit <n>` leva cada PR até review-ready: CI verde e feedback respondido,
+   rastreados separadamente.
+6. Revisor só se a mudança mexer em garantia declarada do repo — merge humano, guard de
    comando, permissão. Um agente, escopo restrito ao trecho que carrega a garantia.
-8. **Você aperta o merge do PR.** Sempre — `gh pr merge` é humano em todo contexto, e o prompt
-   do worker diz isso com todas as letras. Um agente só mergeia sozinho com `git merge` dentro
-   de uma branch de controle (`integration/*`, `wave/*`), nunca em `main`. A política é de
+7. **Você aperta o merge do PR.** Sempre — `gh pr merge` é humano em todo contexto. Um agente
+   só mergeia sozinho com `git merge` dentro de uma branch de controle (`integration/*`,
+   `wave/*`), nunca em `main`. A política é de
    [`guard-destructive.md`](guard-destructive.md); a garantia que não depende do cliente
    continua sendo branch protection no GitHub.
-9. **Você libera** a onda seguinte, voltando ao passo 4. A onda `n+1` depende de *merge*, não
-   de aprovação.
+8. **Você libera** o que estava bloqueado, voltando ao passo 3. O dependente depende de
+   *merge*, não de aprovação.
+
+O planejamento em ondas que ficava entre os passos 2 e 3 — grafo de dependências,
+`/wave-plan`, `/wave-status` — foi removido depois de rodar uma vez. Está preservado na tag
+`pre-wave-removal`.
 
 ## 6. Quanto custa
 
 Números medidos aqui, não estimativa.
 
-- **Uma onda de 5 tickets produziu 38 processos concorrentes e load ~5.** O fan-out é
+- **Cinco tickets em paralelo produziram 38 processos concorrentes e load ~5.** O fan-out é
   multiplicativo: cada worker nasce no `orchestrator` e delega, então 5 tickets não são 5
   agentes. Duas ou três frentes por vez é o número realista para uma máquina só — a largura
-  técnica da onda (o grafo) e a largura que a máquina aguenta são coisas diferentes.
+  que o `blockedBy` permite e a largura que a máquina aguenta são coisas diferentes.
 - **Uma passada de revisão: 60-70k tokens.** Duas lentes sobre todo PR não trivial consumiram
   20x a quota em 4 dias — foi por isso que a revisão adversarial saiu do harness. Sobrou um
   revisor, e só onde a mudança mexe em garantia declarada.
-- `wave-monitor` e `cavecrew-*` rodam em `haiku` e em contexto próprio justamente porque o
-  volume que eles geram (payload de PR, varredura de arquivo) morre com eles.
+- Os `cavecrew-*` rodam em `haiku` e em contexto próprio justamente porque o volume que eles
+  geram (payload de PR, varredura de arquivo) morre com eles.
 
 ## 7. Limitações conhecidas
 
-- **Nenhum host dispara onda sozinho.** A detecção funciona e diz o procedimento; driver
+- **Nenhum host dispara frente sozinho.** A detecção funciona e diz o procedimento; driver
   automático não existe em lugar nenhum. O disparo é manual em ambos: `floor create` +
   `recruit --floor` no Maestri, `git worktree add` no terminal comum. O que se perde sem
-  gerenciador — linhagem e vínculo com o ticket — volta como marcador `.wave/worker.json` e
-  tabela da onda, e os dois são obrigatórios, não opcionais.
-- **`/wave-plan` não enxerga colisão de arquivo.** O grafo é feito só de dependência
-  declarada (`blockedBy`). Dois tickets da mesma onda editando o mesmo arquivo entram em
-  paralelo sem aviso nenhum — quem percebe isso é você, lendo o campo de arquivos afetados.
-- **Floor do Maestri não tem verbo de remoção.** `floor` é `create|list`: uma onda de N
-  tickets deixa N floors que só você apaga na interface do app. Confirme a onda antes do
-  primeiro `create`.
+  gerenciador — linhagem e vínculo com o ticket — volta como marcador `.wave/worker.json`,
+  que é obrigatório, não opcional: sem ele o `guard-destructive` não reconhece a sessão como
+  worker e não emite veredito nenhum sobre `gh pr merge`.
+- **Ninguém enxerga colisão de arquivo.** O `blockedBy` é dependência declarada, e só. Dois
+  tickets sem aresta entre eles editando o mesmo arquivo entram em paralelo sem aviso
+  nenhum — quem percebe isso é você, lendo o campo de arquivos afetados.
+- **Floor do Maestri não tem verbo de remoção.** `floor` é `create|list`: N tickets deixam N
+  floors que só você apaga na interface do app. Confirme antes do primeiro `create`.
 - **Mensagem longa para agente já rodando cai no paste trap.** O texto fica no composer sem
   ser submetido, e o terminal fica indistinguível de um agente pensando. Daí a regra de
   instrução curta na mensagem e conteúdo longo em nota ou arquivo, e de **verificar** a

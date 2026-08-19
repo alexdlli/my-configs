@@ -17,7 +17,6 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `pr-author`    | Drafts PRs from the current branch            |
 | `pr-reviewer`  | Reviews open GitHub PRs                       |
 | `pr-triage`    | Classifies PR feedback threads; never applies, never posts |
-| `wave-monitor` | Wave branch state in one compact table (haiku); never fixes, never merges |
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
 | `cavecrew-builder`      | Surgical 1-2 file edit                        |
 | `cavecrew-reviewer`     | Single-line review findings (haiku)           |
@@ -25,9 +24,11 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 
 Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force`, `git commit --no-verify` and a backgrounded endless loop — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. It also scopes `git merge` by destination: an agent may merge into a control branch (`integration/*`, `wave/*`) on its own, never into `main`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
-The harness ships <!-- docs-count:skills -->four skills — `ticket-contract`, `wave-orchestration`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->five slash commands that drive them: `/sync-harness`, `/ticket-new`, `/wave-plan`, `/wave-status`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+The harness ships <!-- docs-count:skills -->three skills — `ticket-contract`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->three slash commands that drive them: `/sync-harness`, `/ticket-new`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
-The ticket → dependency-graph → wave pipeline (`ticket-contract`, `wave-orchestration`, `/ticket-new`, `/wave-plan`, `/wave-status`) is **opt-in**: it runs when you ask for it by name, never by default. The default path is the orchestrator decomposing the request and delegating to specialists in a single response — several fronts in parallel is ordinary work, not a wave.
+The ticket pipeline (`ticket-contract`, `/ticket-new`) is **opt-in**: it runs when you ask for it by name, never by default. The default path is the orchestrator decomposing the request and delegating to specialists in a single response.
+
+The wave pipeline that used to sit on top of it — dependency graph, `/wave-plan`, `/wave-status`, `wave-monitor`, `wave-orchestration` — was removed after running once. It is preserved at the annotated tag `pre-wave-removal`.
 
 ## Install
 
@@ -65,15 +66,14 @@ Removes only the links this installer created (matched by recorded target) and r
 ├── hooks/               # orchestrator-reminder, preserve-orchestrator, auto-update,
 │                        # session-context, guard-destructive
 │   └── lib/             # shared hook helpers (+ their tests)
-├── commands/            # /sync-harness /ticket-new /wave-plan /wave-status
-│                        # /pr-babysit
-├── skills/              # ticket-contract, wave-orchestration, pr-babysitting,
+├── commands/            # /sync-harness /ticket-new /pr-babysit
+├── skills/              # ticket-contract, pr-babysitting,
 │                        # maestri-orchestration — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
-├── waves/               # ticket graph + wave plan + shared gh access +
-│                        # PR state/threads readers (+ tests)
+├── github/              # read-only gh readers: tickets, shared gh access,
+│                        # PR state/threads (+ tests)
 ├── setup-ai-memory.mjs  # one-shot ai-memory (long-term memory) setup
 ├── verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
 ├── backup-ai-memory.mjs # ai-memory volume backup, rotation + daily LaunchAgent
@@ -83,7 +83,7 @@ docs/
 ├── installation.md      # detailed install + troubleshooting
 ├── usage.md             # driving the harness day to day
 ├── contributing.md      # conventions for working on this harness
-├── waves.md             # ticket contract, dependency graph, wave plan
+├── tickets.md           # ticket contract + the GitHub Issues reader
 ├── guard-destructive.md # the PreToolUse guard: the three permission layers,
 │                        # what it blocks and what it deliberately doesn't
 └── integrations/        # session-context, maestri, ecotokens, ai-memory, opencode

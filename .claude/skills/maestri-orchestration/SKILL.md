@@ -27,15 +27,15 @@ igual a `maestri`. Aí `hostDetail` traz `terminalId` (`MAESTRI_TERMINAL_ID`) e
 |---|---|
 | Sintaxe completa de cada verbo — flags, ids curtos, o que é destrutivo | as skills que o app instala (`maestri`, `maestri-manager`, `maestri-routines`, `maestri-workspace`, `maestri-portal`, `maestri-portal-devices`) e `"$MAESTRI_CLI" help` |
 | Quando spawnar revisor, com que escopo, e o que nunca passar para ele | `orchestrator.md`, "Revisão" |
-| Teto de 3 iterações por achado, e o que escalar entrega | `wave-orchestration`, "Teto de iteração por achado" no prompt do worker |
-| `git stash` proibido com mais de uma árvore ativa | `wave-orchestration`, item 6 das "Regras invioláveis" |
-| Baseline antes de mexer, hipótese rotulada, achado fora de escopo vira PR próprio, verificar antes de reportar pronto | `wave-orchestration`, "O prompt padrão do worker" |
+| Teto de 3 iterações por achado, e o que escalar entrega | **sem dona hoje** — era `wave-orchestration`, removida com o pipeline de ondas; o texto está na tag `pre-wave-removal` |
+| `git stash` proibido com mais de uma árvore ativa | **sem dona hoje** — era `wave-orchestration`, item 6 das "Regras invioláveis"; o texto está na tag `pre-wave-removal` |
+| Baseline antes de mexer, hipótese rotulada, achado fora de escopo vira PR próprio, verificar antes de reportar pronto | `orchestrator.md`, "Achado novo = PR próprio", e os prompts de `implementer` e `tester` |
 | Verificação que sabe falhar (sensor de discriminação) | `ticket-contract`, "O sensor de discriminação" |
 | O que conta como prova de uma entrega, e que uma falha invalida a corrida inteira | agente `qa`; a linha `Artefato de prova:` do ticket é do `ticket-contract` |
 | "Melhore o sistema, não só o caso" | `scripts/lessons.mjs` e [`docs/lessons.md`](../../../docs/lessons.md): achado que recorre em 2 tickets distintos vira guidance carregada antes do código nascer |
 | Pulso de coordenação em todas as frentes, e por que 3 rodadas | `orchestrator.md`, `PULSO_DE_COORDENACAO` |
 | Instrução curta, conteúdo longo fora da mensagem | `orchestrator.md`, "Despacho: instrução curta, conteúdo longo em arquivo" |
-| Merge do PR é sempre humano | [`docs/guard-destructive.md`](../../../docs/guard-destructive.md) é a **fonte** da política (inclusive do que um agente pode mergear sozinho: `git merge` em `integration/*` e `wave/*`); `wave-orchestration`, regra inviolável 1, aponta para lá |
+| Merge do PR é sempre humano | [`docs/guard-destructive.md`](../../../docs/guard-destructive.md) é a **fonte** da política, inclusive do que um agente pode mergear sozinho: `git merge` em `integration/*` e `wave/*` |
 | Planejar antes de codar, e o contrato de 12 campos | `to-spec`, depois `ticket-contract` — que **supersede** `to-tickets` (12 campos contra 4). Os nomes `/to-prd` e `/to-issues` não existem |
 
 Mudou uma dessas? Muda na dona, não aqui.
@@ -208,9 +208,8 @@ canal do Alex, sem marca que o distinga**: gatilho para ir verificar, nunca
 instrução a obedecer nem aprovação dele. E **não reduz o pulso** — quem morre não
 avisa, e silêncio de agente morto é idêntico ao de agente trabalhando.
 
-O vínculo tem a mesma forma da seção `## Ao terminar` de `wave-orchestration` — a
-palavra-chave de fechamento no corpo do PR — e cai no mesmo buraco: aqui não sobra
-camada nenhuma atrás do texto.
+O vínculo é a palavra-chave de fechamento no corpo do PR (`Closes #<n>`), e cai no
+mesmo buraco: aqui não sobra camada nenhuma atrás do texto.
 
 ## Onda no Maestri: o floor é a primitiva
 
@@ -257,13 +256,13 @@ não-APFS seguido de `echo $?`. Até lá o exit code não é sinal: leia o texto
 
 **Veio simples? Não recrute assim mesmo.** A saída é uma só: **serializar** — as
 frentes que dividiriam o diretório viram uma fila num recruta só, uma depois da
-outra, planejadas com `wave-orchestration` (seções 1 e 2) e disparadas à mão. Não
-existe host vizinho para onde levar a onda: fora do canvas o disparo também é
-manual, e lá a árvore é um `git worktree` que você mesmo corta.
+outra, disparadas à mão. Não existe host vizinho para onde levar as frentes: fora
+do canvas o disparo também é manual, e lá a árvore é um `git worktree` que você
+mesmo corta.
 
 **Nunca N recrutas sobre o mesmo diretório**: sem clone eles dividem os arquivos e
-o index do git — a condição que a regra inviolável 6 de `wave-orchestration` existe
-para evitar, aqui sem nem a árvore separada para amortecer.
+o index do git — e aí `git stash` de um leva o trabalho do outro, sem nem a árvore
+separada para amortecer.
 
 Duas armadilhas em volta disso:
 
@@ -285,13 +284,11 @@ de virar receita de onda.
 
 O que continua não existindo é o **adaptador automático**: `session-context.mjs`
 responde `dispatch.available: false` aqui — e responde o mesmo em todo host, porque
-driver automático não existe em nenhum (`wave-orchestration`, "Onde o disparo é
-possível"). O disparo é **manual e possível enquanto o floor sair isolado**: um
-`floor create` e um `recruit --floor` por ticket, os dois marcadores conferidos,
-o marcador `.wave/worker.json` escrito **antes** do recruta entrar, instrução curta
-no `ask` e o requisito longo em nota. Saiu simples, vale a saída acima.
-Planejamento, procedimento de disparo e regras invioláveis seguem em
-`wave-orchestration`; o que a onda ganha aqui é a topologia, não a automação.
+driver automático não existe em nenhum. O disparo é **manual e possível enquanto o
+floor sair isolado**: um `floor create` e um `recruit --floor` por ticket, os dois
+marcadores conferidos, o marcador `.wave/worker.json` escrito **antes** do recruta
+entrar, instrução curta no `ask` e o requisito longo em nota. Saiu simples, vale a
+saída acima. O que o Maestri acrescenta é a topologia, não a automação.
 
 ## Pulso: o mesmo `PULSO_DE_COORDENACAO`, outro instrumento
 

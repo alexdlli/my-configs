@@ -1,10 +1,10 @@
-// Whether the session running this hook is a wave worker.
+// Whether the session running this hook is a worker — an agent dispatched into
+// its own worktree, as opposed to the coordinator.
 //
-// The dispatch writes `.wave/worker.json` into the root of every worker
-// worktree (see `.claude/skills/wave-orchestration/SKILL.md`, section
-// `Dispatch`). That marker is the whole signal: the `w<N>-issue-<n>` folder name
-// is a convention of today's dispatch and will change, so nothing here reads a
-// directory name. Only the presence of the marker and its parseability matter —
+// Whoever dispatches writes `.wave/worker.json` into the root of every worker
+// worktree; see `docs/guard-destructive.md`, section "Como o guard sabe que e um
+// worker". That marker is the whole signal: a folder name is a convention and
+// will change, so nothing here reads a directory name. Only the presence of the marker and its parseability matter —
 // the fields inside it are for the human reading a worktree, not for this code,
 // because every field this module required would be one more way to be
 // undetermined.

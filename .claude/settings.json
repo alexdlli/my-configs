@@ -19,7 +19,7 @@
       "Bash(git rev-parse *)",
       "Bash(git status)",
       "Bash(git branch *)",
-      "Bash(node ~/.claude/harness/scripts/waves/*)"
+      "Bash(node ~/.claude/harness/scripts/github/*)"
     ],
     "deny": [
       "Bash(git push --force *)",

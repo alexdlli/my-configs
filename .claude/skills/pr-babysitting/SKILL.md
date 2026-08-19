@@ -43,7 +43,7 @@ anterior, nunca uma no lugar da outra.
 ### 1. Estado do CI
 
 ```
-node ~/.claude/harness/scripts/waves/pr-state.mjs <numero> --repo owner/name
+node ~/.claude/harness/scripts/github/pr-state.mjs <numero> --repo owner/name
 ```
 
 Exit 0 significa que a **consulta** funcionou — o veredito do CI está em
@@ -51,6 +51,10 @@ Exit 0 significa que a **consulta** funcionou — o veredito do CI está em
 **não sabe** o estado: `gh` ausente (3), não autenticado (4), PR inexistente
 (5), rate limit (6). Nesses casos pare e diga qual foi; consulta que falhou não
 vira verde.
+
+Chamando por **branch**, o exit 5 quase sempre é "o PR ainda não existe", não
+falha. `git ls-remote --heads origin <branch>` distingue os dois casos que ele
+junta: "não deu push" e "deu push, sem PR aberto".
 
 Como ler `.ci`:
 
@@ -74,7 +78,7 @@ inconclusivo antes de acusar regressão.
 ### 2. Feedback
 
 ```
-node ~/.claude/harness/scripts/waves/fetch-pr-threads.mjs <numero> --repo owner/name \
+node ~/.claude/harness/scripts/github/fetch-pr-threads.mjs <numero> --repo owner/name \
   --out .wave/<numero>/threads.json
 ```
 

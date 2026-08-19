@@ -212,7 +212,7 @@ Artefato que passa mas não sabe reprovar não prova nada. Teste verde que conti
 comportamento quebrado mede que alguém escreveu um teste, não que a entrega funciona. Por isso
 o sensor é do **autor** e roda **antes** de ele reportar pronto — não da revisão, depois.
 
-O lugar importa mais que a técnica. Na onda 1 deste repo, 6 Criticals saíram da revisão e 5
+O lugar importa mais que a técnica. Na primeira leva de tickets deste repo, 6 Criticals saíram da revisão e 5
 eram evitáveis na geração; o do PR #10 apareceu porque um revisor inteiro rodou mutação sobre o
 diff, e o autor teria achado o mesmo em segundos. A técnica estava certa e no lugar errado.
 
@@ -228,8 +228,8 @@ O que o sensor é, por valor declarado:
 `mktemp -d`, ou cópia da árvore quando a suíte precisa das dependências instaladas. O
 `archive` só leva o que está rastreado e commitado — sobre trabalho não commitado ele produz
 uma árvore sem a entrega dentro, e o sensor passa medindo o vazio. `git stash` não é
-alternativa: é proibido em repo com mais de uma worktree ativa (`wave-orchestration`, item 6
-das regras invioláveis).
+alternativa: o stash é um ref único compartilhado por todas as worktrees do repo, então em
+repo com mais de uma worktree ativa o `pop` de um agente pega e descarta o trabalho de outro.
 
 **Mutante sobrevivente é tarefa de conserto, não observação.** Teste que passa com o
 comportamento quebrado não é cobertura: a asserção fraca vira conserto e o sensor roda de novo.
@@ -277,7 +277,7 @@ Quem consome esse campo depois é o agente `reviewer`. Aqui só se declara o val
 
 No GitHub uma das duas fontes de aresta é um marcador no corpo da issue: um comentário
 HTML ancorado, de miolo `blocked-by: #12, owner/repo#34`. O leitor
-(`scripts/waves/tickets-github.mjs`) procura esse padrão em **qualquer** corpo de issue e
+(`scripts/github/tickets-github.mjs`) procura esse padrão em **qualquer** corpo de issue e
 não distingue "issue que declara uma aresta" de "issue que fala sobre a convenção". Daí
 duas regras que não são estilo, são corretude do grafo.
 
@@ -289,7 +289,7 @@ uma das duas formas seguras — nunca o literal:
 - **Cite só o miolo:** "comentário HTML ancorado, de miolo `blocked-by: #12`". Sem a
   abertura e o fechamento do comentário não existe casamento.
 - **Cite a forma byte a byte por referência:** o regex `/<!--\s*blocked-by\s*:([\s\S]*?)-->/gi`
-  em `scripts/waves/tickets-github.mjs:117`, e o exemplo renderizado em `docs/waves.md:205`.
+  em `scripts/github/tickets-github.mjs:117`, e o exemplo renderizado em `docs/tickets.md:122`.
   Colar o regex é seguro: ele exige `blocked-by` logo depois da abertura, e no texto dele o
   que vem ali é `\s*`, que não é espaço em branco.
 
@@ -299,13 +299,13 @@ o parser real foi rodado contra os corpos antes de publicar — faça o mesmo se
 ticket falar do marcador, e confira que o resultado é zero marcador:
 
 ```bash
-node -e "import('$HOME/.claude/harness/scripts/waves/tickets-github.mjs').then(m=>console.log(m.parseBlockedByMarkers(require('fs').readFileSync(process.argv[1],'utf8'),'owner/repo')))" corpo.md
+node -e "import('$HOME/.claude/harness/scripts/github/tickets-github.mjs').then(m=>console.log(m.parseBlockedByMarkers(require('fs').readFileSync(process.argv[1],'utf8'),'owner/repo')))" corpo.md
 # { ids: [], malformed: [], markers: 0 }
 ```
 
 **2. "Sem bloqueador" se declara em prosa, nunca em marcador vazio.** Miolo vazio é
-classificado como malformado: o leitor emite `! bad data:` e sai com código 8, derrubando o
-plano de ondas inteiro por um ticket que só queria dizer que não depende de nada. O mesmo
+classificado como malformado: o leitor emite `! bad data:` e sai com código 8, sujando a
+leitura inteira por um ticket que só queria dizer que não depende de nada. O mesmo
 vale para miolo em texto (`blocked-by: nenhum`, `blocked-by: n/a`), que não é referência de
 issue. Ticket sem bloqueador **não leva marcador nenhum**: o campo 9 diz em prosa que não há
 aresta e por quê — o "por quê" é obrigatório, veja a checagem de prontidão.
@@ -357,7 +357,7 @@ soltar o agente.
 - [ ] Existe pelo menos um `path` concreto no campo 6, e ele existe no repo hoje.
 - [ ] Cada `blockedBy` tem uma frase dizendo **o que** este ticket consome do bloqueador.
 - [ ] Nenhum `blockedBy` foi inferido de ordem, numeração ou título.
-- [ ] Ticket **sem** `blockedBy` diz, em uma frase, por que não depende de nada. Ausência sem justificativa é indistinguível de aresta esquecida, e aresta esquecida vira a onda 1 gigante contra a qual a `wave-orchestration` alerta.
+- [ ] Ticket **sem** `blockedBy` diz, em uma frase, por que não depende de nada. Ausência sem justificativa é indistinguível de aresta esquecida, e aresta esquecida faz dois tickets dependentes serem executados em paralelo.
 - [ ] Quando dois tickets tocam o mesmo arquivo e nenhum bloqueia o outro, essa frase diz por que as regiões são disjuntas — é onde qualquer revisor desconfia de aresta faltando.
 - [ ] Nada no corpo depende de contexto de conversa ("como discutimos", "o de sempre", "igual ao outro").
 - [ ] A estimativa é ≤ 5 pontos.
@@ -400,11 +400,10 @@ com acesso ao MCP da Atlassian. No trabalho os tickets chegam prontos: o papel a
 ler, normalizar e **auditar contra este contrato**, apontando ao usuário quais campos
 faltam. Não crie nem edite ticket no Jira por conta própria.
 
-**GitHub Issues (pessoal) — leitura e escrita.** A leitura é o mesmo script que alimenta o
-plano de ondas:
+**GitHub Issues (pessoal) — leitura e escrita.** A leitura é o leitor normalizado:
 
 ```bash
-node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>] [--json]
+node ~/.claude/harness/scripts/github/tickets-github.mjs --repo <owner>/<repo> [--milestone <n>] [--label <l>] [--json]
 ```
 
 - **Recorte.** No GitHub não existe "projeto". O recorte é `--milestone` ou `--label`
@@ -417,7 +416,7 @@ node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [-
   publique em ordem de dependência, bloqueadores primeiro, colete os números e declare a
   aresta nos dependentes. O marcador aceita `#12` (assume o repo alvo) e `owner/repo#12`, e
   vários marcadores no mesmo corpo são unidos. Antes de escrever qualquer um, leia "Campo 9
-  no GitHub" acima — as duas armadilhas de lá custam o plano de ondas inteiro.
+  no GitHub" acima — as duas armadilhas de lá inventam aresta que ninguém declarou.
 - **Estimativa é a label `est:<n>`** — `est:3`, `est: 0.5`, `EST:2`, decimal vale. Sem label,
   `estimate` fica `null`. Duas labels `est:` com valores diferentes é dado ruim reportado,
   nunca escolha silenciosa. A label precisa existir no repo antes (`gh label create`).
@@ -427,8 +426,8 @@ node ~/.claude/harness/scripts/waves/tickets-github.mjs --repo <owner>/<repo> [-
   criou: saída 0 e as arestas na tabela. Código 8 significa "as issues existem, mas o que
   escrevi nelas está malformado" — corrija o corpo, não recrie as issues.
 
-A sintaxe é do parser, não sua: `scripts/waves/tickets-github.mjs:116-121` (referência,
-separador, marcador, label) e `docs/waves.md:198-232`. Não invente variação.
+A sintaxe é do parser, não sua: `scripts/github/tickets-github.mjs:116-121` (referência,
+separador, marcador, label) e `docs/tickets.md:115-165`. Não invente variação.
 
 A assimetria é deliberada: GitHub tem escrita, Jira não. Não trate "criar ticket"
 como capacidade disponível quando o tracker é Jira, sob nenhuma formulação do pedido.

@@ -20,7 +20,7 @@ const EARLY_AT = '2024-03-01T09:00:00Z';
 const MIDDLE_AT = '2024-03-01T10:00:00Z';
 const LATE_AT = '2024-03-01T11:00:00Z';
 
-const ANCHOR_PATH = 'scripts/waves/graph.mjs';
+const ANCHOR_PATH = 'scripts/github/pr-state.mjs';
 const ANCHOR_LINE = 12;
 const ANCHOR_START_LINE = 10;
 const ANCHOR_ORIGINAL_LINE = 11;
