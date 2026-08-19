@@ -233,7 +233,16 @@ function declaredHookCommands(harnessHooks) {
 // orchestrator-reminder.mjs from the harness left its UserPromptSubmit entry in
 // an already-installed settings.json, pointing at a script the pull had just
 // removed. Claude Code then runs `node <gone>.mjs` on every prompt, forever.
-// Keyed on the metadata, so a hook the user registered by hand is never touched.
+//
+// What the match actually is: string equality on (event, command) against what
+// the metadata recorded. The metadata stores no provenance, so this cannot tell
+// our registration from a hand-written one spelled the same way. A registration
+// the metadata never recorded is never removed — that much holds — but three
+// cases are measured to go with ours: an identical command the user wrote
+// themselves, the same command under a different matcher, and an exact
+// hand-made duplicate (both copies). All three name a script the harness has
+// just deleted, so what they leave behind was already a dead path; the stronger
+// claim, "nothing hand-written is ever touched", is not one this code makes.
 function retractHookEntries(merged, harnessHooks, previouslyAdded) {
   if (previouslyAdded.length === 0) return [];
   const declared = declaredHookCommands(harnessHooks);
@@ -249,9 +258,18 @@ function retractHookEntries(merged, harnessHooks, previouslyAdded) {
   for (const [event, commands] of byEvent) {
     const entries = merged.hooks[event];
     if (!Array.isArray(entries)) continue;
-    merged.hooks[event] = entries.filter(
-      (entry) => !(entry?.hooks ?? []).some((h) => commands.has(h?.command)),
-    );
+    // Per hook, never per entry: an entry is a matcher plus a list, and the
+    // user is free to append their own command to the same list the installer
+    // wrote. Dropping the entry took a live third-party hook down with ours —
+    // measured, and silent, since the summary only counts what we retracted.
+    merged.hooks[event] = entries
+      .map((entry) => {
+        if (!Array.isArray(entry?.hooks)) return entry;
+        const kept = entry.hooks.filter((h) => !commands.has(h?.command));
+        if (kept.length === entry.hooks.length) return entry;
+        return kept.length === 0 ? null : { ...entry, hooks: kept };
+      })
+      .filter((entry) => entry !== null);
     if (merged.hooks[event].length === 0) delete merged.hooks[event];
   }
   if (Object.keys(merged.hooks).length === 0) delete merged.hooks;
@@ -560,6 +578,32 @@ async function linkHarnessDirs(dryRun) {
     );
   }
   return links;
+}
+
+// Same reasoning as harnessSkillNames, one file over, and the same measured
+// failure: readJsonOrEmpty maps ENOENT to {}, which every caller downstream
+// reads as "the harness declares no hooks and no permissions". Retraction acts
+// on that value, so a checkout missing this file took every hook registration
+// the installer had ever added off the machine — guard-destructive among them —
+// plus both permissions.deny entries, exit 0, one summary line. A deliberate cut
+// and a damaged checkout are indistinguishable here, so the only safe answer is
+// to refuse.
+//
+// An unparseable file is a different failure and keeps its existing path: the
+// parse error propagates and main() exits 1 having written nothing.
+async function readHarnessSettings() {
+  const settingsPath = path.join(HARNESS_ROOT, '.claude', 'settings.json');
+  try {
+    return JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    die(
+      `cannot read ${settingsPath} (ENOENT). ` +
+        'That is a damaged checkout, not a harness that declares no hooks and no ' +
+        'permissions — refusing to retract every hook registration and permission ' +
+        'entry on that reading.',
+    );
+  }
 }
 
 // Aborts rather than reporting an empty declaration: "the harness declares no
@@ -1015,6 +1059,11 @@ async function runInstall(opts) {
   console.log(`mode:    ${opts.dryRun ? 'install (dry-run)' : 'install'}`);
   console.log();
 
+  // Read before anything is created: this is the file whose absence would make
+  // the run a silent retraction of every hook and permission, so the abort has
+  // to land with the filesystem untouched, not after the symlinks are in place.
+  const harnessSettings = await readHarnessSettings();
+
   await ensureTargetDir(opts.dryRun);
 
   const prior = await readJsonOrEmpty(METADATA_PATH);
@@ -1027,9 +1076,6 @@ async function runInstall(opts) {
   ];
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
-  const harnessSettings = await readJsonOrEmpty(
-    path.join(HARNESS_ROOT, '.claude', 'settings.json'),
-  );
   // Ahead of the retraction on purpose: these calls can die() on an agent
   // conflict, and an install that exits non-zero must not have already deleted
   // a link the metadata it never wrote still claims. OpenCode is checked here

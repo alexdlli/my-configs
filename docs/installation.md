@@ -103,6 +103,9 @@ The installer aborts with a clear message, before retracting anything. Re-run wi
 **`<repo>/.claude/skills` is missing or unreadable.**
 The installer aborts before touching the filesystem. Every checkout ships that directory, so an absent one is a damaged checkout — and reading it as "the harness declares no skills" would retract every skill link on the machine.
 
+**`<repo>/.claude/settings.json` is missing.**
+Same abort, same reason, and it is the more dangerous of the two: read as "the harness declares no hooks and no permissions", it retracts every hook registration the installer ever added — `guard-destructive` among them — plus the `permissions.deny` entries, and it does that at exit 0. Measured. A file that exists but cannot be parsed is a different failure and keeps its own path: the run fails with the parse error, having written nothing.
+
 **Settings backups accumulate** (`~/.claude/settings.json.backup-<ts>`). Clean them with `rm ~/.claude/*.backup-*` once you're confident the install is stable.
 
 ## Update

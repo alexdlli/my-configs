@@ -413,7 +413,53 @@ test('a hook the harness stopped declaring is retracted from settings and metada
   });
 });
 
-test('a hook the user registered by hand is never retracted', () => {
+// The retraction counterpart of the missing-.claude/skills abort. readJsonOrEmpty
+// maps ENOENT to {}, so a checkout without this file reads as "declares no hooks
+// and no permissions" — and retraction acts on that, taking guard-destructive
+// off the machine at exit 0. Every checkout ships the file; its absence is
+// damage, never a declaration.
+test('a checkout with no settings.json aborts instead of retracting every hook', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    declareHooks(sandbox, {
+      SessionStart: [hookEntry('auto-update.mjs')],
+      PreToolUse: [hookEntry('guard-destructive.mjs')],
+    });
+    install(sandbox);
+    const before = installedSettings(sandbox);
+    assert.deepEqual(installedHookScripts(sandbox, 'PreToolUse'), ['guard-destructive.mjs']);
+
+    rmSync(join(sandbox.harness, '.claude', 'settings.json'));
+    const result = run(sandbox);
+
+    assert.notEqual(result.status, 0, `a damaged checkout must not exit 0\n${result.stdout}`);
+    assert.match(result.stderr, /damaged checkout/);
+    assert.deepEqual(
+      installedSettings(sandbox),
+      before,
+      'the guard, the other hooks and the permission lists all stay',
+    );
+  });
+});
+
+test('an unparseable settings.json fails without writing anything', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    declareHooks(sandbox, { PreToolUse: [hookEntry('guard-destructive.mjs')] });
+    install(sandbox);
+    const before = installedSettings(sandbox);
+
+    writeFileSync(join(sandbox.harness, '.claude', 'settings.json'), '{ not json');
+    const result = run(sandbox);
+
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(installedSettings(sandbox), before);
+  });
+});
+
+// Named for what the code actually guarantees. "Nothing hand-written is ever
+// touched" is a stronger claim and a false one: the criterion is string equality
+// on (event, command) against the metadata, which stores no provenance. The
+// three cases where that bites are pinned below.
+test('a hook registration the metadata never recorded is left alone', () => {
   withSandbox([ALPHA], (sandbox) => {
     declareHooks(sandbox, { UserPromptSubmit: [hookEntry('reminder.mjs')] });
     install(sandbox);
@@ -429,6 +475,66 @@ test('a hook the user registered by hand is never retracted', () => {
     assert.equal(installedSettings(sandbox).hooks.UserPromptSubmit, undefined);
     assert.deepEqual(installedHookScripts(sandbox, 'Stop'), ['mine.mjs']);
     assert.deepEqual(recordedHookScripts(sandbox), []);
+  });
+});
+
+// An entry is a matcher plus a list of hooks, and the list is shared ground: the
+// user may append their own command to the very entry the installer wrote. The
+// first version retracted per *entry*, so a live third-party hook went down with
+// ours and the summary — which counts only our own — never said so.
+test('retracting our hook keeps a user hook that shares the same entry', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    declareHooks(sandbox, { UserPromptSubmit: [hookEntry('reminder.mjs')] });
+    install(sandbox);
+
+    const settingsPath = join(sandbox.home, '.claude', 'settings.json');
+    const settings = installedSettings(sandbox);
+    settings.hooks.UserPromptSubmit[0].hooks.push({
+      type: 'command',
+      command: 'node /elsewhere/mine.mjs',
+    });
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+
+    declareHooks(sandbox, {});
+    install(sandbox);
+
+    assert.deepEqual(
+      installedHookScripts(sandbox, 'UserPromptSubmit'),
+      ['mine.mjs'],
+      'ours goes, the one sharing its entry stays',
+    );
+    const kept = installedSettings(sandbox).hooks.UserPromptSubmit;
+    assert.equal(kept.length, 1, 'the entry itself survives, emptied of our hook only');
+    assert.deepEqual(recordedHookScripts(sandbox), []);
+  });
+});
+
+// The three measured consequences of matching on the string alone. They are
+// pinned rather than fixed: telling our registration from an identical
+// hand-written one needs provenance the metadata does not carry, and in all
+// three the command names a script the harness has just deleted.
+test('an identical command the metadata did record is removed whoever wrote it', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    declareHooks(sandbox, { UserPromptSubmit: [hookEntry('reminder.mjs')] });
+    install(sandbox);
+
+    const settingsPath = join(sandbox.home, '.claude', 'settings.json');
+    const settings = installedSettings(sandbox);
+    const ours = settings.hooks.UserPromptSubmit[0].hooks[0].command;
+    settings.hooks.UserPromptSubmit.push({
+      matcher: 'mine-only',
+      hooks: [{ type: 'command', command: ours }],
+    });
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+
+    declareHooks(sandbox, {});
+    install(sandbox);
+
+    assert.equal(
+      installedSettings(sandbox).hooks?.UserPromptSubmit,
+      undefined,
+      'a different matcher does not save a hand-written copy of the same command',
+    );
   });
 });
 
