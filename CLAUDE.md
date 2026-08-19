@@ -28,51 +28,19 @@ If any of these is missing or out of date, tell me before proceeding.
 
 - **`.claude/settings.json`** — baseline tool permissions (`allow` + `deny`), default agent, and hooks (deep-merged into `~/.claude/settings.json` by the installer)
 - **`.claude/agents/`** — orchestrator + specialist subagent definitions (symlinked into `~/.claude/agents/`)
-- **`.claude/hooks/`** — Claude Code hook scripts (symlinked into `~/.claude/hooks/`). <!-- docs-count:hooks -->Five today; the one that carries a guarantee is `guard-destructive.mjs`, a `PreToolUse` hook on `Bash` that denies `gh pr merge`, `git push --force`, `git commit --no-verify` and a backgrounded endless loop, **including the shell-wrapped form** (`bash -c "..."`, pipe to a shell) that `permissions.deny` matches as a string and therefore misses. Both layers were measured to survive `--dangerously-skip-permissions`, which is what keeps "the PR merge is always human" true for a worker running with the bypass on — the deny list alone would not, since the bypass removes the approval prompt that used to catch the wrapper. The one thing an agent merges on its own is `git merge` into a control branch (`integration/*`, `wave/*`), because that destination is readable offline; `main`, `master`, `prod` and `staging` are denied by name. That doc owns the merge policy — agents and skills point at it instead of restating it. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
-- **`.claude/commands/`** — slash commands, symlinked as a whole directory into `~/.claude/commands/`: `/sync-harness`, `/ticket-new`, `/pr-babysit`. A new command file goes live on pull, with no re-install.
-- **`.claude/skills/`** — `ticket-contract` (the 12 fields that make a ticket a self-sufficient agent prompt), `pr-babysitting` (CI and feedback as two independent states), `maestri-orchestration` (what changes when the session runs inside a Maestri terminal: `"$MAESTRI_CLI"`, the shared-note protocol, the floor as an isolation primitive and the portal as the proof instrument). Linked **one entry at a time** into `~/.claude/skills/` **and** `~/.agents/skills/` (OpenCode auto-loads both) — those directories are shared with third-party skills, so the installer never symlinks them wholesale, and a name it doesn't own is reported and skipped rather than overwritten. The same mechanism exposes skills living outside the harness through `EXTERNAL_SKILL_LINKS`, empty today and kept as the extension point.
-- **`.opencode/`** — OpenCode surface: `agent/`, `command/`, `plugin/guard-destructive.js`, and a managed `opencode.json` slice (deny rules + `default_agent`). Installed into `~/.config/opencode/`. `.agents/` is skills-only in OpenCode — agents and commands do **not** go there. See [`docs/integrations/opencode.md`](docs/integrations/opencode.md).
+- **`.claude/hooks/`** — Claude Code hook scripts (symlinked into `~/.claude/hooks/`). <!-- docs-count:hooks -->Four today. [`docs/guard-destructive.md`](docs/guard-destructive.md) owns the policy of `guard-destructive.mjs` (`PreToolUse` on `Bash`); don't restate it, but don't overstate it either. Two facts to carry: `git push --force` and `git commit --no-verify` are denied in every context by both layers (`permissions.deny` and the hook, both measured surviving `--dangerously-skip-permissions`, and only the hook sees the `bash -c "..."` wrapper). **`gh pr merge` is in neither** — it left `permissions.deny` under the ask-then-merge policy, and the hook denies it only inside a worker, marked by a `.wave/worker.json` that no harness procedure writes today; outside one, under the bypass, it runs unguarded. Branch protection on GitHub is the only layer that does not depend on this client.
+- **`.claude/skills/`** — `pr-babysitting` (CI and feedback as two independent states) and `maestri-orchestration` (what changes when the session runs inside a Maestri terminal). Linked **one entry at a time** into `~/.claude/skills/` **and** `~/.agents/skills/` (OpenCode auto-loads both) — those directories are shared with third-party skills, so the installer never symlinks them wholesale, and a name it doesn't own is reported and skipped rather than overwritten. The same mechanism exposes skills living outside the harness through `EXTERNAL_SKILL_LINKS`, empty today and kept as the extension point.
+- **`.opencode/`** — OpenCode surface: `agent/`, `plugin/guard-destructive.js`, and a managed `opencode.json` slice (deny rules + `default_agent`). Installed into `~/.config/opencode/`. `.agents/` is skills-only in OpenCode — agents do **not** go there. See [`docs/integrations/opencode.md`](docs/integrations/opencode.md).
 - **`scripts/install.mjs`** — installer (symlinks + settings merge + uninstall)
-- **`scripts/github/`** — read-only `gh` readers: `tickets-github.mjs` (GitHub Issues into normalized tickets), `gh.mjs` (the shared `gh` access plus the exit-code table both PR readers honour), `pr-state.mjs` (CI state), `fetch-pr-threads.mjs` (PR feedback). See [`docs/tickets.md`](docs/tickets.md).
-- **`scripts/setup-ai-memory.mjs`** — one-shot [ai-memory](https://github.com/akitaonrails/ai-memory) setup (long-term markdown-wiki memory + Hermes-style auto-improve for coding agents). `--provider` selects the LLM backend; `claude-sub` uses the local `claude -p` shim and `codex-sub` uses ai-memory's native ChatGPT/Codex OAuth provider. ai-memory owns its own MCP/hooks/instructions and merges them idempotently, coexisting with `install.mjs`. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
-- **`scripts/claude-openai-shim.mjs`** — zero-dep OpenAI-compatible HTTP server that shells out to `claude -p` (stripping `ANTHROPIC_API_KEY` to force subscription auth). Kept alive by a LaunchAgent for `claude-sub` installs.
-- **`scripts/verify-ai-memory.mjs`** — read-only end-to-end check of the ai-memory chain (container, the LLM backend the server is actually configured with, `ai-memory status`, bootstrap reachability, wiki git history). `--json` for a machine-readable summary; exit 2 means a prerequisite was missing and part of the setup went unverified.
-- **`scripts/backup-ai-memory.mjs`** — dumps the `ai-memory-data` volume to `~/ai-memory-backups` with rotation; `--install` adds a LaunchAgent that repeats it at login/boot and daily. Supports `--dry-run` and `--uninstall`.
-- **`docs/`** — install guide, agent/skill/command reference, contributing conventions, the ticket contract and the GitHub Issues reader ([`docs/tickets.md`](docs/tickets.md)) and the integration notes under [`docs/integrations/`](docs/integrations/)
-
-Two different artifacts are called a "contract" — don't merge them. The skill **`ticket-contract`** governs the quality of a *ticket* (the 12 fields that let an agent execute it from a clean context); the file **`.wave/<ticket>/contract.md`** is the *interface* contract between `implementer` and `tester` while one ticket runs (signatures, types, error behavior, scenario list). The first exists before the work starts and lives in the tracker; the second is working state, born inside a ticket's execution, and `.wave/` is gitignored. Any project running tickets through this harness needs that same ignore entry.
+- **`scripts/github/`** — read-only `gh` readers: `gh.mjs` (the shared `gh` access plus the exit-code table both PR readers honour), `pr-state.mjs` (CI state), `fetch-pr-threads.mjs` (PR feedback).
+- **`scripts/setup-ai-memory.mjs`**, **`scripts/verify-ai-memory.mjs`**, **`scripts/backup-ai-memory.mjs`**, **`scripts/claude-openai-shim.mjs`** — the [ai-memory](https://github.com/akitaonrails/ai-memory) chain: setup, read-only verification, volume backup, and the `claude -p` shim. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
+- **`docs/`** — install guide, agent/skill reference, contributing conventions, and the integration notes under [`docs/integrations/`](docs/integrations/)
 
 ## Agent System
 
-Every session starts in the `orchestrator` agent (set via `.claude/settings.json`). It decomposes tasks and delegates in parallel to specialists:
+Every session starts in the `orchestrator` agent (set via `.claude/settings.json`). It decomposes tasks and delegates in parallel to specialists; the roster with tools and models is in [`docs/agent-system.md`](docs/agent-system.md), which you already have to read before touching code. Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
 
-| Agent                   | Role                                          |
-|-------------------------|-----------------------------------------------|
-| `orchestrator`          | Decomposition, parallel delegation, synthesis |
-| `explorer`              | Read-only research and discovery              |
-| `planner`               | Implementation strategy (read-only)           |
-| `pm`                    | Spec/discussion into contract-compliant tickets (read-only on code) |
-| `implementer`           | Writes/edits code per a plan                  |
-| `reviewer`              | Code review, quality, security                |
-| `tester`                | Lint / typecheck / test / build               |
-| `qa`                    | Runs the change and produces the proof artifact (screenshot, test, command output) |
-| `pr-author`             | Drafts PRs from the current branch            |
-| `pr-reviewer`           | Reviews open GitHub PRs                       |
-| `pr-triage`             | Classifies PR feedback threads; never applies, never posts |
-| `cavecrew-investigator` | Fast read-only locator (haiku, terse output)  |
-| `cavecrew-builder`      | Surgical 1-2 file edit                        |
-| `cavecrew-reviewer`     | Single-line review findings (haiku)           |
-| `atlassian`             | Confluence / Jira via the Atlassian Rovo MCP  |
-
-Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
-
-**The ticket pipeline is opt-in.** `pm` → `ticket-contract` → the tracker still exists and still works, but it is not the default path: it runs when I ask for it by name (or through `/ticket-new`). Delegating several fronts in parallel is ordinary orchestration — turning a plain request into tickets costs two rounds before the first line is written.
-
-**The wave pipeline was removed** (dependency graph, `/wave-plan`, `/wave-status`, `wave-monitor`, the `wave-orchestration` skill). It ran once, in 2026-07, and then took 42 maintenance commits with no second run. Everything it contained is preserved at the annotated tag `pre-wave-removal`; `git show pre-wave-removal:docs/waves.md` reads the whole flow. Don't re-add a piece of it without deciding to run it again.
-
-Inspiration credit: [`bpinheiroms/my-setup`](https://github.com/bpinheiroms/my-setup) — adopted the *idea* of specialized agents with personas, built on Claude Code's official subagents mechanism.
-
-Full details: [`docs/agent-system.md`](docs/agent-system.md).
+**Two pipelines were removed after measuring how little they ran, and neither comes back by accident.** The wave one (dependency graph, `/wave-plan`, `/wave-status`, `wave-monitor`, `wave-orchestration`) is at the annotated tag `pre-wave-removal`; the ticket one (`pm`, `ticket-contract`, `/ticket-new`, the Issues reader), plus every slash command and the agents with zero recorded invocations, is at `pre-lean-cut`. `git show <tag>:<path>` reads any of it. Don't re-add a piece without deciding to run it again.
 
 ## Installation
 
@@ -118,22 +86,6 @@ These complement the **Commit Rules** and **Token-saving conventions** above; th
 - Update documentation when behavior changes.
 - Don't trust a PR description; audit the actual code.
 - Keep structure clear enough for an agent to navigate (clean code for agents).
-
-## Project-specific standards
-
-This repo's concrete conventions are already documented above and in `docs/` — in particular: Node.js stdlib only (`.mjs`, no deps); macOS-only; never co-author commits with Claude Code; idempotent installers with `--dry-run`. Add any further naming/layout/library rules here as they solidify, so they don't have to be repeated each session.
-
-## Perfil de risco do projeto
-
-Project-level declaration read by the `ticket-contract` skill. The heading and the declaration below stay in Portuguese even though the rest of this file is English: tickets cite them verbatim (`.claude/skills/ticket-contract/SKILL.md`, section "Declaração de perfil do projeto", and the rendering example under "Como renderizar os 12 campos"), so translating either breaks the citation.
-
-> Este harness não tem runtime em produção, não emite telemetria e não toca dado pessoal. Os artefatos são markdown e scripts Node stdlib instalados por symlink, e o rollback padrão de qualquer mudança é `git revert` do PR.
-
-**What this waives: fields 11 (events and metrics) and 12 (i18n / LGPD / factories), and nothing else.** A ticket covered by the declaration resolves each of those in one line citing this section, instead of spending a paragraph to say "não se aplica".
-
-**Field 10 (rollout and kill switch) stays mandatory in every ticket.** The `git revert` sentence above states the *default* rollback; it does not state that a ticket has no risk to contain. Measured on the 6 tickets of this repo's first real project (`alexdlli/my-configs` issues #1-#6): field 10 carried real content in all 6 — the concrete risk plus its containment (a fake `$HOME` for the permissions experiment, "diff empty inside the extracted functions" for the refactor, the Actions toggle for the first CI workflow). A declaration cannot pre-answer that.
-
-The per-ticket exception still applies to 11 and 12: a ticket that starts touching personal data or adding user-facing text fills the field in full and names which premise of the declaration it breaks. The declaration covers the repo, not the ticket.
 
 ## What NOT to do
 

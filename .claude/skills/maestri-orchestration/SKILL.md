@@ -30,13 +30,13 @@ igual a `maestri`. Aí `hostDetail` traz `terminalId` (`MAESTRI_TERMINAL_ID`) e
 | Teto de 3 iterações por achado, e o que escalar entrega | **sem dona hoje** — era `wave-orchestration`, removida com o pipeline de ondas; o texto está na tag `pre-wave-removal` |
 | `git stash` proibido com mais de uma árvore ativa | **sem dona hoje** — era `wave-orchestration`, item 6 das "Regras invioláveis"; o texto está na tag `pre-wave-removal` |
 | Baseline antes de mexer, hipótese rotulada, achado fora de escopo vira PR próprio, verificar antes de reportar pronto | `orchestrator.md`, "Achado novo = PR próprio", e os prompts de `implementer` e `tester` |
-| Verificação que sabe falhar (sensor de discriminação) | `ticket-contract`, "O sensor de discriminação" |
-| O que conta como prova de uma entrega, e que uma falha invalida a corrida inteira | agente `qa`; a linha `Artefato de prova:` do ticket é do `ticket-contract` |
+| Verificação que sabe falhar (sensor de discriminação) | `docs/contributing.md`, "Commit rules": correção de bug carrega teste que falha no código anterior, e você viu falhar |
+| O que conta como prova de uma entrega, e que uma falha invalida a corrida inteira | agente `qa` |
 | "Melhore o sistema, não só o caso" | `scripts/lessons.mjs` e [`docs/lessons.md`](../../../docs/lessons.md): achado que recorre em 2 tickets distintos vira guidance carregada antes do código nascer |
 | Pulso de coordenação em todas as frentes, e por que 3 rodadas | `orchestrator.md`, `PULSO_DE_COORDENACAO` |
 | Instrução curta, conteúdo longo fora da mensagem | `orchestrator.md`, "Despacho: instrução curta, conteúdo longo em arquivo" |
 | Merge do PR é sempre humano | [`docs/guard-destructive.md`](../../../docs/guard-destructive.md) é a **fonte** da política, inclusive do que um agente pode mergear sozinho: `git merge` em `integration/*` e `wave/*` |
-| Planejar antes de codar, e o contrato de 12 campos | `to-spec`, depois `ticket-contract` — que **supersede** `to-tickets` (12 campos contra 4). Os nomes `/to-prd` e `/to-issues` não existem |
+| Planejar antes de codar | `to-spec`. O contrato de 12 campos que vinha depois saiu com o pipeline de tickets (skill `ticket-contract`, na tag `pre-lean-cut`); os nomes `/to-prd` e `/to-issues` nunca existiram |
 
 Mudou uma dessas? Muda na dona, não aqui.
 
@@ -350,8 +350,8 @@ app de fora do recruta. Espera que pode durar mais que a sessão vira `routine`.
 
 ## Portal: o instrumento de prova dentro do canvas
 
-O que conta como prova de uma entrega é do agente `qa`, e a linha `Artefato de
-prova:` do ticket é do `ticket-contract`. No Maestri muda o **instrumento**: em
+O que conta como prova de uma entrega é do agente `qa`. No Maestri muda o
+**instrumento**: em
 vez de argent ou de um MCP de Chrome, o produto roda num **portal** — nó do canvas
 dirigido pela mesma CLI, o que o põe dentro do `Bash` que o `qa` já tem no
 allowlist.

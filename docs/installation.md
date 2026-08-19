@@ -16,25 +16,24 @@ When you run `node scripts/install.mjs`, it:
    - `~/.claude/harness`  → `<repo>` (stable path to the checkout, so skills and hooks reach `scripts/**` without hardcoding a clone location)
    - `~/.claude/agents`   → `<repo>/.claude/agents`
    - `~/.claude/hooks`    → `<repo>/.claude/hooks`
-   - `~/.claude/commands` → `<repo>/.claude/commands`
    - `~/.claude/skills/<name>` → one link **per entry**, never the directory itself (see below)
 2. Deep-merges harness keys into `~/.claude/settings.json`:
    - `agent` (set to `"orchestrator"`)
    - `permissions.allow` (union with whatever's already there)
    - `permissions.deny` (union; blocks `git push --force` and `git commit --no-verify` — `gh pr merge` is worker-scoped via the guard, see ask-then-merge in [`guard-destructive.md`](guard-destructive.md))
-   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Five hooks ship today: `auto-update` and `session-context` on `SessionStart`, `orchestrator-reminder` on `UserPromptSubmit`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the deny-list commands plus `gh pr merge`, a `git merge` aimed at a protected branch, and a backgrounded endless loop, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
+   - every hook event declared in the harness `.claude/settings.json` (appended; hook commands rewritten to absolute paths so they fire regardless of session cwd). <!-- docs-count:hooks -->Four hooks ship today: `auto-update` and `session-context` on `SessionStart`, `preserve-orchestrator` on `PreCompact`, and `guard-destructive` on `PreToolUse`/`Bash` — the last one blocks the deny-list commands plus a `git merge` aimed at a protected branch, a backgrounded endless loop, and `gh pr merge` inside a worker, including the shell-wrapped form ([`guard-destructive.md`](guard-destructive.md))
 3. Records what it added in `~/.claude/.my-configs-managed.json` so `--uninstall` can revert precisely.
 4. Retracts what it added and the harness no longer declares — see below.
 5. Installs the **OpenCode surface** (same run):
    - `~/.agents/skills/<name>` → one link per harness skill (OpenCode auto-loads this path; `.agents/` is **skills-only**)
-   - `~/.config/opencode/{agent,command,plugin}/<entry>` → one link each from `<repo>/.opencode/`
+   - `~/.config/opencode/{agent,plugin}/<entry>` → one link each from `<repo>/.opencode/` (the `command/` subdirectory is still walked, and is empty today)
    - deep-merge of `default_agent` + owned `permission.bash` deny patterns into `~/.config/opencode/opencode.json` (MCP and other user keys untouched)
    - metadata at `~/.config/opencode/.my-configs-managed.json`
    - details and the measured `bash -c` hole: [`integrations/opencode.md`](integrations/opencode.md)
 
 ### Installing is not append-only
 
-A skill removed from `.claude/skills/` (or from `EXTERNAL_SKILL_LINKS`) does not just stop being refreshed: on the next install its link is **removed** from `~/.claude/skills/`, and the metadata stops claiming it. The same already happened for `permissions.allow` / `permissions.deny` entries.
+A skill removed from `.claude/skills/` (or from `EXTERNAL_SKILL_LINKS`) does not just stop being refreshed: on the next install its link is **removed** from `~/.claude/skills/`, and the metadata stops claiming it. The same holds for `permissions.allow` / `permissions.deny` entries and for hook registrations — a hook dropped from the harness has its `settings.json` entry removed too, which is what keeps an already-installed machine from running `node <deleted-hook>.mjs` on every prompt after the pull.
 
 Without it, deleting a skill from the repo left a link behind that either dangled or — worse — kept resolving to a directory outside the checkout, so a `SKILL.md` for a tool the repo had just dropped went on routing work. Nothing warned about it.
 
@@ -95,7 +94,7 @@ Other keys in your `~/.claude/settings.json` (`theme`, `enabledPlugins`, `extraK
 
 ## Conflicts
 
-**`~/.claude/agents`, `~/.claude/hooks`, `~/.claude/commands` or `~/.claude/harness` already exists as a real directory.**
+**`~/.claude/agents`, `~/.claude/hooks` or `~/.claude/harness` already exists as a real directory.**
 The installer backs it up to `~/.claude/<name>.backup-<timestamp>` and proceeds. The message in the output points to the backup location. This does **not** apply to `~/.claude/skills` entries, which are only ever skipped.
 
 **`~/.claude/settings.json` already has `agent` set to something other than `orchestrator`.**
@@ -126,7 +125,7 @@ The installer is idempotent: running again refreshes the symlinks (no-op if alre
 - Every failure path exits 0 — the hook never blocks a session.
 - It never runs the installer. When the pulled diff touches `.claude/skills/` or `.claude/settings.json`, it prints a one-line reminder to run `node scripts/install.mjs` yourself.
 
-Force a check now (bypasses only the 6h throttle): `/sync-harness`, or `node ~/.claude/hooks/auto-update.mjs --force`.
+Force a check now (bypasses only the 6h throttle, every other safety check still applies): `node ~/.claude/hooks/auto-update.mjs --force`. That path resolves through the installed symlink, so it works from any directory. A `/sync-harness` command used to wrap this one line and was never invoked in 259 measured sessions; it is at the tag `pre-lean-cut`.
 
 Opt out per-machine: `export CLAUDE_SETUP_SKIP_AUTOUPDATE=1`. It also self-skips when `CI` is set.
 

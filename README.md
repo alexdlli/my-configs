@@ -9,26 +9,21 @@ Personal Claude Code harness — orchestrator agent + specialists, installed glo
 | `orchestrator` | Decomposition + parallel delegation (default) |
 | `explorer`     | Read-only research and discovery              |
 | `planner`      | Implementation strategy (read-only)           |
-| `pm`           | Spec/discussion into contract-compliant tickets (read-only on code) |
 | `implementer`  | Writes/edits code per a plan                  |
 | `reviewer`     | Code review, quality, security                |
 | `tester`       | Lint / typecheck / test / build               |
 | `qa`           | Runs the change and produces the proof artifact (screenshot, test, command output) |
 | `pr-author`    | Drafts PRs from the current branch            |
-| `pr-reviewer`  | Reviews open GitHub PRs                       |
 | `pr-triage`    | Classifies PR feedback threads; never applies, never posts |
 | `cavecrew-investigator` | Fast read-only locator (haiku, terse output) |
 | `cavecrew-builder`      | Surgical 1-2 file edit                        |
-| `cavecrew-reviewer`     | Single-line review findings (haiku)           |
 | `atlassian`    | Confluence / Jira via the Atlassian Rovo MCP  |
 
-Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation behavior across prompts and through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `gh pr merge`, `git push --force`, `git commit --no-verify` and a backgrounded endless loop — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. It also scopes `git merge` by destination: an agent may merge into a control branch (`integration/*`, `wave/*`) on its own, never into `main`. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
+Plus <!-- docs-count:hooks -->four hooks: one that preserves the delegation posture through context compaction, one that keeps the harness checkout up to date at session start, one that reports the terminal host and account context, and one `PreToolUse` guard that blocks `git push --force`, `git commit --no-verify` and a backgrounded endless loop — including the `bash -c "..."` form the `permissions.deny` list can't see, and including under `--dangerously-skip-permissions`. It also scopes `git merge` by destination (a control branch like `integration/*` yes, `main` never) and denies `gh pr merge` in a worker. See [`docs/guard-destructive.md`](docs/guard-destructive.md).
 
-The harness ships <!-- docs-count:skills -->three skills — `ticket-contract`, `pr-babysitting`, `maestri-orchestration` — and the <!-- docs-count:commands -->three slash commands that drive them: `/sync-harness`, `/ticket-new`, `/pr-babysit`. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
+The harness ships <!-- docs-count:skills -->two skills — `pr-babysitting` and `maestri-orchestration` — loaded by name, with no slash command in front of them. See [`docs/agent-system.md`](docs/agent-system.md) for what each one owns.
 
-The ticket pipeline (`ticket-contract`, `/ticket-new`) is **opt-in**: it runs when you ask for it by name, never by default. The default path is the orchestrator decomposing the request and delegating to specialists in a single response.
-
-The wave pipeline that used to sit on top of it — dependency graph, `/wave-plan`, `/wave-status`, `wave-monitor`, `wave-orchestration` — was removed after running once. It is preserved at the annotated tag `pre-wave-removal`.
+Two pipelines were removed after measuring how little they ran: the **wave** one (dependency graph, `/wave-plan`, `/wave-status`, `wave-monitor`, `wave-orchestration`), preserved at the annotated tag `pre-wave-removal`, and the **ticket** one (`pm`, `ticket-contract`, `/ticket-new`, the Issues reader), preserved at `pre-lean-cut` together with the three slash commands and the three agents that measured zero invocations. The default path is what remains: the orchestrator decomposing a request and delegating to specialists in a single response.
 
 ## Install
 
@@ -38,7 +33,7 @@ cd ~/Developer/my-configs
 node scripts/install.mjs
 ```
 
-That symlinks `~/.claude/{harness,agents,hooks,commands}` to this checkout, links each `.claude/skills` entry individually into the shared `~/.claude/skills` (third-party skills are never displaced), and deep-merges the harness keys (`agent`, `permissions.allow`, `permissions.deny`, and every hook event declared in `.claude/settings.json`) into your `~/.claude/settings.json`. Existing keys (theme, plugins, etc.) are preserved.
+That symlinks `~/.claude/{harness,agents,hooks}` to this checkout, links each `.claude/skills` entry individually into the shared `~/.claude/skills` (third-party skills are never displaced), and deep-merges the harness keys (`agent`, `permissions.allow`, `permissions.deny`, and every hook event declared in `.claude/settings.json`) into your `~/.claude/settings.json`. Existing keys (theme, plugins, etc.) are preserved.
 
 Open a new Claude Code session anywhere and run `/agents` — `orchestrator` should be active.
 
@@ -63,27 +58,24 @@ Removes only the links this installer created (matched by recorded target) and r
 ```
 .claude/
 ├── agents/              # orchestrator + specialists
-├── hooks/               # orchestrator-reminder, preserve-orchestrator, auto-update,
+├── hooks/               # preserve-orchestrator, auto-update,
 │                        # session-context, guard-destructive
 │   └── lib/             # shared hook helpers (+ their tests)
-├── commands/            # /sync-harness /ticket-new /pr-babysit
-├── skills/              # ticket-contract, pr-babysitting,
-│                        # maestri-orchestration — linked one by one
+├── skills/              # pr-babysitting, maestri-orchestration — linked one by one
 └── settings.json        # baseline merged into ~/.claude/settings.json
 scripts/
 ├── install.mjs          # installer (symlink + merge + uninstall)
-├── github/              # read-only gh readers: tickets, shared gh access,
+├── github/              # read-only gh readers: shared gh access,
 │                        # PR state/threads (+ tests)
 ├── setup-ai-memory.mjs  # one-shot ai-memory (long-term memory) setup
 ├── verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
 ├── backup-ai-memory.mjs # ai-memory volume backup, rotation + daily LaunchAgent
 └── claude-openai-shim.mjs  # OpenAI-compat shim over `claude -p` (subscription)
 docs/
-├── agent-system.md      # full agent, skill and command reference
+├── agent-system.md      # full agent and skill reference
 ├── installation.md      # detailed install + troubleshooting
 ├── usage.md             # driving the harness day to day
 ├── contributing.md      # conventions for working on this harness
-├── tickets.md           # ticket contract + the GitHub Issues reader
 ├── guard-destructive.md # the PreToolUse guard: the three permission layers,
 │                        # what it blocks and what it deliberately doesn't
 └── integrations/        # session-context, maestri, ecotokens, ai-memory, opencode

@@ -10,25 +10,22 @@ Notes for working on this harness. It's small on purpose — settings, agents, h
   agents/              # one .md per agent (Claude Code)
   hooks/               # hook scripts (.mjs)
     lib/               # shared helpers used by more than one hook, with their tests
-  commands/            # one .md per slash command; the directory is linked as a whole
   skills/              # one directory per skill (SKILL.md), linked entry by entry
 .opencode/
   agent/               # OpenCode agents (permission: frontmatter, not tools:)
-  command/             # OpenCode slash commands
   plugin/              # in-process plugins (guard-destructive)
   opencode.json        # managed default_agent + permission deny slice
 docs/
-  agent-system.md      # agents, skills, slash commands
+  agent-system.md      # agents and skills
   installation.md      # install, flags, conflicts, troubleshooting
   usage.md             # driving the harness day to day
   contributing.md      # this file
-  tickets.md           # ticket contract + the GitHub Issues reader
   integrations/        # session-context, maestri, ecotokens, ai-memory, opencode
 scripts/
   install.mjs          # symlink + merge installer
   install.test.mjs     # link retraction, both directions: what the harness stopped declaring goes, what it still declares stays
   docs-inventory.test.mjs  # fails when the docs stop matching the real directories
-  github/              # read-only gh readers: tickets-github, gh, pr-state, fetch-pr-threads
+  github/              # read-only gh readers: gh, pr-state, fetch-pr-threads
   setup-ai-memory.mjs  # one-shot ai-memory setup
   verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
   backup-ai-memory.mjs # volume backup + rotation + LaunchAgent
@@ -38,7 +35,7 @@ CLAUDE.md              # session-level guidance Claude reads automatically
 
 `.claude/hooks/lib/` holds logic shared by more than one hook — it is the only place in `.claude/hooks/` that is not itself a hook. Claude Code never invokes it directly; hooks import from it. It is also where the hook unit tests live (`*.test.mjs`), since a hook script's own top level runs on import.
 
-`.claude/skills/` and `.claude/commands/` are installed differently, and the difference matters. The commands directory is symlinked whole, so a new command is live on pull. Skills are linked **entry by entry** because `~/.claude/skills` is shared with third-party skills; adding one requires re-running the installer. See [`agent-system.md`](agent-system.md) for the full policy.
+`.claude/skills/` is linked **entry by entry**, never as a directory, because `~/.claude/skills` is shared with third-party skills; adding one requires re-running the installer. See [`agent-system.md`](agent-system.md) for the full policy — and for why there is no `.claude/commands/` any more.
 
 ## Adding a new specialist subagent
 
@@ -56,7 +53,7 @@ CLAUDE.md              # session-level guidance Claude reads automatically
    ```
 
 2. Update `orchestrator.md`'s "Roster" section so the orchestrator knows it can delegate to the new agent.
-3. Update the roster table in `CLAUDE.md`, `README.md`, and `docs/agent-system.md` — including the specialist **count** in that file's opening line, and the read-only allowlist paragraph if the new agent has no `Edit`/`Write`. Don't count by hand: `node --test 'scripts/*.test.mjs'` names every doc that still omits the agent, and every count that no longer adds up (see [Docs that list or count things](#docs-that-list-or-count-things)).
+3. Update the roster table in `README.md` and `docs/agent-system.md` — including the specialist **count** in that file's opening line, and the read-only allowlist paragraph if the new agent has no `Edit`/`Write`. Don't count by hand: `node --test 'scripts/*.test.mjs'` names every doc that still omits the agent, and every count that no longer adds up (see [Docs that list or count things](#docs-that-list-or-count-things)).
 4. Re-run `node scripts/install.mjs` (no-op for symlinks, but confirms nothing broke), then open a session, run `/agents`, confirm the new agent appears and routes for an example task.
 
 Guidelines:
@@ -94,7 +91,7 @@ Don't add a hook just because you can. Add one when there's a real recurring pai
 - Maintain the flags: default install, `--dry-run`, `--uninstall`, `--force-agent`, `--help`.
 - Keep the deep-merge behavior for `settings.json` — never clobber unrelated keys (`theme`, `enabledPlugins`, etc.).
 - Keep the metadata file (`~/.claude/.my-configs-managed.json`) accurate — `--uninstall` reads it to revert precisely what was added, and removes a link only when its `readlink` still matches the recorded target.
-- **Adding is only half of it.** Anything the installer installs must also be *retractable*: when the harness stops declaring it, the next install has to take it off the machine. Links go through `retractLinks`, permission entries through `retractPermissionEntries`; both key on the metadata, so nothing the user wrote by hand is ever touched. A new kind of managed artifact needs its own retraction and its own case in `scripts/install.test.mjs` — a union-only merge looks correct until something is deleted from the repo, and then it leaves a dead path behind in silence.
+- **Adding is only half of it.** Anything the installer installs must also be *retractable*: when the harness stops declaring it, the next install has to take it off the machine. Links go through `retractLinks`, permission entries through `retractPermissionEntries`, hook registrations through `retractHookEntries`; all three key on the metadata, so nothing the user wrote by hand is ever touched. The hook one was the last to arrive, and its absence was measured: deleting a hook from the harness left its `settings.json` entry pointing at a script the same pull had just removed, so Claude Code ran `node <gone>.mjs` on every prompt. A new kind of managed artifact needs its own retraction and its own case in `scripts/install.test.mjs` — a union-only merge looks correct until something is deleted from the repo, and then it leaves a dead path behind in silence.
 - Never symlink `~/.claude/skills` itself; it is shared with plugins and other toolkits. Add skills to `.claude/skills/` (linked per entry automatically) or, for a skill installed elsewhere on disk, to `EXTERNAL_SKILL_LINKS`.
 - Bump `METADATA_VERSION` when the metadata shape changes, and teach `normalizeMetadata` how to read the old shape.
 - Test with `--dry-run` against a fake `$HOME`:
@@ -112,9 +109,8 @@ Prose that says "five hooks", or a table that claims to list every agent, goes s
 
 | Inventory | Read from | Docs that must name every entry |
 |---|---|---|
-| `agents` | `.claude/agents/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
+| `agents` | `.claude/agents/*.md` | `README.md`, `docs/agent-system.md` |
 | `skills` | `.claude/skills/*/` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
-| `commands` | `.claude/commands/*.md` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
 | `hooks` | `.claude/hooks/*.mjs` | `README.md`, `docs/installation.md` |
 | `integrations` | `docs/integrations/*.md` | `README.md`, `docs/contributing.md` |
 | `githubScripts` | `scripts/github/*.mjs` minus `*.test.mjs` | `CLAUDE.md`, `docs/contributing.md` |
@@ -133,7 +129,7 @@ Three limits, all deliberate:
 
 - A count written **without** a marker is invisible to the test. Add the marker when you write the count; there is no way to find an unmarked one without regex-guessing at prose, which is what makes this class of test untrustworthy.
 - Markers inside fenced code blocks are ignored, so an example like the one above is never a live claim.
-- `.claude/skills` is exempt from the reverse "this path is not on disk" check. `~/.claude/skills` is shared ground: docs there legitimately point at a skill installed outside this repo — `to-tickets` and `to-spec` come from elsewhere, and `maestri-orchestration` references the six skills the Maestri app installs: `maestri`, `maestri-manager`, `maestri-portal`, `maestri-portal-devices`, `maestri-routines` and `maestri-workspace`. The other five directories are owned by the harness alone, so a path into them that does not resolve is a real broken reference.
+- `.claude/skills` is exempt from the reverse "this path is not on disk" check. `~/.claude/skills` is shared ground: docs there legitimately point at a skill installed outside this repo — `to-tickets` and `to-spec` come from elsewhere, and `maestri-orchestration` references the six skills the Maestri app installs: `maestri`, `maestri-manager`, `maestri-portal`, `maestri-portal-devices`, `maestri-routines` and `maestri-workspace`. The other four directories are owned by the harness alone, so a path into them that does not resolve is a real broken reference.
 
 ## Running the tests
 
@@ -153,3 +149,5 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml` — 
 
 - Never include "Claude Code" or "Claude" as co-author.
 - Test before committing — syntax check + a real dry run against a fake `$HOME`.
+- **A bug fix carries a test that fails against the pre-fix code, and you have watched it fail.** Write the test, run it on the unfixed code, see red, then fix. A test added next to a fix and only *asserted* to cover it proves nothing: the common failure is a case that passes either way. Same discipline as `docs/lessons.md`'s discrimination signals — this is the one line of it that belongs in the commit rules.
+- **A claim about how an external tool behaves carries its version and how it was measured**, or it does not go in a doc. `docs/installation.md`'s "What `permissions.deny` guarantees" section is the shape: product version, Node version, OS, date, and the command that produced the answer. Repeated offender, this one — see `L-006` and `L-010`.

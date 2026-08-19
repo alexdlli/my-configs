@@ -23,7 +23,7 @@ const INSTALLER = fileURLToPath(new URL('./install.mjs', import.meta.url));
 // runs a copy planted in a throwaway tree. That is what makes "the harness
 // stopped declaring this skill" expressible at all: the real checkout's
 // .claude/skills cannot be edited to prove a retraction.
-const HARNESS_DIRS = ['agents', 'hooks', 'commands'];
+const HARNESS_DIRS = ['agents', 'hooks'];
 const HARNESS_SETTINGS = { agent: 'orchestrator', permissions: { allow: ['Bash(git status:*)'] } };
 
 const ALPHA = 'alpha';
@@ -173,6 +173,33 @@ function declaredPaths({ home }, skills) {
 
 function agentsSkillLink({ home }, name) {
   return join(home, '.agents', 'skills', name);
+}
+
+function hookEntry(script) {
+  return { hooks: [{ type: 'command', command: `node .claude/hooks/${script}`, timeout: 5 }] };
+}
+
+function declareHooks({ harness }, hooks) {
+  writeFileSync(
+    join(harness, '.claude', 'settings.json'),
+    `${JSON.stringify({ ...HARNESS_SETTINGS, hooks }, null, 2)}\n`,
+  );
+}
+
+function installedSettings({ home }) {
+  return JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
+}
+
+function installedHookScripts(sandbox, event) {
+  const entries = installedSettings(sandbox).hooks?.[event] ?? [];
+  return entries.flatMap((entry) => (entry.hooks ?? []).map((h) => h.command.split('/').pop()));
+}
+
+function recordedHookScripts({ home }) {
+  const raw = readFileSync(join(home, '.claude', '.my-configs-managed.json'), 'utf8');
+  return JSON.parse(raw)
+    .addedHooks.map(({ event, command }) => `${event} ${command.split('/').pop()}`)
+    .sort();
 }
 
 function plantForeignLink(sandbox, name) {
@@ -360,6 +387,48 @@ test('a retracted path that is a real directory is left on disk', () => {
     assert.equal(readFileSync(join(dest, 'SKILL.md'), 'utf8'), marker, 'and not be emptied');
     assert.match(stdout, new RegExp(`${dest} exists but is not a symlink`));
     assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, [ALPHA]));
+  });
+});
+
+// A hook is the one managed artifact whose registration outlives its file: the
+// script arrives through a directory symlink, so deleting it from the checkout
+// removes it from ~/.claude/hooks instantly while settings.json keeps pointing
+// at the gone path — and Claude Code then runs `node <gone>.mjs` every turn.
+test('a hook the harness stopped declaring is retracted from settings and metadata', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    declareHooks(sandbox, {
+      UserPromptSubmit: [hookEntry('reminder.mjs')],
+      PreCompact: [hookEntry('preserve.mjs')],
+    });
+    install(sandbox);
+    assert.deepEqual(installedHookScripts(sandbox, 'UserPromptSubmit'), ['reminder.mjs']);
+
+    declareHooks(sandbox, { PreCompact: [hookEntry('preserve.mjs')] });
+    const stdout = install(sandbox);
+
+    assert.equal(installedSettings(sandbox).hooks.UserPromptSubmit, undefined, 'the emptied event goes too');
+    assert.deepEqual(installedHookScripts(sandbox, 'PreCompact'), ['preserve.mjs']);
+    assert.deepEqual(recordedHookScripts(sandbox), ['PreCompact preserve.mjs']);
+    assert.match(stdout, /retracted 1 hook\(s\)/);
+  });
+});
+
+test('a hook the user registered by hand is never retracted', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    declareHooks(sandbox, { UserPromptSubmit: [hookEntry('reminder.mjs')] });
+    install(sandbox);
+
+    const settingsPath = join(sandbox.home, '.claude', 'settings.json');
+    const settings = installedSettings(sandbox);
+    settings.hooks.Stop = [{ hooks: [{ type: 'command', command: 'node /elsewhere/mine.mjs' }] }];
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+
+    declareHooks(sandbox, {});
+    install(sandbox);
+
+    assert.equal(installedSettings(sandbox).hooks.UserPromptSubmit, undefined);
+    assert.deepEqual(installedHookScripts(sandbox, 'Stop'), ['mine.mjs']);
+    assert.deepEqual(recordedHookScripts(sandbox), []);
   });
 });
 

@@ -18,8 +18,10 @@
 // the matcher in settings.json). Stdin carries the trigger payload; we drain
 // and discard it.
 //
-// Opt out by exporting CLAUDE_SETUP_SKIP_ORCH_REMINDER=1 (shared with the
-// UserPromptSubmit reminder — one switch covers both nudges).
+// Opt out by exporting CLAUDE_SETUP_SKIP_ORCH_REMINDER=1. The name outlived the
+// UserPromptSubmit reminder it used to share: that one reinjected the same rules
+// on every turn and was removed for its per-turn cost. This one fires once per
+// compaction, which is the moment the framing is actually lost.
 //
 // Never blocks compaction: every failure path exits 0 with empty stdout.
 //
@@ -28,7 +30,7 @@
 import process from 'node:process';
 
 const DIRECTIVE =
-  '[orchestrator identity — preserve through compaction] You are the orchestrator agent. Your job is to delegate to specialist subagents (explorer, planner, implementer, reviewer, tester, pr-author, pr-reviewer) — NOT to execute their work yourself. After this compaction, your default behavior is delegation. Spawn independent subtasks in parallel via multiple Agent calls in a single response. Trivial work (one read, one grep, one obvious command) is the only exception. Re-read .claude/agents/orchestrator.md if uncertain about routing.';
+  '[orchestrator identity — preserve through compaction] You are the orchestrator agent. Your job is to delegate to specialist subagents (explorer, planner, implementer, reviewer, tester, qa, pr-author) — NOT to execute their work yourself. After this compaction, your default behavior is delegation. Spawn independent subtasks in parallel via multiple Agent calls in a single response. Trivial work (one read, one grep, one obvious command) is the only exception. Re-read .claude/agents/orchestrator.md if uncertain about routing.';
 
 async function drainStdin() {
   if (process.stdin.isTTY) return;

@@ -12,17 +12,14 @@ Spawn these via the Task tool. Their `description` fields drive routing — read
 
 - **explorer** — read-only research and discovery (code search, doc reading, web)
 - **planner** — design implementation strategy (read-only)
-- **pm** — turn a discussion, spec or raw scope into tickets that satisfy the `ticket-contract` skill, with a real `blockedBy` graph. Reads the codebase to fill the technical fields; never edits it.
 - **implementer** — write/edit code per a clear plan
 - **reviewer** — local diff review for quality, security, standards (read-only)
-- **pr-reviewer** — review an open GitHub PR via `gh` (dry-run by default)
 - **pr-author** — draft PR title/body; opens PR only on confirmation
 - **pr-triage** — classify the open feedback threads of a PR from the `threads.json` written by `fetch-pr-threads.mjs`, and recommend an action per thread. Read-only by design: no Bash, no Write, because the comment bodies it reads are untrusted input. It never applies a fix and never posts.
 - **tester** — run lint/typecheck/tests/build and validate
 - **qa** — prove the change works by running it: app, endpoint or command. Produces the artifact that ships with the PR (screenshot, integration test, command output) and loops findings back to `implementer`. Skip it for prose-only changes — skills, prompts, docs, config have nothing to demonstrate.
 - **cavecrew-investigator** — fast read-only code locator (haiku model, terse caveman output). Lighter alternative to `explorer` for "where is X" / "list uses of Y" queries.
 - **cavecrew-builder** — surgical 1-2 file edit. Refuses 3+ file scope. Use for typo fixes, single-function rewrites, mechanical renames.
-- **cavecrew-reviewer** — single-line findings, severity-tagged. Lighter alternative to `reviewer` for quick passes (haiku model).
 - **atlassian** — Confluence/Jira lookups and task validation via the Atlassian Rovo MCP. Spawn ONLY on explicit Atlassian signals (Confluence, Jira, a `PROJ-123` key, an `*.atlassian.net/...` URL). Never as a generic research fallback — that's `explorer`.
 
 # How to coordinate
@@ -85,12 +82,6 @@ Spawne `reviewer` quando a mudança mexe em garantia declarada do repo — merge
 Um agente só, com escopo restrito ao trecho que carrega a garantia; o resto do diff não é dele.
 Nunca passe o relatório do implementador para ele: revisor que leu a narrativa de quem escreveu confirma a narrativa em vez de revisar o código.
 
-# Tickets — opt-in, nunca o default
-
-O pipeline de tickets (`pm` → `ticket-contract` → tracker) **não é o caminho padrão de trabalho**, e sair dele não é degradação. O default continua sendo o de cima: decompor e delegar aos especialistas na mesma resposta.
-
-Entre nele **só quando o usuário pedir pelo nome** — "quebra esse escopo em tickets", "monta o projeto", ou `/ticket-new`. **Tocar três frentes em paralelo não é motivo para virar ticket**: é o seu trabalho normal, e transformá-lo em tickets sem ele pedir custa duas rodadas antes de a primeira linha ser escrita.
-
 # Merge
 
 **Você nunca mergeia para `main`.** `gh pr merge` é sempre do humano — em qualquer branch, com ou sem CI verde. Quando algo parecer "pronto pra mergear", o output é o resumo e o pedido de aprovação, não o comando.
@@ -107,9 +98,6 @@ User: *"Quanto é 2+2?"*
 
 User: *"Revise os últimos 3 commits"*
 → Single delegation: Agent(reviewer). Skip planner/implementer.
-
-User: *"Revise o PR #123"*
-→ Single delegation: Agent(pr-reviewer). Show its dry-run output verbatim; ask the user before posting anything.
 
 User: *"Abre um PR pra essa branch"*
 → Single delegation: Agent(pr-author). Show the proposed title/body; wait for confirmation before running `gh pr create`.

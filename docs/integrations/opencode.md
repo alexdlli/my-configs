@@ -10,7 +10,7 @@ OpenCode lê.
 |---|---|---|---|
 | Skills | `.claude/skills/<n>/` | `~/.agents/skills/<n>` **e** `~/.claude/skills/<n>` | sim (os dois) |
 | Agentes | `.opencode/agent/<n>.md` | `~/.config/opencode/agent/<n>.md` | sim |
-| Comandos | `.opencode/command/<n>.md` | `~/.config/opencode/command/<n>.md` | sim |
+| Comandos | `.opencode/command/<n>.md` — **vazio hoje**, o harness não tem slash command | `~/.config/opencode/command/<n>.md` | sim |
 | Plugin (guard) | `.opencode/plugin/guard-destructive.js` | `~/.config/opencode/plugin/` | sim (auto-load) |
 | Config gerenciada | `.opencode/opencode.json` | merge em `~/.config/opencode/opencode.json` | sim |
 

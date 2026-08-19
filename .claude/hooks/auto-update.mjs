@@ -180,8 +180,8 @@ async function main() {
 
   try {
     // Touch the throttle BEFORE the fetch so a flaky network doesn't make every
-    // session for the next 6h retry. Skipped under --force: if the user invoked
-    // /sync-harness explicitly, a failure here shouldn't gate the normal
+    // session for the next 6h retry. Skipped under --force: if the user asked
+    // for a check explicitly, a failure here shouldn't gate the normal
     // SessionStart hook for the next 6h.
     if (!force) writeFileSync(cacheFile, String(Date.now()));
 

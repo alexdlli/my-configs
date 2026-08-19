@@ -28,7 +28,7 @@ Confirmado ao vivo: num terminal do Maestri existem exatamente **três** variáv
 
 O persona cita `/to-prd`, `/to-issues` e `/prototype`. As instaladas são **`to-spec`** e **`to-tickets`**.
 
-Além do rename, `/to-issues` foi **superseded** pela skill `ticket-contract` deste harness, que cobre 12 campos contra os 4 de `to-tickets`. No port, o fluxo de planejamento termina em `ticket-contract`, não em `to-issues`.
+Além do rename, `/to-issues` foi **superseded** pela skill `ticket-contract` deste harness, que cobria 12 campos contra os 4 de `to-tickets`. Essa skill saiu junto com o pipeline de tickets e está na tag `pre-lean-cut`: hoje o fluxo de planejamento do port termina em `to-spec`.
 
 ### 3. `--dangerously-skip-permissions` contra `permissions.deny` — resolvido
 
@@ -47,7 +47,7 @@ Parte do persona vale nos dois ambientes (Maestri e Claude Code puro) e mora nas
 | Revisão adversarial de duas lentes, e o freio de escopo que ela precisava | **aposentada.** Duas lentes sobre todo PR não trivial custaram 20x a quota em 4 dias, e o ritual não pagou o preço. O que sobrou está em `orchestrator.md`, "Revisão": um revisor, só quando a mudança mexe em garantia declarada do repo, com escopo restrito ao trecho que a carrega e sem receber o relatório do implementador |
 | Proibição de `git stash` em worktree (o stash é um ref único compartilhado) | **saiu com o pipeline de ondas.** Morava na skill `wave-orchestration` e em `docs/waves.md`, os dois removidos; o texto está preservado na tag `pre-wave-removal` |
 | Cap de tentativas por objetivo delegado | **saiu com o pipeline de ondas** (`wave-orchestration`, "Teto de iteração por achado" do prompt do worker, `TETO_POR_ACHADO = 3`) — preservado na tag `pre-wave-removal` |
-| "Verificação é skill, não opinião" | `ticket-contract`, "O sensor de discriminação: o artefato tem que saber falhar" — o port **moveu o momento**: o sensor é do autor e roda antes de ele reportar pronto, não da revisão depois |
+| "Verificação é skill, não opinião" | `docs/contributing.md`, "Commit rules" — o port **moveu o momento**: o sensor é do autor e roda antes de ele reportar pronto, não da revisão depois. A formulação longa era da skill `ticket-contract` ("o artefato tem que saber falhar"), removida com o pipeline de tickets e preservada na tag `pre-lean-cut` |
 | "Melhore o sistema, não só o caso" | virou mecanismo determinístico em `scripts/lessons.mjs` + [`../lessons.md`](../lessons.md): o achado só vira guidance depois de recorrer em 2 tickets distintos, e a escrituração é do script, não de um prompt |
 | Baseline antes de mexer, achado fora de escopo, hipótese rotulada, verificar antes de reportar pronto | `implementer.md` e `tester.md` (achado fora de escopo vira PR próprio) e `orchestrator.md`, "Achado novo = PR próprio". A versão que ia no prompt do worker saiu com `wave-orchestration` |
 | Reportar ao Maestro por `ask` tudo o que faz — início, fim e bloqueio; nunca ficar em silêncio | o texto do role do recruta em `maestri-orchestration`, "Bypass de permissão". O bloco do sinal em `## Ao terminar` do prompt do worker saiu com `wave-orchestration`; ele só entrava onde havia canal de volta — o port **cortou o sinal de início e fechou a gramática do resto**: quem despachou já sabe que a frente começou, e prosa livre num argumento que atravessa shell é superfície de execução, não relatório |

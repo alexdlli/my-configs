@@ -34,17 +34,12 @@ const INVENTORIES = {
   agents: {
     dir: '.claude/agents',
     suffix: MARKDOWN,
-    indexes: [README, CLAUDE, AGENT_SYSTEM],
+    indexes: [README, AGENT_SYSTEM],
   },
   skills: {
     dir: '.claude/skills',
     suffix: DIRECTORY_ENTRY,
     sharedNamespace: true,
-    indexes: [README, CLAUDE, AGENT_SYSTEM],
-  },
-  commands: {
-    dir: '.claude/commands',
-    suffix: MARKDOWN,
     indexes: [README, CLAUDE, AGENT_SYSTEM],
   },
   hooks: {

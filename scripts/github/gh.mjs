@@ -7,11 +7,11 @@
 // means lives in fetch-pr-threads.mjs. Neither may be imported from here; the
 // dependency runs one way, from the scripts to this module.
 //
-// tickets-github.mjs also talks to `gh` and is deliberately not a caller: it
-// reads issues rather than pull requests, and carries its own exit-code table
-// where 4 is "unreachable or rate limited", 5 "not authenticated" and 6 "repo
-// not found". Those meanings collide with the ones below, so the two tables
-// must never be read as one.
+// A future reader of something other than pull requests is not automatically a
+// caller: the exit-code table below is part of this module's contract, and a
+// script whose failures do not map onto it should carry its own rather than
+// bend these meanings. The Issues reader that used to sit here did exactly that
+// (it is at the tag `pre-lean-cut`), and the two tables were never read as one.
 //
 // Exit codes:
 //   0  the query succeeded

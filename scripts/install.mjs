@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // Install (or uninstall) the personal Claude Code harness into ~/.claude/.
 //
-// Symlinks ~/.claude/{harness,agents,hooks,commands} into the harness checkout,
+// Symlinks ~/.claude/{harness,agents,hooks} into the harness checkout,
 // links skills one entry at a time, and deep-merges a managed slice of
 // ~/.claude/settings.json (agent, permissions.allow, permissions.deny, and every
 // hook event the harness declares) without disturbing keys the user owns
 // (theme, enabledPlugins, extraKnownMarketplaces, ...).
 //
-// Installing is not append-only: a link or a permission entry this installer
-// added and the harness no longer declares is retracted on the next run, so a
-// skill deleted from the checkout stops being reachable from ~/.claude.
+// Installing is not append-only: a link, a permission entry or a hook
+// registration this installer added and the harness no longer declares is
+// retracted on the next run, so a skill or a hook deleted from the checkout
+// stops being reachable from ~/.claude.
 //
 // Usage:
 //   node scripts/install.mjs                # install or refresh
@@ -35,7 +36,7 @@ const HOME = os.homedir();
 const TARGET_DIR = path.join(HOME, '.claude');
 const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
-const SYMLINK_ITEMS = ['agents', 'hooks', 'commands'];
+const SYMLINK_ITEMS = ['agents', 'hooks'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
 const METADATA_VERSION = 2;
 
@@ -88,7 +89,7 @@ Options:
   -h, --help       Show this help
 
 Claude Code (~/.claude/):
-  harness, agents, hooks, commands → directory symlinks into the checkout
+  harness, agents, hooks → directory symlinks into the checkout
   skills/<name> → one symlink per harness skill (never the directory itself)
   settings.json deep-merged (agent, permissions, hooks)
   .my-configs-managed.json records what was added
@@ -96,8 +97,9 @@ Claude Code (~/.claude/):
 OpenCode:
   ~/.agents/skills/<name> → same harness skills, one entry at a time
     (.agents/ is skills-only; OpenCode does not read agents/commands from there)
-  ~/.config/opencode/agent|command|plugin/<entry> → one symlink each from
-    <harness>/.opencode/{agent,command,plugin}/
+  ~/.config/opencode/agent|plugin/<entry> → one symlink each from
+    <harness>/.opencode/{agent,plugin}/ (command/ is empty today; the subdir is
+    still walked, so re-adding one needs no installer change)
   ~/.config/opencode/opencode.json deep-merged: default_agent + permission
     deny rules the harness owns. MCP and other user keys are left untouched.
 
@@ -105,7 +107,8 @@ What gets retracted:
   A link recorded in the metadata whose path the harness no longer declares is
   removed from disk and dropped from the metadata — but only when its readlink
   still matches what was recorded, so a name taken over by another toolkit is
-  left alone. Same for permissions.allow/deny entries this installer added.`);
+  left alone. Same for permissions.allow/deny entries and for hook
+  registrations this installer added.`);
 }
 
 function die(msg) {
@@ -205,6 +208,56 @@ function userHasHookForScript(userEntries, scriptName) {
   });
 }
 
+// Every (event, command) pair the harness declares right now, with the command
+// already absolutized — the same string shape the metadata records.
+function declaredHookCommands(harnessHooks) {
+  const declared = new Set();
+  if (!isPlainObject(harnessHooks)) return declared;
+  for (const [event, entries] of Object.entries(harnessHooks)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of rewriteHookEntries(entries)) {
+      for (const h of entry.hooks ?? []) {
+        if (typeof h?.command === 'string') declared.add(hookSignature({ event, command: h.command }));
+      }
+    }
+  }
+  return declared;
+}
+
+// Removes the hook registrations a previous run added and the harness no longer
+// declares, returning the ones actually dropped.
+//
+// The hook half of retractPermissionEntries, and it was missing for the same
+// reason: appending is idempotent, so nothing looks wrong until a hook is
+// *deleted* from the harness. Measured before this existed — dropping
+// orchestrator-reminder.mjs from the harness left its UserPromptSubmit entry in
+// an already-installed settings.json, pointing at a script the pull had just
+// removed. Claude Code then runs `node <gone>.mjs` on every prompt, forever.
+// Keyed on the metadata, so a hook the user registered by hand is never touched.
+function retractHookEntries(merged, harnessHooks, previouslyAdded) {
+  if (previouslyAdded.length === 0) return [];
+  const declared = declaredHookCommands(harnessHooks);
+  const retract = previouslyAdded.filter((hook) => !declared.has(hookSignature(hook)));
+  if (retract.length === 0) return [];
+  if (!isPlainObject(merged.hooks)) return retract;
+
+  const byEvent = new Map();
+  for (const { event, command } of retract) {
+    if (!byEvent.has(event)) byEvent.set(event, new Set());
+    byEvent.get(event).add(command);
+  }
+  for (const [event, commands] of byEvent) {
+    const entries = merged.hooks[event];
+    if (!Array.isArray(entries)) continue;
+    merged.hooks[event] = entries.filter(
+      (entry) => !(entry?.hooks ?? []).some((h) => commands.has(h?.command)),
+    );
+    if (merged.hooks[event].length === 0) delete merged.hooks[event];
+  }
+  if (Object.keys(merged.hooks).length === 0) delete merged.hooks;
+  return retract;
+}
+
 // Appends the harness entries missing from merged.permissions[listName],
 // returning only the ones this run introduced.
 function appendPermissionEntries(merged, listName, harnessEntries) {
@@ -255,6 +308,7 @@ function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata)
     retractedAllowEntries: [],
     retractedDenyEntries: [],
     addedHooks: [],
+    retractedHooks: [],
     addedLinks: [],
     retractedLinks: [],
   };
@@ -302,6 +356,7 @@ function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata)
   );
 
   const harnessHooks = harnessSettings?.hooks;
+  added.retractedHooks = retractHookEntries(merged, harnessHooks, priorMetadata.addedHooks);
   if (isPlainObject(harnessHooks)) {
     if (!isPlainObject(merged.hooks)) merged.hooks = {};
     for (const event of Object.keys(harnessHooks)) {
@@ -397,7 +452,12 @@ function mergeMetadata(prior, added) {
       added.addedDenyEntries,
       added.retractedDenyEntries,
     ),
-    addedHooks: dedupeBySignature(normalized.addedHooks, added.addedHooks, hookSignature),
+    addedHooks: dedupeWithout(
+      normalized.addedHooks,
+      added.addedHooks,
+      added.retractedHooks,
+      hookSignature,
+    ),
     addedLinks: dedupeWithout(
       normalized.addedLinks,
       added.addedLinks,
@@ -1011,6 +1071,8 @@ async function runInstall(opts) {
   if (addedSummary.length > 0) summaryParts.push(`added ${addedSummary.join(', ')}`);
   const retractedSummary = [];
   if (retractedLinks.length > 0) retractedSummary.push(`${retractedLinks.length} link(s)`);
+  if (added.retractedHooks.length > 0)
+    retractedSummary.push(`${added.retractedHooks.length} hook(s)`);
   const retractedEntries = [...added.retractedAllowEntries, ...added.retractedDenyEntries];
   if (retractedEntries.length > 0) retractedSummary.push(retractedEntries.join(', '));
   if (retractedSummary.length > 0) summaryParts.push(`retracted ${retractedSummary.join(', ')}`);

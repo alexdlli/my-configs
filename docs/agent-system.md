@@ -1,6 +1,6 @@
 # Agent System
 
-This harness ships an orchestrator + <!-- docs-count:specialists -->14 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
+This harness ships an orchestrator + <!-- docs-count:specialists -->11 specialist subagents, all defined under `.claude/agents/`. Every session that loads this harness starts in the `orchestrator` agent (set via `.claude/settings.json`'s `agent` field).
 
 ## Roster
 
@@ -9,17 +9,14 @@ This harness ships an orchestrator + <!-- docs-count:specialists -->14 specialis
 | `orchestrator` | Decomposes tasks, delegates in parallel, synthesizes | inherit (all)                              | inherit | sisyphus         |
 | `explorer`     | Read-only research, code search, doc reading  | Read, Grep, Glob, WebFetch, WebSearch, Bash        | inherit | librarian        |
 | `planner`      | Designs strategy, returns step-by-step plans  | Read, Grep, Glob, WebFetch, Bash                   | inherit | prometheus       |
-| `pm`           | Turns a spec or discussion into contract-compliant tickets + a `blockedBy` graph | Read, Grep, Glob, Bash, WebFetch | inherit | —                |
 | `implementer`  | Writes/edits code per a plan                  | Read, Edit, Write, Grep, Glob, Bash, NotebookEdit  | inherit | hephaestus       |
 | `reviewer`     | Reviews local diffs for quality and security  | Read, Grep, Glob, Bash                             | inherit | oracle           |
-| `pr-reviewer`  | Reviews an open GitHub PR via `gh` (dry-run default) | Read, Grep, Glob, Bash                       | inherit | —                |
 | `pr-author`    | Drafts PR title/body; opens PR on confirmation | Read, Grep, Glob, Bash                            | inherit | —                |
 | `pr-triage`    | Classifies a PR's open feedback threads from `threads.json`; recommends, never applies | Read, Grep, Glob             | inherit | —                |
 | `tester`       | Runs lint/typecheck/test/build                | Read, Edit, Grep, Glob, Bash                       | inherit | atlas            |
 | `qa`           | Runs the change and produces the artifact that proves it (screenshot, integration test, command output) | Read, Grep, Glob, Bash, `mcp__argent__*` | inherit | —                |
 | `cavecrew-investigator` | Fast read-only code locator (terse caveman output) | Read, Grep, Glob, Bash                | haiku   | — (caveman)      |
 | `cavecrew-builder`      | Surgical 1-2 file edit; refuses 3+ file scope     | Read, Edit, Write, Grep, Glob          | inherit | — (caveman)      |
-| `cavecrew-reviewer`     | Single-line, severity-tagged findings              | Read, Grep, Bash                       | haiku   | — (caveman)      |
 | `atlassian`    | Confluence search, Jira lookups, task validation | Read, `mcp__atlassian__*`                        | inherit | —                |
 
 `atlassian` and `qa` are the only agents with MCP access, and each depends on a server this repo's installer does not manage: the Atlassian Rovo MCP for `atlassian`, argent for `qa`. Without the server, `atlassian` is inert entirely; `qa` loses less than it looks — it still runs a CLI or an endpoint through `Bash`, and on `host: maestri` the device track is a Maestri portal driven by `"$MAESTRI_CLI"`, which is `Bash` as well. argent is what `qa` needs on every other host, and for everything a portal does not cover (profiling, network logs, screenshot diff, TV targets).
@@ -47,34 +44,20 @@ Subagents inherit the parent session's permission mode. You don't need to config
 | Accept-edits      | implementer and tester edit without prompts. Full pipeline runs cleanly. |
 | Default           | Subagents prompt for permission per tool, like the parent.          |
 
-Read-only enforcement on `explorer`/`planner`/`pm`/`reviewer`/`pr-reviewer`/`pr-author`/`pr-triage`/`qa`/`cavecrew-investigator`/`cavecrew-reviewer`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. `qa` is the widest of them: it runs the product under test through `Bash` and drives a simulator or a browser — a Maestri portal on `host: maestri`, `mcp__argent__*` anywhere else — and still cannot edit a line of the repo; a flow that fails goes back to `implementer` as a finding, never as a patch. Note that `pr-reviewer` and `pr-author` *can* call `gh pr review` / `gh pr create` via `Bash`, and `pm` can call `gh issue create` — but those commands are deliberately **not** pre-approved in `.claude/settings.json`, so they always prompt. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub or the tracker stay a human decision. The one command that would end a PR on its own — `gh pr merge` — is held back by two layers, not one. `permissions.deny` blocks the literal command as a string and does survive `--dangerously-skip-permissions`, but it never sees the wrapped form: under the bypass, `bash -c "gh pr merge 3"` has no approval prompt left to catch it. What closes the wrapper is the `PreToolUse` hook `.claude/hooks/guard-destructive.mjs`, which is still evaluated under the bypass. Both facts were measured rather than assumed — [`docs/guard-destructive.md`](docs/guard-destructive.md) carries the table. Both layers also run in the client, so "merge stays human" holds exactly as long as the worker runs this client; the guarantee that doesn't depend on it is branch protection on GitHub.
+Read-only enforcement on `explorer`/`planner`/`reviewer`/`pr-author`/`pr-triage`/`qa`/`cavecrew-investigator`/`atlassian` comes from their `tools:` allowlist (no `Edit`/`Write`), **not** from `permissionMode`. This way they stay read-only regardless of session mode. `qa` is the widest of them: it runs the product under test through `Bash` and drives a simulator or a browser — a Maestri portal on `host: maestri`, `mcp__argent__*` anywhere else — and still cannot edit a line of the repo; a flow that fails goes back to `implementer` as a finding, never as a patch. Note that `pr-author` *can* call `gh pr create` via `Bash` — but that command is deliberately **not** pre-approved in `.claude/settings.json`, so it always prompts. That's the safety contract behind the "dry-run by default" posture: reads are pre-approved, writes to GitHub stay a human decision. The one command that would end a PR on its own — `gh pr merge` — is held back by **less than that, and the number is worth knowing.** It is not in `permissions.deny`: the ask-then-merge policy took it out deliberately, so that it reaches the permission prompt where a human approves. The `PreToolUse` hook `.claude/hooks/guard-destructive.mjs` denies it only inside a worker, recognized by a `.wave/worker.json` that no harness procedure writes today; everywhere else the hook is silent by design. Silence means "the prompt decides" — and `--dangerously-skip-permissions` removes the prompt, so under the bypass, outside a worker, the command runs with nothing in front of it. What *is* covered by two layers, both measured surviving the bypass, is `git push --force` and `git commit --no-verify`: the string deny plus the hook, which is also the only one of the two that sees `bash -c "..."`. The table is in [`guard-destructive.md`](guard-destructive.md). Every layer here runs in the client, so the only guarantee that does not depend on this machine is branch protection on GitHub.
 
 `pr-triage` goes one step further and has no `Bash` at all. The thread bodies it reads are untrusted input — anyone who can comment on a PR writes text that lands in its context, and review comments routinely contain "run this" or "apply this patch". Denying it every writing and executing tool is what makes prompt injection through a comment a non-event: the worst a malicious comment can achieve is a wrong recommendation, which a human reads before anything happens.
 
 ## Skills
 
-Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. <!-- docs-count:skills -->Three ship with the harness, under `.claude/skills/`.
-
-One of them — `ticket-contract` — is deliberately **opt-in**, and its description says so. It loads when the user names tickets; it does not load because the orchestrator happens to be running three fronts at once. That is ordinary delegation, and routing it through the ticket pipeline spends two rounds before any code exists.
+Skills are procedure documents Claude loads on demand. Routing works like it does for agents: the `description:` in each `SKILL.md` frontmatter is what Claude reads when deciding whether to load it. <!-- docs-count:skills -->Two ship with the harness, under `.claude/skills/`. Neither has a slash command in front of it: naming the skill, or describing the situation its description covers, is how it loads.
 
 | Skill | What it owns |
 |-------|--------------|
-| `ticket-contract` | The 12 fields a ticket needs in order to work as a standalone agent prompt, plus the project-creation rules, the readiness check and the tracker adapter. Source of truth for the `pm` agent. |
 | `pr-babysitting` | Driving an open PR to review-ready, tracking CI and feedback as two independent states. Uses `pr-state.mjs` and `fetch-pr-threads.mjs`, and delegates thread classification to `pr-triage`. |
 | `maestri-orchestration` | Orchestrating a team from inside a Maestri terminal. Deliberately narrow: it writes only what changes by being there — `"$MAESTRI_CLI"` instead of `maestri`, the fragile paste channel, the two shared notes, the recruit verbs, and the floor as an isolation primitive — including how to tell an isolated floor from a degraded one, and what to do when it degraded. Everything that holds in both environments is referenced by owner, never restated. |
 
-### Two different things are called a "contract"
-
-The names are close enough to merge in a reader's head, so keep them apart:
-
-| | Skill `ticket-contract` | File `.wave/<ticket>/contract.md` |
-|---|---|---|
-| What it governs | Quality of the **ticket** — the 12 fields that make a ticket usable as an agent prompt | The **interface** between `implementer` and `tester` while one ticket is executed: signatures, types, error behavior, scenario list |
-| Who writes it | `pm`, when the project is created | Both agents, in parallel, before either writes code |
-| When it exists | Before the work starts | Inside the execution of a single ticket |
-| Lifetime | Lives in the tracker | Working state; `.wave/` is gitignored |
-
-Neither replaces the other. The ticket contract decides whether work is ready to start; the interface contract keeps two parallel agents building and testing the same shape.
+`implementer` and `tester` still share an interface contract while one unit of work runs — signatures, types, error behavior, scenario list — written to `.wave/<ticket>/contract.md` when the work has a ticket id, otherwise to the scratchpad path the orchestrator hands them. It is working state, not a document: `.wave/` is gitignored, and any project driven by this harness needs that same ignore entry. The two agent prompts own the protocol.
 
 ### How skills are installed
 
@@ -86,15 +69,11 @@ The same mechanism exposes skills that live outside the harness. `EXTERNAL_SKILL
 
 ## Slash commands
 
-One `.md` per command under `.claude/commands/`, symlinked as a whole directory into `~/.claude/commands/` (unlike skills — that path is not shared with third parties). A new command file is live as soon as it is pulled; it needs no re-install.
+None. The harness shipped three — `/sync-harness`, `/ticket-new`, `/pr-babysit` — and across 259 measured session transcripts not one of them was ever invoked, so `.claude/commands/` and `.opencode/command/` were removed along with the `~/.claude/commands` symlink. They are preserved at the annotated tag `pre-lean-cut`.
 
-| Command | What it does |
-|---------|--------------|
-| `/sync-harness` | Force a harness update now, bypassing only the 6h throttle. All other safety checks still apply. |
-| `/ticket-new` | Turn a discussion, spec or raw scope into tickets that satisfy the ticket contract. Spawns `pm`; approval is required before anything is published to the tracker. |
-| `/pr-babysit` | Drive a PR to review-ready via the `pr-babysitting` skill, with CI and feedback tracked as separate states. |
+Nothing they did is unreachable: `/pr-babysit` was a wrapper over the `pr-babysitting` skill, which loads by name; `/sync-harness` was a wrapper over `node ~/.claude/hooks/auto-update.mjs --force`, which is the actual way to bypass the 6h throttle and works from any directory through the installed symlink; `/ticket-new` went with the ticket pipeline.
 
-`/ticket-new` and `/pr-babysit` invoke `scripts/github/*` through the `~/.claude/harness` symlink, so their paths are stable regardless of where the checkout lives. Their read-only invocations are pre-approved in `.claude/settings.json`; the tracker writes they may lead to (`gh issue create`, `gh issue edit`, `gh issue comment`) are not, and prompt every time.
+Re-adding one means re-adding `.claude/commands/` to `SYMLINK_ITEMS` in `scripts/install.mjs`. `.opencode/command/` is cheaper — the installer already walks that subdirectory and skips it when absent.
 
 ## Troubleshooting
 
@@ -102,8 +81,8 @@ One `.md` per command under `.claude/commands/`, symlinked as a whole directory 
 - Run `/agents` to see the active agent. If it's not `orchestrator`, check `~/.claude/settings.json` includes `"agent": "orchestrator"` and that `~/.claude/agents` resolves to this repo (`readlink ~/.claude/agents`).
 
 **The orchestrator stops delegating in long sessions**
-- Two hooks help with this: `UserPromptSubmit` runs `~/.claude/hooks/orchestrator-reminder.mjs` to reinject a short delegation reminder on every prompt, and `PreCompact` runs `~/.claude/hooks/preserve-orchestrator.mjs` to preserve the orchestrator's identity through context compaction. Both are wired into `~/.claude/settings.json` by the installer.
-- To disable both for one session (or permanently per-machine), export `CLAUDE_SETUP_SKIP_ORCH_REMINDER=1`.
+- `PreCompact` runs `~/.claude/hooks/preserve-orchestrator.mjs` to preserve the orchestrator's identity through context compaction, wired into `~/.claude/settings.json` by the installer. A second hook used to reinject the same rules on every `UserPromptSubmit`; it was removed because it cost ~4.9k tokens per 40-turn session to repeat what the agent definition already says, while compaction is the moment the framing is actually lost. It is at the tag `pre-lean-cut`.
+- To disable the remaining one for a session (or permanently per-machine), export `CLAUDE_SETUP_SKIP_ORCH_REMINDER=1` — the variable kept its name.
 
 **A subagent isn't being spawned when it should be**
 - Routing is description-based. Read the subagent's `description:` field — does it cover the task you expected? Edit it to be more precise. Phrases like "use proactively" and "use immediately after X" influence Claude to pick that agent.

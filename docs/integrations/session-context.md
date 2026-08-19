@@ -81,7 +81,7 @@ Essa checagem compara o e-mail que o git realmente resolve no cwd (`git config -
 
 `accountCheck` **so aparece com `--verify-account`** — sem a flag a chave nao existe. No exemplo ela contradiz o topo de proposito: e exatamente o que sai num repo pessoal fora de `~/work/`, onde o caminho puro nao tem evidencia para afirmar `github` e a checagem tem. O topo nunca e reescrito, entao o valor bom e o de dentro do `accountCheck`.
 
-Em `plain`, `hostDetail` vem vazio. O campo `dispatch` responde **so** "da pra disparar uma onda daqui?": hoje `available` e `false` em todo host, porque nenhum driver automatico existe, e o que muda e a `reason` — ela nomeia o procedimento manual daquele host. Ver [`../tickets.md`](../tickets.md).
+Em `plain`, `hostDetail` vem vazio. O campo `dispatch` responde **so** "da pra disparar uma onda daqui?": hoje `available` e `false` em todo host, porque nenhum driver automatico existe, e o que muda e a `reason` — ela nomeia o procedimento manual daquele host. Ver [`../usage.md`](../usage.md), secao 7.
 
 ## Testes
 
