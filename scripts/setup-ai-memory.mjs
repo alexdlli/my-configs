@@ -53,7 +53,7 @@ const WRAPPER_PATH = path.join(LOCAL_BIN, 'ai-memory');
 // Wrapper and image are pinned to the same release: upstream enforces SemVer
 // since 2.0 and mixed versions are unsupported, so an upgrade is a deliberate
 // bump of both constants here, never an implicit pull of whatever is newest.
-const AI_MEMORY_VERSION = '2.0.0';
+const AI_MEMORY_VERSION = '2.0.2';
 const WRAPPER_URL =
   `https://raw.githubusercontent.com/akitaonrails/ai-memory/v${AI_MEMORY_VERSION}/bin/ai-memory`;
 
@@ -370,17 +370,22 @@ function startServer(opts) {
 
 function wireAgents(opts) {
   console.log('→ wiring Claude Code + Codex (MCP + hooks + instructions)');
-  run('ai-memory', ['install-mcp', '--client', 'claude-code', '--apply'], opts);
-  run('ai-memory', ['install-hooks', '--agent', 'claude-code', '--apply'], opts);
-  run('ai-memory', ['install-mcp', '--client', 'codex', '--apply'], opts);
-  run('ai-memory', ['install-hooks', '--agent', 'codex', '--apply'], opts);
+  // The wrapper serves host-writing subcommands from an ephemeral client
+  // container chosen by AI_MEMORY_IMAGE (default :latest) — without the pin,
+  // a stale cached :latest wires the agents with a different version than the
+  // server this script just started.
+  const wireOpts = { ...opts, extraEnv: { AI_MEMORY_IMAGE: IMAGE } };
+  run('ai-memory', ['install-mcp', '--client', 'claude-code', '--apply'], wireOpts);
+  run('ai-memory', ['install-hooks', '--agent', 'claude-code', '--apply'], wireOpts);
+  run('ai-memory', ['install-mcp', '--client', 'codex', '--apply'], wireOpts);
+  run('ai-memory', ['install-hooks', '--agent', 'codex', '--apply'], wireOpts);
   // Global skills scope on purpose: the default (`project`) writes ai-memory's
   // managed Agent Skills into <repo>/.claude/skills, the directory install.mjs
   // owns one entry at a time precisely so no tool takes over the namespace.
   // Not allowFail: since 2.0 a major upgrade requires reinstalling the managed
   // instructions and skills, so a silent failure here leaves the harness wired
   // to a memory it can no longer route to.
-  run('ai-memory', ['install-instructions', '--skills-scope', 'global'], opts);
+  run('ai-memory', ['install-instructions', '--skills-scope', 'global'], wireOpts);
 }
 
 function main() {

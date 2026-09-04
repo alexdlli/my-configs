@@ -26,7 +26,7 @@
 // e.g. a remote or native deploy):
 //   AI_MEMORY_CONTAINER     container name          (default: ai-memory)
 //   AI_MEMORY_REPO          repo for bootstrap      (default: cwd)
-//   AI_MEMORY_IMAGE         image the server runs   (default: akitaonrails/ai-memory:2.0.0)
+//   AI_MEMORY_IMAGE         image the server runs   (default: akitaonrails/ai-memory:2.0.2)
 //   AI_MEMORY_LLM_PROVIDER  provider override       (default: from container)
 //   AI_MEMORY_LLM_BASE_URL  openai-compat base URL  (default: from container)
 //   AI_MEMORY_LLM_MODEL     expected model          (default: from container)
@@ -41,7 +41,7 @@ import { pathToFileURL } from 'node:url';
 const CONTAINER = process.env.AI_MEMORY_CONTAINER || 'ai-memory';
 const REPO = process.env.AI_MEMORY_REPO || process.cwd();
 // Kept in lockstep with AI_MEMORY_VERSION in setup-ai-memory.mjs.
-const IMAGE = process.env.AI_MEMORY_IMAGE || 'akitaonrails/ai-memory:2.0.0';
+const IMAGE = process.env.AI_MEMORY_IMAGE || 'akitaonrails/ai-memory:2.0.2';
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const CLAUDE_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
@@ -293,12 +293,13 @@ function checkStatus(config) {
 
   if (!r.ok) return record('ai-memory status', 'FAIL', (r.stderr || r.stdout || `exit ${r.code}`).split('\n')[0]);
   let parsed;
-  try { parsed = JSON.parse(r.stdout); } catch { /* status may not be pure JSON on all versions */ }
+  // The wrapper prefixes a startup log line before the JSON (measured 2.0.2).
+  try { parsed = JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))); } catch { /* not JSON */ }
   record('ai-memory status', 'PASS', 'server responded');
 
   const blob = (r.stdout || '').toLowerCase();
   const expected = config.provider;
-  const reported = parsed?.llm?.provider;
+  const reported = parsed?.llm?.provider ?? parsed?.providers?.llm?.provider;
   if (!expected) {
     record('LLM provider', 'SKIP', `status reports "${reported || '(not in output)'}" — nothing detected to compare against`);
   } else if (reported === expected || blob.includes(expected.toLowerCase())) {
@@ -306,9 +307,27 @@ function checkStatus(config) {
   } else {
     record('LLM provider', 'WARN', `status reports "${reported || '(not in output)'}" but the container is configured for "${expected}"`);
   }
-  if (blob.includes('unhealthy') || blob.includes('error')) {
-    record('Provider health', 'WARN', 'status text mentions unhealthy/error — inspect `ai-memory status`');
+  const sick = unhealthyProviders(parsed?.providers);
+  if (sick === null) {
+    // No structured provider block — fall back to the textual heuristic.
+    if (blob.includes('unhealthy') || blob.includes('error')) {
+      record('Provider health', 'WARN', 'status text mentions unhealthy/error — inspect `ai-memory status`');
+    }
+  } else if (sick.length > 0) {
+    record('Provider health', 'WARN', sick.join('; '));
+  } else {
+    record('Provider health', 'PASS', Object.entries(parsed.providers).map(([n, p]) => `${n} ${p?.status}`).join(', '));
   }
+}
+
+// `status` keys like last_error_at exist even when null, so grepping the JSON
+// for "error" flags a healthy server. Only a recorded error message or an
+// explicitly bad status counts; "unknown" just means no call was made yet.
+export function unhealthyProviders(providers) {
+  if (!providers || typeof providers !== 'object') return null;
+  return Object.entries(providers)
+    .filter(([, p]) => p?.last_error_message || p?.status === 'unhealthy' || p?.status === 'error')
+    .map(([name, p]) => `${name}: ${p.status}${p.last_error_message ? ` (${p.last_error_message})` : ''}`);
 }
 
 // bootstrap --dry-run proves the LLM provider is actually reachable from the server
@@ -326,12 +345,36 @@ function checkBootstrapDryRun() {
   }
 }
 
-// Wiki is git-versioned (proves capture is being committed)
+// Wiki is git-versioned (proves capture is being committed). The container
+// ships libgit2 only — no git CLI (measured 2026-09-04, image 2.0.2) — so the
+// history cannot be read with `docker exec git`. What can be read is the one
+// failure mode measured in 2026-08: commits dying silently on zero-size loose
+// objects while reads keep working. Absence of that signature is the check.
+export function wikiFreezeSignature(zeroSizeObjects, parseErrors) {
+  return zeroSizeObjects > 0 || parseErrors > 0 ? 'frozen' : 'ok';
+}
+
 function checkWikiGit() {
   if (!have('docker')) return record('Wiki git history', 'BLOCKED', 'docker not available');
-  const log = sh('docker', ['exec', CONTAINER, 'git', '-C', '/data/wiki', 'log', '--oneline', '-n', '5']);
-  if (log.ok && log.stdout) record('Wiki git history', 'PASS', `${log.stdout.split('\n').length} recent commits`);
-  else record('Wiki git history', 'WARN', 'no wiki git log yet — capture a session first');
+  const head = sh('docker', ['exec', CONTAINER, 'sh', '-c', 'test -f /data/wiki/.git/HEAD']);
+  if (!head.ok) {
+    return record('Wiki git history', 'WARN', 'no git repo at /data/wiki yet — capture a session first');
+  }
+  const zero = sh('docker', [
+    'exec', CONTAINER, 'sh', '-c', 'find /data/wiki/.git/objects -type f -size 0 | wc -l',
+  ]);
+  const zeroCount = Number(zero.stdout) || 0;
+  const logs = sh('docker', ['logs', CONTAINER]);
+  const parseErrors = ((logs.stdout + logs.stderr).match(/failed to parse loose object/g) || []).length;
+  if (wikiFreezeSignature(zeroCount, parseErrors) === 'frozen') {
+    return record(
+      'Wiki git history',
+      'FAIL',
+      `${zeroCount} zero-size loose object(s), ${parseErrors} libgit2 parse error(s) — ` +
+        'the silent wiki git freeze; back up first, then repair (docs/integrations/ai-memory.md)',
+    );
+  }
+  record('Wiki git history', 'PASS', 'repo present, no freeze signature');
 }
 
 // The version the server actually serves, plus whether it is still the image

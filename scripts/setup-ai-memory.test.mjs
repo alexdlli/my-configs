@@ -14,7 +14,7 @@ const SETUP = path.join(__dirname, 'setup-ai-memory.mjs');
 // listed in failOn; every other invocation succeeds. `--provider none
 // --no-server` keeps docker, curl and the shim out of the path under test, and
 // a pre-created wrapper file short-circuits the download.
-function runSetup({ failOn = [] } = {}) {
+function runSetup({ failOn = [], stubBody = '' } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'setup-ai-memory-test-'));
   try {
     const home = path.join(root, 'home');
@@ -23,7 +23,11 @@ function runSetup({ failOn = [] } = {}) {
     writeFileSync(path.join(home, '.local', 'bin', 'ai-memory'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     mkdirSync(stubBin, { recursive: true });
     const failCase = failOn.map((sub) => `[ "$1" = "${sub}" ] && exit 1`).join('\n');
-    writeFileSync(path.join(stubBin, 'ai-memory'), `#!/bin/sh\n${failCase}\nexit 0\n`, { mode: 0o755 });
+    writeFileSync(
+      path.join(stubBin, 'ai-memory'),
+      `#!/bin/sh\n${stubBody}\n${failCase}\nexit 0\n`,
+      { mode: 0o755 },
+    );
     return spawnSync(process.execPath, [SETUP, '--provider', 'none', '--no-server'], {
       encoding: 'utf8',
       env: { ...process.env, HOME: home, PATH: `${stubBin}:${process.env.PATH}` },
@@ -48,4 +52,11 @@ test('a failing install-hooks fails the setup', () => {
   const res = runSetup({ failOn: ['install-hooks'] });
   assert.notEqual(res.status, 0);
   assert.match(res.stderr, /install-hooks/);
+});
+
+test('wiring pins the wrapper client image to the release the setup installs', () => {
+  const res = runSetup({ stubBody: 'echo "AI_MEMORY_IMAGE=${AI_MEMORY_IMAGE:-unset}"' });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /AI_MEMORY_IMAGE=akitaonrails\/ai-memory:\d+\.\d+\.\d+/);
+  assert.doesNotMatch(res.stdout, /AI_MEMORY_IMAGE=unset/);
 });
