@@ -1,6 +1,5 @@
 // Session environment detection: which terminal host is running this session,
-// which GitHub account / issue tracker applies to the working directory, and
-// whether a wave can be dispatched from here.
+// and which GitHub account / issue tracker applies to the working directory.
 //
 // `detectContext` is pure: env and cwd come in as parameters, nothing is read
 // from disk, no process is spawned. That is what makes it cheap enough for a
@@ -20,18 +19,6 @@ import path from 'node:path';
 
 export const HOST_MAESTRI = 'maestri';
 export const HOST_PLAIN = 'plain';
-
-// Maestri has the wave topology natively (a floor is a git-isolated clone) but no
-// driver: its CLI exists only as $MAESTRI_CLI inside the app's own terminal, so
-// nothing outside it can spawn the wave.
-const DISPATCH_REASON_MAESTRI =
-  'no automatic wave driver for Maestri — dispatch by hand from the app terminal: $MAESTRI_CLI floor create per ticket, then recruit --floor';
-const DISPATCH_REASON_PLAIN = 'no worktree manager in this session — the human dispatches by hand';
-
-const DISPATCH_REASON_BY_HOST = {
-  [HOST_MAESTRI]: DISPATCH_REASON_MAESTRI,
-  [HOST_PLAIN]: DISPATCH_REASON_PLAIN,
-};
 
 const WORK_DIR_NAME = 'work';
 const WORK_TRACKER = 'jira';
@@ -80,22 +67,6 @@ function isUnderWorkRoot(env, cwd) {
   return resolved === workRoot || resolved.startsWith(workRoot + path.sep);
 }
 
-// Describes whether a wave can be dispatched from this host, never dispatches.
-// The description is a property of the host alone: no CLI is probed, no process
-// is spawned. No host carries an automatic driver today, so every reason names
-// the manual procedure that replaces it.
-//
-// A host with no entry in the map falls back to the plain reason instead of an
-// undefined one: the coordinator is told to read `reason`, and a host added to
-// detectHost without a reason of its own must still hand it a string.
-export function describeDispatch(host) {
-  return {
-    available: false,
-    driver: null,
-    reason: DISPATCH_REASON_BY_HOST[host] ?? DISPATCH_REASON_PLAIN,
-  };
-}
-
 export function detectContext(env = process.env, cwd = process.cwd()) {
   const { host, hostDetail } = detectHost(env);
   const underWork = isUnderWorkRoot(env, cwd);
@@ -103,7 +74,6 @@ export function detectContext(env = process.env, cwd = process.cwd()) {
   return {
     host,
     hostDetail,
-    dispatch: describeDispatch(host),
     tracker: underWork ? WORK_TRACKER : null,
     trackerSource: underWork ? TRACKER_SOURCE_CWD_WORK : TRACKER_SOURCE_UNKNOWN,
     account: underWork ? ACCOUNT_WORK : ACCOUNT_UNKNOWN,

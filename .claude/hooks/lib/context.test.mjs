@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HOST_MAESTRI, HOST_PLAIN, describeDispatch, detectContext } from './context.mjs';
+import { HOST_MAESTRI, HOST_PLAIN, detectContext } from './context.mjs';
 
 const HOME = '/Users/tester';
 const OUTSIDE_WORK_CWD = `${HOME}/Developer/my-configs`;
@@ -15,10 +15,6 @@ const maestriEnv = {
 };
 
 const plainEnv = { HOME };
-
-// Every host the detector can return. A new host must be added here, which is
-// what makes the two whole-set dispatch assertions below act as a tripwire.
-const everyHostEnv = [maestriEnv, plainEnv];
 
 test('detects Maestri from its per-terminal id', () => {
   const ctx = detectContext(maestriEnv, OUTSIDE_WORK_CWD);
@@ -60,44 +56,7 @@ test('outside ~/work no tracker is claimed', () => {
   }
 });
 
-test('no host advertises an automatic wave driver', () => {
-  for (const env of everyHostEnv) {
-    const { dispatch } = detectContext(env, OUTSIDE_WORK_CWD);
-    assert.equal(dispatch.available, false);
-    assert.equal(dispatch.driver, null);
-  }
-});
-
-test('a Maestri session names the manual dispatch it replaces the driver with', () => {
+test('the context carries no dispatch surface', () => {
   const ctx = detectContext(maestriEnv, OUTSIDE_WORK_CWD);
-  assert.match(ctx.dispatch.reason, /MAESTRI_CLI/);
-  assert.match(ctx.dispatch.reason, /floor/);
-});
-
-test('a plain terminal points at a human instead of a driver', () => {
-  const ctx = detectContext(plainEnv, OUTSIDE_WORK_CWD);
-  assert.match(ctx.dispatch.reason, /manual|by hand/);
-});
-
-test('every host explains its dispatch, available or not', () => {
-  for (const env of everyHostEnv) {
-    const { dispatch } = detectContext(env, OUTSIDE_WORK_CWD);
-    assert.notEqual(dispatch.reason.trim(), '');
-  }
-});
-
-// The list above is kept by hand, so it cannot catch a host added to detectHost
-// and nowhere else. This one does: the reason is a string for any host at all.
-test('a host with no reason of its own still explains its dispatch', () => {
-  const dispatch = describeDispatch('a-host-nobody-mapped');
-  assert.equal(dispatch.available, false);
-  assert.equal(dispatch.driver, null);
-  assert.equal(typeof dispatch.reason, 'string');
-  assert.notEqual(dispatch.reason.trim(), '');
-});
-
-test('dispatch availability does not depend on the working directory', () => {
-  const personal = detectContext(maestriEnv, OUTSIDE_WORK_CWD);
-  const work = detectContext(maestriEnv, WORK_CWD);
-  assert.deepEqual(personal.dispatch, work.dispatch);
+  assert.equal('dispatch' in ctx, false);
 });

@@ -32,7 +32,7 @@ A variavel e **por terminal**, que e a granularidade que uma sessao precisa: o a
 
 O socket `$TMPDIR/maestri-*/maestri.sock` existe enquanto o app Maestri estiver vivo — inclusive quando a sessao esta num terminal comum. **Nunca** detectar por presenca de socket, de processo ou de app. So a variavel por-terminal e evidencia.
 
-A regra do `"$MAESTRI_CLI"` (o binario **nao** esta no PATH em zsh) mora em [`maestri.md`](maestri.md), junto com as outras correcoes conhecidas do persona.
+Regra de invocacao: o binario do Maestri **nao** esta no PATH em zsh — sempre invocar como `"$MAESTRI_CLI"`, nunca como `maestri`. E exatamente essa linha que o hook injeta no `SessionStart`.
 
 ## Conta e tracker
 
@@ -62,11 +62,6 @@ Essa checagem compara o e-mail que o git realmente resolve no cwd (`git config -
     "terminalId": "<uuid por terminal>",
     "cliPath": "/var/folders/.../maestri-<hash>/maestri"
   },
-  "dispatch": {
-    "available": false,
-    "driver": null,
-    "reason": "<o procedimento manual que substitui o driver neste host>"
-  },
   "tracker": null,
   "trackerSource": "unknown",
   "account": "unknown",
@@ -81,7 +76,7 @@ Essa checagem compara o e-mail que o git realmente resolve no cwd (`git config -
 
 `accountCheck` **so aparece com `--verify-account`** — sem a flag a chave nao existe. No exemplo ela contradiz o topo de proposito: e exatamente o que sai num repo pessoal fora de `~/work/`, onde o caminho puro nao tem evidencia para afirmar `github` e a checagem tem. O topo nunca e reescrito, entao o valor bom e o de dentro do `accountCheck`.
 
-Em `plain`, `hostDetail` vem vazio. O campo `dispatch` responde **so** "da pra disparar uma onda daqui?": hoje `available` e `false` em todo host, porque nenhum driver automatico existe, e o que muda e a `reason` — ela nomeia o procedimento manual daquele host. Ver [`../usage.md`](../usage.md), secao 7.
+Em `plain`, `hostDetail` vem vazio.
 
 ## Testes
 
