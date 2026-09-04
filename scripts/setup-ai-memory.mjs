@@ -50,12 +50,16 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const HOME = os.homedir();
 const LOCAL_BIN = path.join(HOME, '.local', 'bin');
 const WRAPPER_PATH = path.join(LOCAL_BIN, 'ai-memory');
+// Wrapper and image are pinned to the same release: upstream enforces SemVer
+// since 2.0 and mixed versions are unsupported, so an upgrade is a deliberate
+// bump of both constants here, never an implicit pull of whatever is newest.
+const AI_MEMORY_VERSION = '2.0.0';
 const WRAPPER_URL =
-  'https://raw.githubusercontent.com/akitaonrails/ai-memory/main/bin/ai-memory';
+  `https://raw.githubusercontent.com/akitaonrails/ai-memory/v${AI_MEMORY_VERSION}/bin/ai-memory`;
 
 const CONTAINER = 'ai-memory';
 const BIND = '127.0.0.1:49374';
-const IMAGE = 'akitaonrails/ai-memory:latest';
+const IMAGE = `akitaonrails/ai-memory:${AI_MEMORY_VERSION}`;
 
 const SHIM_SCRIPT = path.join(REPO_ROOT, 'scripts', 'claude-openai-shim.mjs');
 const SHIM_LABEL = 'com.my-configs.claude-openai-shim';
@@ -373,10 +377,10 @@ function wireAgents(opts) {
   // Global skills scope on purpose: the default (`project`) writes ai-memory's
   // managed Agent Skills into <repo>/.claude/skills, the directory install.mjs
   // owns one entry at a time precisely so no tool takes over the namespace.
-  run('ai-memory', ['install-instructions', '--skills-scope', 'global'], {
-    ...opts,
-    allowFail: true,
-  });
+  // Not allowFail: since 2.0 a major upgrade requires reinstalling the managed
+  // instructions and skills, so a silent failure here leaves the harness wired
+  // to a memory it can no longer route to.
+  run('ai-memory', ['install-instructions', '--skills-scope', 'global'], opts);
 }
 
 function main() {

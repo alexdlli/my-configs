@@ -26,7 +26,7 @@
 // e.g. a remote or native deploy):
 //   AI_MEMORY_CONTAINER     container name          (default: ai-memory)
 //   AI_MEMORY_REPO          repo for bootstrap      (default: cwd)
-//   AI_MEMORY_IMAGE         image the server runs   (default: akitaonrails/ai-memory:latest)
+//   AI_MEMORY_IMAGE         image the server runs   (default: akitaonrails/ai-memory:2.0.0)
 //   AI_MEMORY_LLM_PROVIDER  provider override       (default: from container)
 //   AI_MEMORY_LLM_BASE_URL  openai-compat base URL  (default: from container)
 //   AI_MEMORY_LLM_MODEL     expected model          (default: from container)
@@ -36,10 +36,12 @@ import { spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 const CONTAINER = process.env.AI_MEMORY_CONTAINER || 'ai-memory';
 const REPO = process.env.AI_MEMORY_REPO || process.cwd();
-const IMAGE = process.env.AI_MEMORY_IMAGE || 'akitaonrails/ai-memory:latest';
+// Kept in lockstep with AI_MEMORY_VERSION in setup-ai-memory.mjs.
+const IMAGE = process.env.AI_MEMORY_IMAGE || 'akitaonrails/ai-memory:2.0.0';
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const CLAUDE_SETTINGS = path.join(CLAUDE_DIR, 'settings.json');
@@ -345,15 +347,59 @@ function checkVersion() {
   const inUse = sh('docker', ['inspect', '-f', '{{.Image}}', CONTAINER]).stdout;
   const pulled = sh('docker', ['image', 'inspect', '-f', '{{.Id}}', IMAGE]).stdout;
   if (inUse && pulled && inUse !== pulled) {
-    return record(
+    record(
       'ai-memory version',
       'WARN',
       `server runs ${version}, from an image that is no longer ${IMAGE} — ` +
         `\`ai-memory upgrade\` pulls without recreating the container: ` +
         `docker rm -f ${CONTAINER} && node scripts/setup-ai-memory.mjs`,
     );
+    return version;
   }
   record('ai-memory version', 'PASS', `${version} (${IMAGE})`);
+  return version;
+}
+
+// The wrapper's `run` subcommand executes a separate native client that
+// self-updates daily from the latest GitHub release, independently of the
+// container — so "which version am I on" has two answers that can drift apart.
+// A mixed major is unsupported upstream (a pre-2.0 binary refuses a migrated
+// data dir), which makes it a failure here rather than at the next `run`.
+export function versionSkew(containerRaw, nativeRaw) {
+  const container = containerRaw?.match(VERSION_PATTERN)?.[0] ?? null;
+  const native = nativeRaw?.match(VERSION_PATTERN)?.[0] ?? null;
+  const skew = !container || !native
+    ? null
+    : container === native
+      ? 'match'
+      : container.split('.')[0] === native.split('.')[0]
+        ? 'drift'
+        : 'major';
+  return { skew, container, native };
+}
+
+function checkNativeRunner(containerVersion) {
+  const bin = process.env.AI_MEMORY_NATIVE_BIN
+    || path.join(os.homedir(), '.cache', 'ai-memory', 'native-runner', 'ai-memory');
+  if (!existsSync(bin)) {
+    return record('Native runner version', 'SKIP', 'no native run client installed');
+  }
+  const { skew, container, native } = versionSkew(containerVersion, sh(bin, ['--version']).stdout);
+  const pair = `container ${container ?? '?'}, runner ${native ?? '?'}`;
+  if (skew === null) {
+    return record('Native runner version', 'WARN', `could not compare versions (${pair})`);
+  }
+  if (skew === 'major') {
+    return record(
+      'Native runner version',
+      'FAIL',
+      `${pair} — mixed majors are unsupported; upgrade both together or pin AI_MEMORY_NATIVE_BIN`,
+    );
+  }
+  if (skew === 'drift') {
+    return record('Native runner version', 'WARN', `${pair} — same major, drifting apart`);
+  }
+  record('Native runner version', 'PASS', pair);
 }
 
 function isExecutable(file) {
@@ -466,7 +512,7 @@ async function main() {
   const up = checkContainer();
   await checkLlmBackend(config);
   if (up) {
-    checkVersion();
+    checkNativeRunner(checkVersion());
     checkStatus(config);
     checkBootstrapDryRun();
     checkWikiGit();
@@ -500,4 +546,7 @@ async function main() {
   process.exit(ok ? EXIT_OK : EXIT_INCOMPLETE);
 }
 
-main();
+// Importable for the versionSkew unit tests; runs only as a CLI entry point.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
