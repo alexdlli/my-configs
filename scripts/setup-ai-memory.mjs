@@ -72,7 +72,9 @@ const DEFAULT_CLAUDE_MODEL = 'claude-haiku-4-5';
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const LOCAL_MODEL = 'qwen3:8b';
 const DEFAULT_DOCKER_CPUS = '2';
-const DEFAULT_DOCKER_MEMORY = '2g';
+// 3g since 2.0: the default local embedder (all-MiniLM-L6-v2) runs in-process
+// in the server, and the one-shot backfill over the whole wiki needs headroom.
+const DEFAULT_DOCKER_MEMORY = '3g';
 
 const PROVIDERS = ['claude-sub', 'codex-sub', 'anthropic', 'anthropic-oauth', 'local', 'none'];
 

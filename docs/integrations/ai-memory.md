@@ -78,7 +78,9 @@ node scripts/setup-ai-memory.mjs --provider none
 
 ## Day to day
 
-The container is capped at 2 CPUs and 2 GB RAM by default so it cannot crowd out Metro, Android Studio, Xcode, or other repositories. Override only when needed with `AI_MEMORY_DOCKER_CPUS` and `AI_MEMORY_DOCKER_MEMORY` (Docker memory syntax such as `3g`). Docker automatically selects the native ARM64 image on Apple Silicon; no hard-coded platform flag is needed.
+The container is capped at 2 CPUs and 3 GB RAM by default so it cannot crowd out Metro, Android Studio, Xcode, or other repositories (3 GB rather than 2 since 2.0, because the default local embedder runs in-process — see below). Override only when needed with `AI_MEMORY_DOCKER_CPUS` and `AI_MEMORY_DOCKER_MEMORY` (Docker memory syntax such as `4g`). Docker automatically selects the native ARM64 image on Apple Silicon; no hard-coded platform flag is needed.
+
+Since 2.0, local embeddings are on by default: the server downloads `all-MiniLM-L6-v2` (~87 MB, sha-pinned, stored in `/data/models`) on first start, backfills existing pages in the background, and hybrid FTS+vector search activates on the next restart. No API key, no GPU. Opt out with `embedding_provider = "none"` if a machine cannot afford the model.
 
 Hooks capture sessions; SessionStart fetches the pending handoff. Useful prompts: "where did we leave off?", "have we discussed X?" / "search memory for Y", "catch me up", "save a permanent note that we standardised on X". Adopt a pre-existing repo:
 
@@ -118,9 +120,23 @@ ai-memory workstream-search "install retraction" --limit 50 --json
 
 `run` is the one command the Docker wrapper cannot serve from a container — native harnesses and their transcript stores are host resources. The wrapper intercepts `run` before any Docker work and `exec`s a native client out of `~/.cache/ai-memory/native-runner/` (macOS/Linux, x86_64/arm64). Three consequences:
 
-- **The version depends on the path.** Measured 2026-08-03: the container answers `ai-memory 1.18.0`, the native client `ai-memory 1.22.0`. Every version on this page — and the `ai-memory version` row of `verify-ai-memory.mjs` — is the container's; `run` is a newer build nobody checks. Ask them separately: `ai-memory --version` vs `~/.cache/ai-memory/native-runner/ai-memory --version`.
-- **The download is unconditional and unprompted.** `curl` from `https://github.com/akitaonrails/ai-memory/releases/latest/download/` (sha256 verified) whenever the binary or the tarball is missing, plus once a day when the published sha256 differs from the cached one — 11 MB compressed, 24 MB installed. The binary is resolved before the arguments are read, so even `ai-memory run --help` can trigger it. `AI_MEMORY_NATIVE_BIN` points at a binary you supply and skips the download entirely.
-- **The environment crosses over whole.** A plain `exec`, no `env -i` and no filtering: it adds `AI_MEMORY_WORKSTREAM_ID`, `AI_MEMORY_HOOK_URL` and `AI_MEMORY_RUN_ID` and removes nothing. So inside a managed run `session-context.mjs` still reports `host: "maestri"` and the `qa` agent's portal track is intact. The env allowlist in the wrapper belongs to the Docker path, which `run` never reaches.
+- **The version depends on the path.** Measured 2026-09-04 (both 2.0.2 after the migration; before it, the container answered 1.25.0 while the runner had self-updated to 1.38.0). `verify-ai-memory.mjs` now compares the two: a mixed major fails the check — upstream does not support it, and a pre-2.0 binary refuses a migrated data dir — while same-major drift warns. Ask them by hand with `ai-memory --version` vs `~/.cache/ai-memory/native-runner/ai-memory --version`.
+- **The download is unconditional and unprompted.** `curl` from `https://github.com/akitaonrails/ai-memory/releases/latest/download/` (sha256 verified) whenever the binary or the tarball is missing, plus once a day when the published sha256 differs from the cached one — 11 MB compressed, 24 MB installed. The binary is resolved before the arguments are read, so even `ai-memory run --help` can trigger it. `AI_MEMORY_NATIVE_BIN` points at a binary you supply and skips the download entirely — it is the **only** real pin: `AI_MEMORY_NO_VERSION_CHECK` silences the outdated-version warning but does not stop this download (measured 2026-09-04 against the 2.0.2 wrapper).
+- **The environment crosses over whole.** A plain `exec`, no `env -i` and no filtering: it adds `AI_MEMORY_WORKSTREAM_ID`, `AI_MEMORY_HOOK_URL` and `AI_MEMORY_RUN_ID` and removes nothing. So inside a managed run `session-context.mjs` still reports `host: "maestri"`. The env allowlist in the wrapper belongs to the Docker path, which `run` never reaches.
+- **Host-writing subcommands have their own version, too.** The wrapper serves `install-mcp` / `install-hooks` / `install-instructions` from an ephemeral client container chosen by `AI_MEMORY_IMAGE` (default `:latest`), not from the running server. `setup-ai-memory.mjs` pins that variable to the same release it installs, so the wiring can never come from a stale cached `:latest` (measured 2026-09-04: a 1.25 cache wired a 2.0 server until the pin).
+
+## Parallel sessions (Maestri)
+
+2.0 keeps concurrent agents on the same project apart natively: the current-project pointer is **per actor** (resolved from each session's own directory), concurrent writes to one page stack as a version chain instead of overwriting, and a handoff has a single owner — a second `accept` cannot steal it. So a team of agents recruited on the Maestri canvas needs no scoping arguments at all; what it needs is each agent to be born as its own actor:
+
+- Launch each recruited agent through the managed launcher, one workstream per agent, never shared (the lease admits one live run per workstream):
+
+  ```bash
+  ai-memory run claude --new <ticket-or-task-name>
+  ```
+
+- Each Maestri floor is a git clone in its own directory, so directory-based resolution gives every agent the right per-actor context for free. Floors share the repo's basename, which means they all resolve to the **same project** — that is the point (shared project memory); drop a `.ai-memory.toml` in a clone only if some floor must not share.
+- The static-MCP session-id caveat in the managed routing block is about clients *not* launched this way; `run` sidesteps it, so don't wire anything extra for it.
 
 ## Per-project behaviour — `.ai-memory.toml`
 
@@ -162,10 +178,12 @@ What it checks:
 | ai-memory container | the container exists and is running |
 | LLM backend | the backend the **server is actually configured with** answers. The provider is read from the container's own `AI_MEMORY_LLM_*` env, so `claude-sub` is checked against the shim's `/healthz`, `local` against Ollama's `/v1/models`. `anthropic`/`anthropic-oauth` have no local endpoint and are skipped; a zero-LLM install has no backend to check |
 | LLM model | the configured model is the one the backend serves (Ollama: actually pulled) |
-| ai-memory version | the running container reports a version **and** still runs the image `akitaonrails/ai-memory:latest` points at. A mismatch warns, because `ai-memory upgrade` pulls the new image without recreating the container — see [Upgrade](#upgrade--uninstall). The container only: the client behind `ai-memory run` is a separate, newer binary and no check covers it — see [`run` is a different binary](#run-is-a-different-binary-from-the-rest) |
+| ai-memory version | the running container reports a version **and** still runs the image the pinned tag points at. A mismatch warns, because `ai-memory upgrade` pulls the new image without recreating the container — see [Upgrade](#upgrade--uninstall) |
+| Native runner version | the client behind `ai-memory run` matches the container. A different major fails (unsupported upstream — the runner self-updates daily and can jump a major on its own); same-major drift warns — see [`run` is a different binary](#run-is-a-different-binary-from-the-rest) |
 | `ai-memory status` | the server answers and reports the provider the container was started with |
+| Provider health | judged from the structured provider block in `status --json` (a recorded error message or an unhealthy status; `unknown` just means no call yet). The old text-grep heuristic remains only as a fallback for unparseable output |
 | `bootstrap --dry-run` | the server can collect sources — proves it reaches the LLM backend |
-| Wiki git history | `/data/wiki` has commits, i.e. capture is being committed |
+| Wiki git history | `/data/wiki/.git` exists and carries no freeze signature (zero-size loose objects or libgit2 parse errors in the container log — the silent failure measured 2026-08). The container has no git CLI, so history itself cannot be read from outside |
 | Staged hooks | `~/.claude/settings.json` still points at ai-memory lifecycle hooks and every script it names is on disk and executable. Nothing is captured without them, however healthy the server is |
 | Managed skills | the `ai-memory-*` Agent Skills are installed **globally** (`~/.claude/skills/`). Finding them project-scoped in the repo's own `.claude/skills/` fails the check: that directory belongs to the harness installer |
 
@@ -209,7 +227,7 @@ docker run -d --name ai-memory --restart unless-stopped \
   -e AI_MEMORY_LLM_PROVIDER=openai-compat \
   -e AI_MEMORY_LLM_BASE_URL=http://host.docker.internal:8787/v1 \
   -e AI_MEMORY_LLM_MODEL=claude-haiku-4-5 \
-  akitaonrails/ai-memory:latest
+  akitaonrails/ai-memory:2.0.2   # keep in lockstep with AI_MEMORY_VERSION in setup-ai-memory.mjs
 ```
 
 Every other computer — no local server, no Docker, no shim:
@@ -238,9 +256,17 @@ The wiki is a git repo inside the data volume; push to a private remote and pull
 
 ## Upgrade / uninstall
 
+Image and wrapper are pinned to one release (`AI_MEMORY_VERSION` in `setup-ai-memory.mjs`, mirrored in `verify-ai-memory.mjs`) — upstream enforces SemVer since 2.0 and mixed versions are unsupported, so an upgrade is a deliberate bump of that constant, then:
+
 ```bash
-ai-memory upgrade            # self-upgrade wrapper + pull image + re-stage hooks
-cd <repo> && ai-memory install-instructions --skills-scope global   # refresh block + skills
+docker rm -f ai-memory && rm ~/.local/bin/ai-memory   # setup recreates neither on its own
+node scripts/setup-ai-memory.mjs                      # new container + wrapper + rewiring
+node scripts/verify-ai-memory.mjs                     # incl. the container/runner skew check
+```
+
+A **major** bump additionally runs a one-way, backup-gated data migration on first start (2.0: OKF v0.2). Take an extra `node scripts/backup-ai-memory.mjs` first and copy it outside the rotation; the server also writes its own gated archive to `/data/backups/` before touching anything, and rollback is always restore-from-archive plus the old pinned release — a pre-migration binary refuses a migrated data dir, so there is no in-place downgrade. Pin the native runner with `AI_MEMORY_NATIVE_BIN` for the duration of the window so its daily self-update cannot jump the major before the server does.
+
+```bash
 ai-memory uninstall --apply  # remove only ai-memory-owned MCP/hooks/instructions
 docker rm -f ai-memory       # stop + remove the server (data volume survives)
 
@@ -253,15 +279,7 @@ node scripts/backup-ai-memory.mjs --uninstall   # remove the backup LaunchAgent
 docker volume rm ai-memory-data   # destructive: erase all memory
 ```
 
-`upgrade` refreshes the wrapper, the image and the staged hook scripts — it leaves the routing block and the managed skills at the version that wrote them. A release that changes either ships new text, so re-run `install-instructions --skills-scope global` (or `node scripts/setup-ai-memory.mjs`, which ends with exactly that) in each project whose block you want current. Never hand-edit between the markers: re-running replaces the marked region in place and would silently drop your edit.
-
-**A pulled image is not a running image.** `upgrade` stops at `docker pull`, and `setup-ai-memory.mjs` leaves an existing container alone on purpose (`startServer()` prints *"already exists — leaving it"*, so a re-run never destroys a working server behind your back). The two together mean the newly pulled version does not take effect until you recreate the container yourself:
-
-```bash
-docker rm -f ai-memory && node scripts/setup-ai-memory.mjs   # data volume survives
-```
-
-`node scripts/verify-ai-memory.mjs` warns when the running container no longer matches the image `akitaonrails/ai-memory:latest` points at, which is exactly this state.
+Avoid `ai-memory upgrade` here: it pulls whatever is newest, which defeats the pin. The upgrade sequence above covers everything it did — `setup-ai-memory.mjs` rewires MCP, hooks and the managed instructions/skills at the pinned version, and `startServer()` leaves an existing container alone on purpose (*"already exists — leaving it"*), which is exactly why the sequence starts with `docker rm -f`. Never hand-edit between the routing-block markers: a re-run replaces the marked region in place and would silently drop your edit.
 
 ## Troubleshooting
 
