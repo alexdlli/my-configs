@@ -71,7 +71,6 @@ jobs:
           # Node's matcher expands them instead of the shell.
           globs=(
             'scripts/*.test.mjs'
-            'scripts/github/*.test.mjs'
             '.claude/hooks/lib/*.test.mjs'
           )
 
@@ -82,7 +81,7 @@ jobs:
           # number here is a deliberate test removal, which is exactly when a
           # human should be looking. A floor on the total would not do: a glob
           # can collapse to a single test while the sum still looks healthy.
-          min_pass_per_glob=(72 52 74)
+          min_pass_per_glob=(70 74)
 
           # The pair is the contract. Deleting a glob line without its floor is
           # how a whole suite stops running while the step stays green.
@@ -143,8 +142,6 @@ jobs:
           import os from 'node:os';
           import path from 'node:path';
 
-          const EXPECTED_AGENT = 'orchestrator';
-
           // Two entries, and `Bash(gh pr merge *)` is deliberately not the third.
           // The ask-then-merge policy took it out of permissions.deny so the
           // command can reach the permission prompt and Alex can approve a merge
@@ -176,7 +173,6 @@ jobs:
           // workspace, so a prefix test accepts a link that points at itself.
           const EXPECTED_LINK_TARGETS = new Map([
             ['harness', checkout],
-            ['agents', path.join(checkout, '.claude', 'agents')],
             ['hooks', path.join(checkout, '.claude', 'hooks')],
           ]);
 
@@ -185,9 +181,7 @@ jobs:
 
           const problems = [];
 
-          if (installed.agent !== EXPECTED_AGENT) {
-            problems.push(`agent is ${JSON.stringify(installed.agent)}, expected ${JSON.stringify(EXPECTED_AGENT)}`);
-          }
+          if (Object.hasOwn(installed, 'agent')) problems.push('installer must not set a default agent');
 
           const allow = new Set(installed.permissions?.allow);
           for (const entry of source.permissions.allow) {
@@ -318,7 +312,7 @@ jobs:
             process.exit(1);
           }
 
-          console.log(`post-install assertions passed: agent, ${source.permissions.allow.length} allow entries, ${REQUIRED_DENY.length} deny guarantees, ${Object.keys(source.hooks).length} hook events, ${verifiedHookCommands} hook commands resolving under ${hooksDir}, ${MERGE_GUARD_HOOK.script} denying "${MERGE_COMMAND}" in a worker and silent outside one, ${EXPECTED_LINK_TARGETS.size} links`);
+          console.log(`post-install assertions passed: native default agent, ${source.permissions.allow.length} allow entries, ${REQUIRED_DENY.length} deny guarantees, ${Object.keys(source.hooks).length} hook events, ${verifiedHookCommands} hook commands resolving under ${hooksDir}, ${MERGE_GUARD_HOOK.script} denying "${MERGE_COMMAND}" in a worker and silent outside one, ${EXPECTED_LINK_TARGETS.size} links`);
           POST_INSTALL
 
           HOME="$FAKE_HOME" node scripts/install.mjs --uninstall

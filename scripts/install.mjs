@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Install (or uninstall) the personal Claude Code harness into ~/.claude/.
 //
-// Symlinks ~/.claude/{harness,agents,hooks} into the harness checkout,
+// Symlinks ~/.claude/{harness,hooks} into the harness checkout,
 // links skills one entry at a time, and deep-merges a managed slice of
-// ~/.claude/settings.json (agent, permissions.allow, permissions.deny, and every
+// ~/.claude/settings.json (permissions.allow, permissions.deny, and every
 // hook event the harness declares) without disturbing keys the user owns
 // (theme, enabledPlugins, extraKnownMarketplaces, ...).
 //
@@ -15,7 +15,6 @@
 // Usage:
 //   node scripts/install.mjs                # install or refresh
 //   node scripts/install.mjs --dry-run      # show plan, touch nothing
-//   node scripts/install.mjs --force-agent  # override existing settings.agent
 //   node scripts/install.mjs --uninstall    # revert what this installer added
 //   node scripts/install.mjs -h | --help
 //
@@ -36,9 +35,11 @@ const HOME = os.homedir();
 const TARGET_DIR = path.join(HOME, '.claude');
 const SETTINGS_PATH = path.join(TARGET_DIR, 'settings.json');
 const METADATA_PATH = path.join(TARGET_DIR, '.my-configs-managed.json');
-const SYMLINK_ITEMS = ['agents', 'hooks'];
+const SYMLINK_ITEMS = ['hooks'];
 const TARGET_HOOKS_DIR = path.join(TARGET_DIR, 'hooks');
 const METADATA_VERSION = 2;
+const RETIRED_CLAUDE_AGENT = 'orchestrator';
+const RETIRED_OPENCODE_AGENT = 'orchestrator';
 
 // Stable, machine-independent entry point to the checkout. Skills and hooks
 // reference scripts/** through it instead of hardcoding a clone path.
@@ -58,7 +59,7 @@ const OPENCODE_DIR = path.join(HOME, '.config', 'opencode');
 const OPENCODE_CONFIG_PATH = path.join(OPENCODE_DIR, 'opencode.json');
 const OPENCODE_METADATA_PATH = path.join(OPENCODE_DIR, '.my-configs-managed.json');
 const HARNESS_OPENCODE_DIR = path.join(HARNESS_ROOT, '.opencode');
-const OPENCODE_ENTRY_DIRS = ['agent', 'command', 'plugin'];
+const OPENCODE_ENTRY_DIRS = ['command', 'plugin'];
 
 // Skills installed by other toolkits outside ~/.claude/skills. Claude Code only
 // loads what lives under ~/.claude/skills, so without a link these are inert.
@@ -84,24 +85,23 @@ Usage:
 
 Options:
   --dry-run        Print the plan; do not touch the filesystem
-  --force-agent    Overwrite settings.agent / OpenCode default_agent if set
   --uninstall      Remove symlinks and revert the keys this installer added
   -h, --help       Show this help
 
 Claude Code (~/.claude/):
-  harness, agents, hooks → directory symlinks into the checkout
+  harness, hooks → directory symlinks into the checkout
   skills/<name> → one symlink per harness skill (never the directory itself)
-  settings.json deep-merged (agent, permissions, hooks)
+  settings.json deep-merged (permissions and hooks)
   .my-configs-managed.json records what was added
 
 OpenCode:
   ~/.agents/skills/<name> → same harness skills, one entry at a time
     (.agents/ is skills-only; OpenCode does not read agents/commands from there)
-  ~/.config/opencode/agent|plugin/<entry> → one symlink each from
-    <harness>/.opencode/{agent,plugin}/ (command/ is empty today; the subdir is
+  ~/.config/opencode/plugin/<entry> → one symlink each from
+    <harness>/.opencode/plugin/ (command/ is empty today; the subdir is
     still walked, so re-adding one needs no installer change)
-  ~/.config/opencode/opencode.json deep-merged: default_agent + permission
-    deny rules the harness owns. MCP and other user keys are left untouched.
+  ~/.config/opencode/opencode.json deep-merges only the permission rules the
+    harness owns. MCP and other user keys are left untouched.
 
 What gets retracted:
   A link recorded in the metadata whose path the harness no longer declares is
@@ -117,10 +117,9 @@ function die(msg) {
 }
 
 function parseArgs(args) {
-  const opts = { mode: 'install', dryRun: false, forceAgent: false };
+  const opts = { mode: 'install', dryRun: false };
   for (const a of args) {
     if (a === '--dry-run') opts.dryRun = true;
-    else if (a === '--force-agent') opts.forceAgent = true;
     else if (a === '--uninstall') opts.mode = 'uninstall';
     else if (a === '-h' || a === '--help') {
       usage();
@@ -317,10 +316,11 @@ function retractPermissionEntries(merged, listName, harnessEntries, previouslyAd
 // records only what this run introduced (so uninstall can revert exactly that,
 // nothing else) plus what it retracted, so the metadata stops claiming it.
 // `addedLinks` and `retractedLinks` are filled in by the caller.
-function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata) {
+function buildMergedSettings(userSettings, harnessSettings, priorMetadata) {
   const merged = cloneJson(userSettings);
   const added = {
     addedKeys: [],
+    retractedKeys: [],
     addedAllowEntries: [],
     addedDenyEntries: [],
     retractedAllowEntries: [],
@@ -331,22 +331,13 @@ function buildMergedSettings(userSettings, harnessSettings, opts, priorMetadata)
     retractedLinks: [],
   };
 
-  if (Object.hasOwn(harnessSettings, 'agent')) {
-    const harnessAgent = harnessSettings.agent;
-    if (Object.hasOwn(merged, 'agent')) {
-      if (merged.agent !== harnessAgent) {
-        if (!opts.forceAgent) {
-          die(
-            `settings.agent is already "${merged.agent}". ` +
-              `Re-run with --force-agent to overwrite to "${harnessAgent}".`,
-          );
-        }
-        merged.agent = harnessAgent;
-      }
-    } else {
-      merged.agent = harnessAgent;
-      added.addedKeys.push('agent');
-    }
+  if (
+    priorMetadata.addedKeys?.includes('agent') &&
+    merged.agent === RETIRED_CLAUDE_AGENT &&
+    !Object.hasOwn(harnessSettings, 'agent')
+  ) {
+    delete merged.agent;
+    added.retractedKeys.push('agent');
   }
 
   added.retractedAllowEntries = retractPermissionEntries(
@@ -459,7 +450,7 @@ function mergeMetadata(prior, added) {
   const normalized = normalizeMetadata(prior);
   return {
     version: METADATA_VERSION,
-    addedKeys: [...new Set([...normalized.addedKeys, ...added.addedKeys])],
+    addedKeys: unionWithout(normalized.addedKeys, added.addedKeys, added.retractedKeys),
     addedAllowEntries: unionWithout(
       normalized.addedAllowEntries,
       added.addedAllowEntries,
@@ -760,31 +751,23 @@ function setBashRuleLast(bash, pattern, action) {
 
 // Merge only the keys the harness owns into the user's OpenCode config.
 // MCP servers, plugins the user added, themes — untouched.
-function buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, priorMetadata) {
+function buildMergedOpenCodeConfig(userConfig, harnessConfig, priorMetadata) {
   const merged = cloneJson(userConfig);
   const added = {
     addedKeys: [],
+    retractedKeys: [],
     addedBashPatterns: [],
     retractedBashPatterns: [],
     synthesizedBashCatchAll: false,
   };
 
-  if (Object.hasOwn(harnessConfig, 'default_agent')) {
-    const harnessAgent = harnessConfig.default_agent;
-    if (Object.hasOwn(merged, 'default_agent')) {
-      if (merged.default_agent !== harnessAgent) {
-        if (!opts.forceAgent) {
-          die(
-            `opencode default_agent is already "${merged.default_agent}". ` +
-              `Re-run with --force-agent to overwrite to "${harnessAgent}".`,
-          );
-        }
-        merged.default_agent = harnessAgent;
-      }
-    } else {
-      merged.default_agent = harnessAgent;
-      added.addedKeys.push('default_agent');
-    }
+  if (
+    priorMetadata.addedKeys?.includes('default_agent') &&
+    merged.default_agent === RETIRED_OPENCODE_AGENT &&
+    !Object.hasOwn(harnessConfig, 'default_agent')
+  ) {
+    delete merged.default_agent;
+    added.retractedKeys.push('default_agent');
   }
 
   const rules = harnessBashRules(harnessConfig?.permission?.bash);
@@ -880,7 +863,7 @@ function mergeOpenCodeMetadata(prior, added, links, retractedLinks) {
   }
   return {
     version: METADATA_VERSION,
-    addedKeys: [...new Set([...priorKeys, ...added.addedKeys])],
+    addedKeys: unionWithout(priorKeys, added.addedKeys, added.retractedKeys),
     addedBashPatterns: [...patternMap.values()],
     synthesizedBashCatchAll: Boolean(
       added.synthesizedBashCatchAll || prior.synthesizedBashCatchAll,
@@ -929,7 +912,7 @@ async function runOpenCodeInstall(opts, skillSourcesMap) {
 
   const harnessConfig = await readJsonOrEmpty(path.join(HARNESS_OPENCODE_DIR, 'opencode.json'));
   const userConfig = await readJsonOrEmpty(OPENCODE_CONFIG_PATH);
-  const { merged, added } = buildMergedOpenCodeConfig(userConfig, harnessConfig, opts, prior);
+  const { merged, added } = buildMergedOpenCodeConfig(userConfig, harnessConfig, prior);
 
   const priorLinks = Array.isArray(prior?.addedLinks) ? prior.addedLinks : [];
   const retractedLinks = await retractLinks(priorLinks, declaredPaths, opts.dryRun);
@@ -1076,20 +1059,19 @@ async function runInstall(opts) {
   ];
 
   const userSettings = await readJsonOrEmpty(SETTINGS_PATH);
-  // Ahead of the retraction on purpose: these calls can die() on an agent
-  // conflict, and an install that exits non-zero must not have already deleted
-  // a link the metadata it never wrote still claims. OpenCode is checked here
-  // too so a default_agent conflict cannot leave Claude half-written.
+  // Ahead of the retraction on purpose: parsing or validation can still fail,
+  // and a non-zero install must not already have deleted a link whose metadata
+  // was never rewritten. Validate OpenCode before mutating Claude for the same
+  // reason.
   const { merged, added } = buildMergedSettings(
     userSettings,
     harnessSettings,
-    opts,
     priorMetadata,
   );
   const opencodePrior = await readJsonOrEmpty(OPENCODE_METADATA_PATH);
   const opencodeHarness = await readJsonOrEmpty(path.join(HARNESS_OPENCODE_DIR, 'opencode.json'));
   const opencodeUser = await readJsonOrEmpty(OPENCODE_CONFIG_PATH);
-  buildMergedOpenCodeConfig(opencodeUser, opencodeHarness, opts, opencodePrior);
+  buildMergedOpenCodeConfig(opencodeUser, opencodeHarness, opencodePrior);
 
   const retractedLinks = await retractLinks(
     priorMetadata.addedLinks,
@@ -1117,6 +1099,7 @@ async function runInstall(opts) {
   if (addedSummary.length > 0) summaryParts.push(`added ${addedSummary.join(', ')}`);
   const retractedSummary = [];
   if (retractedLinks.length > 0) retractedSummary.push(`${retractedLinks.length} link(s)`);
+  if (added.retractedKeys.length > 0) retractedSummary.push(added.retractedKeys.join(', '));
   if (added.retractedHooks.length > 0)
     retractedSummary.push(`${added.retractedHooks.length} hook(s)`);
   const retractedEntries = [...added.retractedAllowEntries, ...added.retractedDenyEntries];
@@ -1148,7 +1131,7 @@ async function runInstall(opts) {
   await runOpenCodeInstall(opts, sources);
 
   console.log(
-    '\nDone. Claude Code: new session + /agents. OpenCode: restart the session (config is load-once).',
+    '\nDone. Restart Claude Code or OpenCode so their configuration reloads.',
   );
 }
 

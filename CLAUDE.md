@@ -1,96 +1,69 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file provides guidance to coding agents working in this repository.
 
 ## Purpose
 
-Personal Claude Code harness: an orchestrator agent + specialists, installed globally to `~/.claude/` via symlinks. Centralizes the agent definitions, hooks, and settings I want available in every Claude Code session.
+Minimal, model-agnostic personal tooling for Claude Code and OpenCode. It installs
+small safety and session utilities globally, but does not replace either client's
+default agent, impose an orchestration workflow, or ship specialist agents.
 
-## Before writing or modifying any code (required)
+## Before writing or modifying code
 
-Always read these first, every session, without me having to ask:
+Read [`docs/contributing.md`](docs/contributing.md) in full. Also query project
+memory before non-trivial architecture or implementation work.
 
-- [`docs/agent-system.md`](docs/agent-system.md) — agent system architecture and roles
-- [`docs/contributing.md`](docs/contributing.md) — contribution conventions for this repo
-- The **Token-saving conventions** and **Commit Rules** sections below in this file — they are the code standards
+## Design boundary
 
-If any of these is missing or out of date, tell me before proceeding.
+The harness must stay out of the model's way. Add an artifact only for a concrete,
+repeated problem with evidence that the client itself does not already solve.
 
-## Memory protocol (every session)
+- No default agent, specialist roster, forced delegation, agent graph, ticket
+  pipeline, generated spec pipeline, or coordination contract.
+- Use the client's native agent directly. Parallel agents remain an occasional
+  tool for genuinely independent work, never the default execution path.
+- Working code and tests are the source of truth. Documentation records current
+  behavior and decisions; it does not become a second program written in prose.
+- ai-memory owns cross-client continuity outside the harness.
+- Security guards, portable installation, and small context utilities may remain
+  because they solve concrete cross-project problems.
 
-**At the start:** query project memory via the ai-memory MCP (`memory_query` / `memory_recent`) before answering anything non-trivial. The SessionStart hook already fetches the pending handoff ("where we left off"); look also for prior decisions, project rules, and known gotchas. Do not guess architecture — ask the memory. (Setup: [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).)
+The removed orchestration system is preserved in git history. The wave pipeline is
+at `pre-wave-removal`; the later ticket/command cut is at `pre-lean-cut`; the
+final pre-minimal state is the parent of the commit that removes the agent roster.
 
-**During:** if I correct you on a pattern, treat it as a rule, not a one-off fix for this session.
+## What lives here
 
-**At the end (or when something durable appears):** record in memory ONLY what matters for the future — a decision with consequences, a reproducible gotcha, a procedure that repeats, an explicit preference of mine, or an important project pattern. Do NOT record: a test command, a transient error, an environment-of-the-day failure, or the whole session narrative. Golden rule: **bad memory is worse than no memory.** (This is why `[auto_improve] require_approval = true` — nothing enters the wiki without my approval.)
-
-## What Goes Here
-
-- **`.claude/settings.json`** — baseline tool permissions (`allow` + `deny`), default agent, and hooks (deep-merged into `~/.claude/settings.json` by the installer)
-- **`.claude/agents/`** — orchestrator + specialist subagent definitions (symlinked into `~/.claude/agents/`)
-- **`.claude/hooks/`** — Claude Code hook scripts (symlinked into `~/.claude/hooks/`). <!-- docs-count:hooks -->Four today. [`docs/guard-destructive.md`](docs/guard-destructive.md) owns the policy of `guard-destructive.mjs` (`PreToolUse` on `Bash`); don't restate it, but don't overstate it either. Two facts to carry: `git push --force` and `git commit --no-verify` are denied in every context by both layers (`permissions.deny` and the hook, both measured surviving `--dangerously-skip-permissions`, and only the hook sees the `bash -c "..."` wrapper). **`gh pr merge` is in neither** — it left `permissions.deny` under the ask-then-merge policy, and the hook denies it only inside a worker, marked by a `.wave/worker.json` that no harness procedure writes today; outside one, under the bypass, it runs unguarded. Branch protection on GitHub is the only layer that does not depend on this client.
-- **`.claude/skills/`** — `pr-babysitting` (CI and feedback as two independent states) and `maestri-orchestration` (what changes when the session runs inside a Maestri terminal). Linked **one entry at a time** into `~/.claude/skills/` **and** `~/.agents/skills/` (OpenCode auto-loads both) — those directories are shared with third-party skills, so the installer never symlinks them wholesale, and a name it doesn't own is reported and skipped rather than overwritten. The same mechanism exposes skills living outside the harness through `EXTERNAL_SKILL_LINKS`, empty today and kept as the extension point.
-- **`.opencode/`** — OpenCode surface: `agent/`, `plugin/guard-destructive.js`, and a managed `opencode.json` slice (deny rules + `default_agent`). Installed into `~/.config/opencode/`. `.agents/` is skills-only in OpenCode — agents do **not** go there. See [`docs/integrations/opencode.md`](docs/integrations/opencode.md).
-- **`scripts/install.mjs`** — installer (symlinks + settings merge + uninstall)
-- **`scripts/github/`** — read-only `gh` readers: `gh.mjs` (the shared `gh` access plus the exit-code table both PR readers honour), `pr-state.mjs` (CI state), `fetch-pr-threads.mjs` (PR feedback).
-- **`scripts/setup-ai-memory.mjs`**, **`scripts/verify-ai-memory.mjs`**, **`scripts/backup-ai-memory.mjs`**, **`scripts/claude-openai-shim.mjs`** — the [ai-memory](https://github.com/akitaonrails/ai-memory) chain: setup, read-only verification, volume backup, and the `claude -p` shim. See [`docs/integrations/ai-memory.md`](docs/integrations/ai-memory.md).
-- **`docs/`** — install guide, agent/skill reference, contributing conventions, and the integration notes under [`docs/integrations/`](docs/integrations/)
-
-## Agent System
-
-Every session starts in the `orchestrator` agent (set via `.claude/settings.json`). It decomposes tasks and delegates in parallel to specialists; the roster with tools and models is in [`docs/agent-system.md`](docs/agent-system.md), which you already have to read before touching code. Subagents inherit the parent's permission mode, so plan mode and accept-edits propagate naturally. Read-only enforcement on research agents is via `tools:` allowlist, not `permissionMode`.
-
-**Two pipelines were removed after measuring how little they ran, and neither comes back by accident.** The wave one (dependency graph, `/wave-plan`, `/wave-status`, `wave-monitor`, `wave-orchestration`) is at the annotated tag `pre-wave-removal`; the ticket one (`pm`, `ticket-contract`, `/ticket-new`, the Issues reader), plus every slash command and the agents with zero recorded invocations, is at `pre-lean-cut`. `git show <tag>:<path>` reads any of it. Don't re-add a piece without deciding to run it again.
+- `.claude/settings.json` — small permission baseline and hook registrations.
+- `.claude/hooks/` — auto-update, session context, and destructive-command guard.
+- `.opencode/` — the equivalent OpenCode guard/config surface.
+- `scripts/install.mjs` — idempotent install, update, retraction, and uninstall.
+- `scripts/*ai-memory*.mjs` — ai-memory setup, verification, backup, and shim.
+- `docs/` — installation, usage, guard behavior, and integration notes.
 
 ## Installation
 
-`node scripts/install.mjs` — see [`docs/installation.md`](docs/installation.md). Supports `--dry-run`, `--uninstall`, `--force-agent`. macOS-only.
+`node scripts/install.mjs` — see [`docs/installation.md`](docs/installation.md).
+Supports `--dry-run` and `--uninstall`. macOS-only.
 
 ## Token-saving conventions
 
-When invoking shell commands, prefer compact flags that produce structured, parseable output. This captures the bulk of what dedicated tools (e.g. RTK) try to do via post-hoc filtering, without the round-trip cost of re-reading truncated output.
+Prefer compact, structured command output: `git status --porcelain`,
+`git log --oneline -n N`, `git diff --stat`, and quiet test flags. Never search
+`node_modules`, `.git`, build artifacts, or vendored dependencies.
 
-| Command family | Verbose default | Prefer |
-|---|---|---|
-| `git status` | full porcelain v1 | `git status --porcelain` (or `--short`) |
-| `git log` | full body | `git log --oneline` (add `-n N` to cap) |
-| `git diff` | full hunks | `git diff --stat` for overview; full diff only when reviewing |
-| `git branch` | full | `git branch --list --format='%(refname:short)'` |
-| `pytest` | full traceback | `pytest --tb=short -q` (use `--tb=line` for one-liners) |
-| `cargo build` | progress bars | `cargo build --quiet` (or pipe through `2>&1 \| tail -50`) |
-| `npm test` / `pnpm test` | full | run with `--silent` if available |
-| `ls` | full `ls -l` | `ls -1` (one per line) or `ls -1A` |
-| Long outputs (anything) | full | pipe through `head -N`, `tail -N`, `grep -E pattern`, or `wc -l` first |
+## Commit and quality rules
 
-Hard rules:
-
-- Never grep through `node_modules`, `.git`, build artifacts, or vendored deps. Use `--exclude-dir` / `-not -path` filters.
-- For file reads, prefer reading the specific lines/symbols you need (`Read` tool with `offset`/`limit`) over `cat`-ing the whole file.
-- For repo-wide searches, prefer `Grep`/`Glob` (claude-code native, structured) over piped shell commands.
-
-These conventions are enforced by the agents (`tester`, `implementer`, `cavecrew-*`) — but documenting them here means any new agent or one-off prompt inherits them.
-
-## Commit Rules
-
-- Never include Claude Code as co-author in commits.
-- Scripts and hooks default to Node.js stdlib (`.mjs`, no deps) for portability.
-- Test before committing: `node --check scripts/<name>.mjs`, then a dry run (`node scripts/install.mjs --dry-run` against a fake `$HOME`).
-
-## Code quality standards (always apply)
-
-These complement the **Commit Rules** and **Token-saving conventions** above; they do not replace them.
-
-- No dead code and no unnecessary duplication.
-- No magic hardcoded values; turn them into named constants and/or document them.
-- Adequate test coverage for whatever changed.
+- Never add an AI tool as commit co-author.
+- Scripts and hooks default to Node.js stdlib (`.mjs`, no dependencies).
+- Test before committing: syntax checks, the relevant suites, and an installer dry
+  run against a throwaway home.
+- A bug fix needs a test observed failing before the fix.
+- Preserve user-owned settings and unrelated dirty-worktree changes.
+- No dead code, speculative abstractions, or claims about external-tool behavior
+  without the measured version, platform, date, and reproducing command.
 - Update documentation when behavior changes.
-- Don't trust a PR description; audit the actual code.
-- Keep structure clear enough for an agent to navigate (clean code for agents).
-
-## What NOT to do
-
-- Don't rewrite from scratch to fit an imagined "ideal" structure (no over-engineering). Make it work, then make it right, then make it fast — in that order.
-- Don't introduce an abstraction that has no real usage yet to justify it.
+- Make the smallest change that solves a demonstrated problem.
 
 <!-- ai-memory:start -->
 ## Long-term memory (ai-memory)

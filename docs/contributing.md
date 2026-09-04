@@ -1,158 +1,70 @@
 # Contributing
 
-Notes for working on this harness. It's small on purpose — settings, agents, hooks, and an installer. Keep additions targeted and reversible.
+Keep this repository smaller than the clients it configures.
 
-## Repo layout
+## Design rule
+
+Add something only when it solves a concrete, repeated, measured problem that
+Claude Code or OpenCode does not already solve. Do not add default agents,
+specialist rosters, forced delegation, graphs, ticket/spec pipelines, or ceremony
+whose main output is more harness state.
+
+Native client behavior is preferred. Tests, review, CI, and clean code remain the
+validation loop.
+
+## Layout
 
 ```
-.claude/
-  settings.json        # baseline merged into ~/.claude/settings.json
-  agents/              # one .md per agent (Claude Code)
-  hooks/               # hook scripts (.mjs)
-    lib/               # shared helpers used by more than one hook, with their tests
-  skills/              # one directory per skill (SKILL.md), linked entry by entry
-.opencode/
-  agent/               # OpenCode agents (permission: frontmatter, not tools:)
-  plugin/              # in-process plugins (guard-destructive)
-  opencode.json        # managed default_agent + permission deny slice
-docs/
-  agent-system.md      # agents and skills
-  installation.md      # install, flags, conflicts, troubleshooting
-  usage.md             # driving the harness day to day
-  contributing.md      # this file
-  integrations/        # session-context, maestri, ecotokens, ai-memory, opencode
+.claude/settings.json
+.claude/hooks/
+.claude/hooks/lib/
+.opencode/opencode.json
+.opencode/plugin/
 scripts/
-  install.mjs          # symlink + merge installer
-  install.test.mjs     # link retraction, both directions: what the harness stopped declaring goes, what it still declares stays
-  docs-inventory.test.mjs  # fails when the docs stop matching the real directories
-  github/              # read-only gh readers: gh, pr-state, fetch-pr-threads
-  setup-ai-memory.mjs  # one-shot ai-memory setup
-  verify-ai-memory.mjs # read-only end-to-end check of the ai-memory chain
-  backup-ai-memory.mjs # volume backup + rotation + LaunchAgent
-  claude-openai-shim.mjs  # OpenAI-compat shim over `claude -p`
-CLAUDE.md              # session-level guidance Claude reads automatically
+docs/
 ```
 
-`.claude/hooks/lib/` holds logic shared by more than one hook — it is the only place in `.claude/hooks/` that is not itself a hook. Claude Code never invokes it directly; hooks import from it. It is also where the hook unit tests live (`*.test.mjs`), since a hook script's own top level runs on import.
+## Hooks
 
-`.claude/skills/` is linked **entry by entry**, never as a directory, because `~/.claude/skills` is shared with third-party skills; adding one requires re-running the installer. See [`agent-system.md`](agent-system.md) for the full policy — and for why there is no `.claude/commands/` any more.
+Hooks are registered in `.claude/settings.json` and implemented as Node.js stdlib
+`.mjs` files. Add one only for recurring behavior that cannot live in ordinary
+project code. Test it directly with a fake stdin payload and add unit coverage for
+shared logic under `.claude/hooks/lib/`.
 
-## Adding a new specialist subagent
+## Installer
 
-1. Create `.claude/agents/<name>.md` with YAML frontmatter:
+The installer must preserve unrelated user settings and retract every managed
+artifact that is no longer declared. A missing declaration source is an error, not
+an empty declaration. Links are retracted only when their current target matches
+the recorded target; permission and hook entries use the metadata described in the
+tests.
 
-   ```markdown
-   ---
-   name: <name>
-   description: <one-sentence routing hint — Claude reads this to decide when to spawn>
-   tools: <comma-separated allowlist; omit to inherit all>
-   model: inherit
-   ---
+Keep `--dry-run`, `--uninstall`, and `--help`. New behavior needs installation,
+reinstallation, retraction, and uninstall coverage where applicable.
 
-   <system prompt body — focused, terse, no marketing>
-   ```
+## Documentation inventory
 
-2. Update `orchestrator.md`'s "Roster" section so the orchestrator knows it can delegate to the new agent.
-3. Update the roster table in `README.md` and `docs/agent-system.md` — including the specialist **count** in that file's opening line, and the read-only allowlist paragraph if the new agent has no `Edit`/`Write`. Don't count by hand: `node --test 'scripts/*.test.mjs'` names every doc that still omits the agent, and every count that no longer adds up (see [Docs that list or count things](#docs-that-list-or-count-things)).
-4. Re-run `node scripts/install.mjs` (no-op for symlinks, but confirms nothing broke), then open a session, run `/agents`, confirm the new agent appears and routes for an example task.
+`scripts/docs-inventory.test.mjs` checks hook and integration indexes plus count
+markers. When a document states an inventory count, place
+`<!-- docs-count:<name> -->` immediately before the number.
 
-Guidelines:
-
-- **Description drives routing.** Vague descriptions = bad delegation. Use phrases like "use proactively" or "use immediately after X" if you want Claude to pick this agent assertively.
-- **Tools allowlist enforces read-only.** Don't rely on `permissionMode` — `tools:` is what guarantees an agent can't write regardless of session mode.
-- **Single responsibility.** If an agent's description grows past one sentence with multiple "or"s, split it.
-
-## Editing existing agents
-
-Treat the system prompts as code. Small focused changes; verify with a real session before committing.
-
-When changing `orchestrator.md`, test the parallel-delegation pattern with a composite task and confirm subagents are spawned in the same response (real concurrency).
-
-## Adding hooks
-
-Hooks live in two places:
-
-- **`.claude/settings.json`** — registers the hook event and matcher. The installer rewrites the `command` to an absolute path under `~/.claude/hooks/` so it fires regardless of session cwd.
-- **`.claude/hooks/<name>.mjs`** — the actual script.
-
-Default to Node.js (`.mjs`) — Node ≥24 is assumed. Avoid extra dependencies; the installer doesn't run `npm install`.
-
-Test before committing:
-
-- `node --check .claude/hooks/<name>.mjs`
-- Run the hook directly with a fake stdin payload to confirm it behaves.
-
-Don't add a hook just because you can. Add one when there's a real recurring pain.
-
-## Updating the installer
-
-`scripts/install.mjs` is intentionally small (Node.js stdlib only — no deps). When changing it:
-
-- Maintain the flags: default install, `--dry-run`, `--uninstall`, `--force-agent`, `--help`.
-- Keep the deep-merge behavior for `settings.json` — never clobber unrelated keys (`theme`, `enabledPlugins`, etc.).
-- Keep the metadata file (`~/.claude/.my-configs-managed.json`) accurate — `--uninstall` reads it to revert precisely what was added, and removes a link only when its `readlink` still matches the recorded target.
-- **Adding is only half of it.** Anything the installer installs must also be *retractable*: when the harness stops declaring it, the next install has to take it off the machine. Links go through `retractLinks`, permission entries through `retractPermissionEntries`, hook registrations through `retractHookEntries`. All three key on the metadata, and **an artifact the metadata never recorded is never removed** — but say it that precisely, because the three differ in how well they can tell ours from yours. A link is verified by `readlink` against the recorded target, which is real provenance: a name another toolkit took over is left alone. A permission entry and a hook registration are matched by *string equality alone*, since the metadata records no provenance for either, so a rule or a hook you wrote by hand and spelled exactly like one of ours goes when ours does (measured: identical command, same command under a different matcher, and an exact hand-made duplicate — all removed).
-
-Two failure modes are worth knowing before you add the fourth retraction, both measured against a throwaway `$HOME`:
-
-- **Retract per artifact, not per container.** The first `retractHookEntries` filtered whole `hooks[event]` *entries*; a user who had appended their own command to the entry the installer wrote lost it silently, since the summary counts only what the harness retracted.
-- **A missing declaration file is damage, not a declaration.** `readJsonOrEmpty` maps ENOENT to `{}`, and retraction reads that as "the harness declares nothing". A checkout without `.claude/settings.json` therefore took every hook — `guard-destructive` included — plus both `permissions.deny` entries off the machine at exit 0. `readHarnessSettings` now refuses, the way `harnessSkillNames` already did for `.claude/skills`. Any new retraction needs the same guard: if the source of truth can go missing, reading its absence as an empty declaration is the bug. A new kind of managed artifact needs its own retraction and its own case in `scripts/install.test.mjs` — a union-only merge looks correct until something is deleted from the repo, and then it leaves a dead path behind in silence.
-- Never symlink `~/.claude/skills` itself; it is shared with plugins and other toolkits. Add skills to `.claude/skills/` (linked per entry automatically) or, for a skill installed elsewhere on disk, to `EXTERNAL_SKILL_LINKS`.
-- Bump `METADATA_VERSION` when the metadata shape changes, and teach `normalizeMetadata` how to read the old shape.
-- Test with `--dry-run` against a fake `$HOME`:
-  ```bash
-  HOME=/tmp/fake-home node scripts/install.mjs --dry-run
-  ```
-- Then a real install in the same fake home and confirm the symlinks + merged settings look right.
-- Syntax check: `node --check scripts/install.mjs`.
-
-## Docs that list or count things
-
-Prose that says "five hooks", or a table that claims to list every agent, goes stale in silence: nothing breaks, no error appears, and nobody notices until someone counts. It has already happened four times here. `scripts/docs-inventory.test.mjs` reads the real directories and fails when a doc disagrees. It checks two separate things.
-
-**Every entry must be named in the docs that index it.** The test holds, per inventory, the docs that enumerate it, and asserts each entry name appears there — case-insensitive and delimited, so `pr-reviewer` does not stand in for `reviewer`.
-
-| Inventory | Read from | Docs that must name every entry |
-|---|---|---|
-| `agents` | `.claude/agents/*.md` | `README.md`, `docs/agent-system.md` |
-| `skills` | `.claude/skills/*/` | `README.md`, `CLAUDE.md`, `docs/agent-system.md` |
-| `hooks` | `.claude/hooks/*.mjs` | `README.md`, `docs/installation.md` |
-| `integrations` | `docs/integrations/*.md` | `README.md`, `docs/contributing.md` |
-| `githubScripts` | `scripts/github/*.mjs` minus `*.test.mjs` | `CLAUDE.md`, `docs/contributing.md` |
-
-Naming the entry is the point; the number is only its symptom. A new agent that nobody documented is the actual defect, and the failure says which file exists and which doc omits it. When a new doc becomes an index for an inventory, add it to that inventory's `indexes` in the test.
-
-**A number in prose must carry a marker.** Where a sentence states a cardinality, pin it with an HTML comment immediately before the number:
-
-```markdown
-Plus <!-- docs-count:hooks -->five hooks: two that reinforce delegation ...
-```
-
-The test reads the token right after the marker — digits or spelled out, up to twenty — and compares it with the directory. Pinning the position is what keeps this from being a regex guessing at prose: rewrite the sentence and the marker travels with the number, or the test reports that the marker no longer has one after it. Valid keys are the inventory names above plus `specialists` (agents minus `orchestrator`). **Never put the marker at the start of a line** — CommonMark then treats the whole line as raw HTML and stops rendering the markdown on it. The test flags that too.
-
-Three limits, all deliberate:
-
-- A count written **without** a marker is invisible to the test. Add the marker when you write the count; there is no way to find an unmarked one without regex-guessing at prose, which is what makes this class of test untrustworthy.
-- Markers inside fenced code blocks are ignored, so an example like the one above is never a live claim.
-- `.claude/skills` is exempt from the reverse "this path is not on disk" check. `~/.claude/skills` is shared ground: docs there legitimately point at a skill installed outside this repo — `to-tickets` and `to-spec` come from elsewhere, and `maestri-orchestration` references the six skills the Maestri app installs: `maestri`, `maestri-manager`, `maestri-portal`, `maestri-portal-devices`, `maestri-routines` and `maestri-workspace`. The other four directories are owned by the harness alone, so a path into them that does not resolve is a real broken reference.
-
-## Running the tests
+## Tests
 
 ```bash
+node --check scripts/install.mjs
 node --test 'scripts/*.test.mjs'
-node --test 'scripts/github/*.test.mjs'
 node --test '.claude/hooks/lib/*.test.mjs'
 ```
 
-Both forms are validated. Quoting hands the glob to Node's own matcher instead of the shell; unquoted, the shell expands it first. Either works.
-
-**Never pass a directory to `node --test`.** On the Node in use here (24.15.0) it is broken for *any* directory: the positional is resolved by the CJS loader as a module and the runner never starts. The failure is not obvious — instead of erroring out, it reports the directory path itself as a single failing test named `scripts/github`, with the message `'test failed'` and a plausible duration. So a suite that never ran looks like a suite that ran and failed. This has already cost two people time. Pass a glob or explicit file paths.
-
-Every push to `main` and every pull request runs `.github/workflows/ci.yml` — `node --check` on every `.mjs` in the tree, the three globs above, and one install/uninstall cycle against a throwaway `$HOME`.
+Never pass a directory to `node --test`; use a glob or explicit file paths.
+Run an installer dry-run against a throwaway `HOME` before committing.
 
 ## Commit rules
 
-- Never include "Claude Code" or "Claude" as co-author.
-- Test before committing — syntax check + a real dry run against a fake `$HOME`.
-- **A bug fix carries a test that fails against the pre-fix code, and you have watched it fail.** Write the test, run it on the unfixed code, see red, then fix. A test added next to a fix and only *asserted* to cover it proves nothing: the common failure is a case that passes either way. Same discipline as `docs/lessons.md`'s discrimination signals — this is the one line of it that belongs in the commit rules.
-- **A claim about how an external tool behaves carries its version and how it was measured**, or it does not go in a doc. `docs/installation.md`'s "What `permissions.deny` guarantees" section is the shape: product version, Node version, OS, date, and the command that produced the answer. Repeated offender, this one — see `L-006` and `L-010`.
+- Never add an AI tool as commit co-author.
+- A bug fix carries a test observed failing against the pre-fix code.
+- Claims about external-tool behavior include version, platform, date, and the
+  command used to measure it.
+- Preserve unrelated worktree changes.
+- No dead code, unnecessary duplication, magic values, or speculative abstractions.
+- Update documentation when behavior changes.

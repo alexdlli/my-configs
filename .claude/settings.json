@@ -1,5 +1,4 @@
 {
-  "agent": "orchestrator",
   "permissions": {
     "allow": [
       "Bash(pnpm run *)",
@@ -18,8 +17,7 @@
       "Bash(git diff *)",
       "Bash(git rev-parse *)",
       "Bash(git status)",
-      "Bash(git branch *)",
-      "Bash(node ~/.claude/harness/scripts/github/*)"
+      "Bash(git branch *)"
     ],
     "deny": [
       "Bash(git push --force *)",
@@ -56,18 +54,6 @@
           {
             "type": "command",
             "command": "node .claude/hooks/guard-destructive.mjs",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "matcher": "auto|manual",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/preserve-orchestrator.mjs",
             "timeout": 5
           }
         ]

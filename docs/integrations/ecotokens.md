@@ -45,7 +45,7 @@ cargo install --git https://github.com/hansipie/ecotokens --features exact-token
 ## Coexistence with this harness
 
 - `scripts/install.mjs` only manages `UserPromptSubmit` and `PreCompact` hooks. EcoTokens lives under `PreToolUse` / `PostToolUse` — different slots, no overlap.
-- EcoTokens hook entries are written by `ecotokens install` directly into `~/.claude/settings.json`. They have their own command names, so they will not collide with `preserve-orchestrator.mjs`.
+- EcoTokens hook entries are written by `ecotokens install` directly into `~/.claude/settings.json`. They have their own command names, so they do not collide with this repository's hooks.
 - `node scripts/install.mjs --uninstall` does **not** touch EcoTokens. Use `ecotokens uninstall` for that.
 - Reinstalling this harness after EcoTokens is safe: the merge in `install.mjs` is whitelisted to specific keys/hook slots, so the `PreToolUse` / `PostToolUse` entries EcoTokens wrote are preserved.
 - EcoTokens also adds an `mcpServers.ecotokens` entry to `~/.claude/settings.json`. This harness's installer does not manage `mcpServers`, so it will not be removed on `--uninstall`.

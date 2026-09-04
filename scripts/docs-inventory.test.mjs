@@ -9,16 +9,10 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const MARKDOWN = '.md';
 const MODULE = '.mjs';
-const TEST_MODULE = '.test.mjs';
-const DIRECTORY_ENTRY = null;
 
 const README = 'README.md';
-const CLAUDE = 'CLAUDE.md';
-const AGENT_SYSTEM = 'docs/agent-system.md';
-const CONTRIBUTING = 'docs/contributing.md';
 const INSTALLATION = 'docs/installation.md';
 
-const ORCHESTRATOR_AGENT = 'orchestrator';
 const GIT_ENTRY = '.git';
 const UNWALKED_DIRECTORIES = new Set([GIT_ENTRY, 'node_modules', '.wave']);
 
@@ -31,49 +25,23 @@ const NUMBER_WORDS = [
 const NAME_CHARACTER = /[A-Za-z0-9_-]/;
 
 const INVENTORIES = {
-  agents: {
-    dir: '.claude/agents',
-    suffix: MARKDOWN,
-    indexes: [README, AGENT_SYSTEM],
-  },
-  skills: {
-    dir: '.claude/skills',
-    suffix: DIRECTORY_ENTRY,
-    sharedNamespace: true,
-    indexes: [README, CLAUDE, AGENT_SYSTEM],
-  },
   hooks: {
     dir: '.claude/hooks',
     suffix: MODULE,
     indexes: [README, INSTALLATION],
   },
-  integrations: {
-    dir: 'docs/integrations',
-    suffix: MARKDOWN,
-    indexes: [README, CONTRIBUTING],
-  },
-  githubScripts: {
-    dir: 'scripts/github',
-    suffix: MODULE,
-    skipSuffix: TEST_MODULE,
-    indexes: [CLAUDE, CONTRIBUTING],
-  },
 };
 
-function entryNames({ dir, suffix, skipSuffix }) {
+function entryNames({ dir, suffix }) {
   const entries = readdirSync(join(REPO_ROOT, dir), { withFileTypes: true });
-  if (suffix === DIRECTORY_ENTRY) {
-    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  }
   return entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
-    .filter((entry) => !skipSuffix || !entry.name.endsWith(skipSuffix))
     .map((entry) => entry.name.slice(0, -suffix.length))
     .sort();
 }
 
 function sourceGlob({ dir, suffix }) {
-  return suffix === DIRECTORY_ENTRY ? `${dir}/*/` : `${dir}/*${suffix}`;
+  return `${dir}/*${suffix}`;
 }
 
 function inventoryNames() {
@@ -147,8 +115,7 @@ function escapeForRegExp(text) {
 }
 
 function pathReferencePattern({ dir, suffix }) {
-  const tail = suffix === DIRECTORY_ENTRY ? '' : escapeForRegExp(suffix);
-  return new RegExp(`${escapeForRegExp(dir)}/([A-Za-z0-9_-]+)${tail}`, 'g');
+  return new RegExp(`${escapeForRegExp(dir)}/([A-Za-z0-9_-]+)${escapeForRegExp(suffix)}`, 'g');
 }
 
 function report(problems) {
@@ -239,7 +206,6 @@ test('every docs-count marker matches what the directory holds', () => {
   const entries = inventoryNames();
   const countable = {
     ...entries,
-    specialists: entries.agents.filter((name) => name !== ORCHESTRATOR_AGENT),
   };
   const problems = [];
 

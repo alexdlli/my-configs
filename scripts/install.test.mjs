@@ -23,8 +23,8 @@ const INSTALLER = fileURLToPath(new URL('./install.mjs', import.meta.url));
 // runs a copy planted in a throwaway tree. That is what makes "the harness
 // stopped declaring this skill" expressible at all: the real checkout's
 // .claude/skills cannot be edited to prove a retraction.
-const HARNESS_DIRS = ['agents', 'hooks'];
-const HARNESS_SETTINGS = { agent: 'orchestrator', permissions: { allow: ['Bash(git status:*)'] } };
+const HARNESS_DIRS = ['hooks'];
+const HARNESS_SETTINGS = { permissions: { allow: ['Bash(git status:*)'] } };
 
 const ALPHA = 'alpha';
 const BETA = 'beta';
@@ -351,7 +351,7 @@ test('an unreadable harness skills directory aborts instead of retracting every 
   });
 });
 
-test('an install that aborts on the agent conflict retracts nothing', () => {
+test('a user-selected agent is preserved while stale skills retract', () => {
   withSandbox([ALPHA, BETA], (sandbox) => {
     install(sandbox);
     setInstalledAgent(sandbox, 'someone-elses-agent');
@@ -359,12 +359,49 @@ test('an install that aborts on the agent conflict retracts nothing', () => {
     declareSkills(sandbox.harness, [ALPHA]);
     const result = run(sandbox);
 
-    assert.equal(result.status, 1, 'the agent conflict must still abort the install');
-    assert.ok(
-      linkPresent(skillLink(sandbox, BETA)),
-      'a non-zero exit must not leave the machine changed by a run that wrote no metadata',
-    );
-    assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, [ALPHA, BETA]));
+    assert.equal(result.status, 0);
+    assert.equal(installedSettings(sandbox).agent, 'someone-elses-agent');
+    assert.equal(linkPresent(skillLink(sandbox, BETA)), false);
+    assert.deepEqual(recordedPaths(sandbox), declaredPaths(sandbox, [ALPHA]));
+  });
+});
+
+test('the retired Claude orchestrator is removed only when metadata says we installed it', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    install(sandbox);
+    setInstalledAgent(sandbox, 'orchestrator');
+    const metadataPath = join(sandbox.home, '.claude', '.my-configs-managed.json');
+    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    metadata.addedKeys = ['agent'];
+    writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+
+    install(sandbox);
+
+    assert.equal(Object.hasOwn(installedSettings(sandbox), 'agent'), false);
+    const after = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    assert.deepEqual(after.addedKeys, []);
+  });
+});
+
+test('the retired OpenCode orchestrator is removed only when metadata says we installed it', () => {
+  withSandbox([ALPHA], (sandbox) => {
+    install(sandbox);
+    const dir = join(sandbox.home, '.config', 'opencode');
+    const configPath = join(dir, 'opencode.json');
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    config.default_agent = 'orchestrator';
+    writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+    const metadataPath = join(dir, '.my-configs-managed.json');
+    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    metadata.addedKeys = ['default_agent'];
+    writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+
+    install(sandbox);
+
+    const afterConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+    const afterMetadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    assert.equal(Object.hasOwn(afterConfig, 'default_agent'), false);
+    assert.deepEqual(afterMetadata.addedKeys, []);
   });
 });
 
@@ -575,7 +612,7 @@ test('harness skills are also linked into ~/.agents/skills for OpenCode', () => 
   });
 });
 
-test('OpenCode agent entries are linked one by one under ~/.config/opencode', () => {
+test('OpenCode ignores agent declarations and keeps the native default', () => {
   withSandbox([ALPHA], (sandbox) => {
     const agentSrc = join(sandbox.harness, '.opencode', 'agent');
     mkdirSync(agentSrc, { recursive: true });
@@ -598,9 +635,9 @@ test('OpenCode agent entries are linked one by one under ~/.config/opencode', ()
     install(sandbox);
 
     const dest = join(sandbox.home, '.config', 'opencode', 'agent', 'orchestrator.md');
-    assert.equal(readlinkSync(dest), join(agentSrc, 'orchestrator.md'));
+    assert.equal(linkPresent(dest), false);
     const cfg = JSON.parse(readFileSync(join(sandbox.home, '.config', 'opencode', 'opencode.json'), 'utf8'));
-    assert.equal(cfg.default_agent, 'orchestrator');
+    assert.equal(Object.hasOwn(cfg, 'default_agent'), false);
     assert.equal(cfg.permission.bash['git push --force *'], 'deny');
     assert.equal(cfg.permission.bash['gh pr merge *'], 'ask');
     assert.equal(cfg.permission.bash['*'], 'allow');
