@@ -140,16 +140,24 @@ function readManifest() {
   }
 }
 
-// Replace only what the previous sync created. Anything else in the vault —
-// .obsidian, user notes, plugins — is never touched, which is what makes a
-// one-way mirror safe to point at a real vault.
+// Touch only what the previous sync created, and touch as little of it as
+// possible. Anything else in the vault — .obsidian, user notes, plugins — is
+// never touched, which is what makes a one-way mirror safe to point at a real
+// vault. Each managed entry is rsync'd incrementally rather than deleted and
+// recopied: a full rewrite of ~3000 files every hour raced iCloud's uploader,
+// which resolved the conflicts by spawning "name 2.md" duplicates (397 of
+// them measured on 2026-09-08); rsync --delete also sweeps those, since they
+// do not exist in the source.
 function swapIntoVault(stage, entries) {
   fs.mkdirSync(VAULT_DIR, { recursive: true });
   for (const old of readManifest()) {
-    fs.rmSync(path.join(VAULT_DIR, old), { recursive: true, force: true });
+    if (!entries.includes(old)) {
+      fs.rmSync(path.join(VAULT_DIR, old), { recursive: true, force: true });
+    }
   }
   for (const entry of fs.readdirSync(stage)) {
-    fs.cpSync(path.join(stage, entry), path.join(VAULT_DIR, entry), { recursive: true });
+    const r = sh('rsync', ['-a', '--delete', `${path.join(stage, entry)}/`, `${path.join(VAULT_DIR, entry)}/`]);
+    if (!r.ok) die(`rsync failed for "${entry}": ${r.stderr}`);
   }
   fs.writeFileSync(
     path.join(VAULT_DIR, MANIFEST),
