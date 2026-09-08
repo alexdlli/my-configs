@@ -208,6 +208,18 @@ Each run waits for the container to report healthy (up to 10 min), runs `ai-memo
 
 Env overrides: `AI_MEMORY_CONTAINER`, `AI_MEMORY_BACKUP_DIR`, `AI_MEMORY_BACKUP_KEEP`. The installer persists the resolved backup directory and retention in the LaunchAgent, so scheduled runs use the same values even though they do not inherit your interactive shell environment. The LaunchAgent (`com.my-configs.ai-memory-backup`) logs to `<backup dir>/backup.log`.
 
+## Obsidian vault mirror — `scripts/sync-ai-memory-vault.mjs`
+
+A one-way, read-only mirror of the whole wiki into a navigable vault, with human project names resolved from each project's `_meta.md` instead of UUID paths (name collisions get a UUID suffix; a project without a readable `_meta.md` keeps its UUID). Default target is Obsidian's own iCloud container — `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/AI Memory` — the only location Obsidian on iOS can open, which also makes the vault reachable by anything else that reads iCloud Drive. Override with `AI_MEMORY_VAULT_DIR`.
+
+```bash
+node scripts/sync-ai-memory-vault.mjs             # sync once now
+node scripts/sync-ai-memory-vault.mjs --install   # + LaunchAgent: login/boot and hourly
+node scripts/sync-ai-memory-vault.mjs --uninstall # remove the LaunchAgent
+```
+
+Each sync copies the wiki out of the container (git history excluded), stages it under readable names, and replaces **only** the entries listed in the vault's `.ai-memory-mirror.json` manifest — `.obsidian/`, plugins and any user-created notes are never touched. Edits made in the vault are overwritten by the next sync; durable notes go in through the agent (`memory_write_page`) or the CLI, and the vault's own `README.md` repeats that warning in place. The LaunchAgent is `com.my-configs.ai-memory-vault-sync`, logging to `~/.local/share/ai-memory/vault-sync.log`.
+
 ## Getting the learning onto another computer (and keeping it synced)
 
 The "learning" is the ai-memory data dir: the markdown **wiki** (git-versioned source of truth), the raw session archive, and the SQLite index (rebuildable from the wiki). Three ways to share it:
