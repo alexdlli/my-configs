@@ -27,7 +27,11 @@ OpenCode:
 - Entries under `.opencode/plugin/` are linked individually.
 - Owned `permission.bash` rules are merged into the user's config.
 
-No agents, default-agent setting, commands, or harness-owned skills are installed.
+The installer links `appllama-app-design-skill` into `~/.claude/skills/` and
+`~/.agents/skills/`. It provides mobile UI guidance for Expo / React Native and
+works without the paid Appllama MCP. See [Appllama](integrations/appllama.md).
+
+No agents, default-agent setting, or commands are installed.
 A migration run retracts the retired links, hooks, permission entries, and default
 agent when metadata proves this installer added them.
 

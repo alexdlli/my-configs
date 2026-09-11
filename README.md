@@ -5,7 +5,7 @@ Minimal personal tooling for Claude Code and OpenCode.
 It deliberately does not install a default agent, specialist roster, orchestration
 graph, ticket pipeline, or spec workflow. The native client and a strong model do
 the work; this repository keeps only portable safety, session context, installation,
-and ai-memory integration.
+ai-memory integration, and a mobile design skill.
 
 ## What remains
 
@@ -14,6 +14,7 @@ and ai-memory integration.
 - An idempotent installer that preserves unrelated user configuration and retracts
   artifacts this repository no longer declares.
 - ai-memory setup, verification, backup, and Claude compatibility utilities.
+- The free `appllama-app-design-skill` for mobile UI work, with no MCP required.
 - Tests and CI for all executable behavior.
 
 This boundary follows the practical argument in
@@ -42,6 +43,7 @@ Use `node scripts/install.mjs --dry-run` to inspect the result and
 ```
 .claude/
   hooks/                 # auto-update, session-context, destructive guard
+  skills/                # Appllama mobile design skill and references
   settings.json          # permissions and hook registrations
 .opencode/
   plugin/guard-destructive.js
